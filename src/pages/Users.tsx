@@ -1,0 +1,350 @@
+import { useEffect, useState } from 'react';
+import { Layout } from '../components/Layout';
+import { Card } from '../components/Card';
+import { Button } from '../components/Button';
+import { Input } from '../components/Input';
+import { Select } from '../components/Select';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase, Profile, Team } from '../lib/supabase';
+import { Plus, X, Edit, UserCheck, UserX } from 'lucide-react';
+
+export function Users() {
+  const { profile } = useAuth();
+  const [users, setUsers] = useState<Profile[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createLoading, setCreateLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    password: '',
+    role: 'VENDEDOR' as Profile['role'],
+    external_id: '',
+    team_id: '',
+  });
+
+  const canCreate = profile?.role && ['ADMINISTRADOR', 'GERENTE', 'SUPERVISOR'].includes(profile.role);
+
+  useEffect(() => {
+    fetchUsers();
+    fetchTeams();
+  }, []);
+
+  const fetchUsers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setUsers(data || []);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchTeams = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('teams')
+        .select('*')
+        .eq('is_active', true)
+        .order('name');
+
+      if (error) throw error;
+      setTeams(data || []);
+    } catch (error) {
+      console.error('Error fetching teams:', error);
+    }
+  };
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setCreateLoading(true);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('No session');
+
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`;
+
+      const payload: any = {
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+        role: formData.role,
+      };
+
+      if (['SUPERVISOR', 'VENDEDOR', 'ADESIONISTA'].includes(formData.role)) {
+        payload.external_id = formData.external_id;
+        payload.team_id = formData.team_id;
+      }
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to create user');
+      }
+
+      setShowCreateModal(false);
+      setFormData({
+        name: '',
+        email: '',
+        password: '',
+        role: 'VENDEDOR',
+        external_id: '',
+        team_id: '',
+      });
+      fetchUsers();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao criar usuário');
+      console.error('Error creating user:', err);
+    } finally {
+      setCreateLoading(false);
+    }
+  };
+
+  const roleLabels: Record<Profile['role'], string> = {
+    ADMINISTRADOR: 'Administrador',
+    GERENTE: 'Gerente',
+    SUPERVISOR: 'Supervisor',
+    VENDEDOR: 'Vendedor',
+    ADESIONISTA: 'Adesionista',
+  };
+
+  const roleBadgeColors: Record<Profile['role'], string> = {
+    ADMINISTRADOR: 'bg-red-100 text-red-700 border-red-200',
+    GERENTE: 'bg-blue-100 text-blue-700 border-blue-200',
+    SUPERVISOR: 'bg-purple-100 text-purple-700 border-purple-200',
+    VENDEDOR: 'bg-green-100 text-green-700 border-green-200',
+    ADESIONISTA: 'bg-amber-100 text-amber-700 border-amber-200',
+  };
+
+  const requiresTeamAndExternal = ['SUPERVISOR', 'VENDEDOR', 'ADESIONISTA'].includes(formData.role);
+
+  return (
+    <Layout>
+      <div className="space-y-4 sm:space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-slate-800">Usuários</h1>
+            <p className="text-slate-600 mt-1 text-sm sm:text-base">Gerencie os usuários do sistema</p>
+          </div>
+          {canCreate && (
+            <Button onClick={() => setShowCreateModal(true)} className="w-full sm:w-auto">
+              <Plus className="w-4 h-4 mr-2" />
+              <span className="sm:inline">Novo Usuário</span>
+            </Button>
+          )}
+        </div>
+
+        <Card>
+          {loading ? (
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto"></div>
+            </div>
+          ) : users.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-slate-500">Nenhum usuário encontrado</p>
+            </div>
+          ) : (
+            <>
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-200">
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-600">Nome</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-600">Email</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-600">Função</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-600">ID Externo</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-600">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((user) => (
+                      <tr key={user.id} className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="py-3 px-4 text-slate-800">{user.name}</td>
+                        <td className="py-3 px-4 text-slate-600">{user.email}</td>
+                        <td className="py-3 px-4">
+                          <span className={`px-2 py-1 rounded-lg text-xs font-medium border ${roleBadgeColors[user.role]}`}>
+                            {roleLabels[user.role]}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-slate-600">{user.external_id || '-'}</td>
+                        <td className="py-3 px-4">
+                          {user.is_active ? (
+                            <div className="flex items-center text-green-600">
+                              <UserCheck className="w-4 h-4 mr-1" />
+                              <span className="text-sm">Ativo</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center text-slate-400">
+                              <UserX className="w-4 h-4 mr-1" />
+                              <span className="text-sm">Inativo</span>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="md:hidden space-y-3">
+                {users.map((user) => (
+                  <div key={user.id} className="border border-slate-200 rounded-lg p-4 bg-white">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-slate-800">{user.name}</h3>
+                        <p className="text-sm text-slate-600 mt-1">{user.email}</p>
+                      </div>
+                      {user.is_active ? (
+                        <UserCheck className="w-5 h-5 text-green-600 flex-shrink-0" />
+                      ) : (
+                        <UserX className="w-5 h-5 text-slate-400 flex-shrink-0" />
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-slate-500">Função</span>
+                        <span className={`px-2 py-1 rounded-lg text-xs font-medium border ${roleBadgeColors[user.role]}`}>
+                          {roleLabels[user.role]}
+                        </span>
+                      </div>
+                      {user.external_id && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-slate-500">ID Externo</span>
+                          <span className="text-xs text-slate-700 font-medium">{user.external_id}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </Card>
+      </div>
+
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full my-8">
+            <div className="flex items-center justify-between p-6 border-b border-slate-200">
+              <h2 className="text-xl font-bold text-slate-800">Novo Usuário</h2>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateUser} className="p-6 space-y-4">
+              <Input
+                label="Nome"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                required
+              />
+
+              <Input
+                label="Email"
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                required
+              />
+
+              <Input
+                label="Senha"
+                type="password"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                required
+                minLength={6}
+              />
+
+              <Select
+                label="Função"
+                value={formData.role}
+                onChange={(e) => setFormData({ ...formData, role: e.target.value as Profile['role'] })}
+                required
+              >
+                <option value="VENDEDOR">Vendedor</option>
+                <option value="ADESIONISTA">Adesionista</option>
+                <option value="SUPERVISOR">Supervisor</option>
+                {profile?.role === 'ADMINISTRADOR' && (
+                  <>
+                    <option value="GERENTE">Gerente</option>
+                    <option value="ADMINISTRADOR">Administrador</option>
+                  </>
+                )}
+              </Select>
+
+              {requiresTeamAndExternal && (
+                <>
+                  <Input
+                    label="ID Externo"
+                    value={formData.external_id}
+                    onChange={(e) => setFormData({ ...formData, external_id: e.target.value })}
+                    required={requiresTeamAndExternal}
+                  />
+
+                  <Select
+                    label="Equipe"
+                    value={formData.team_id}
+                    onChange={(e) => setFormData({ ...formData, team_id: e.target.value })}
+                    required={requiresTeamAndExternal}
+                  >
+                    <option value="">Selecione uma equipe</option>
+                    {teams.map((team) => (
+                      <option key={team.id} value={team.id}>
+                        {team.name}
+                      </option>
+                    ))}
+                  </Select>
+                </>
+              )}
+
+              {error && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                  {error}
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setShowCreateModal(false)}
+                  className="w-full sm:flex-1"
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={createLoading} className="w-full sm:flex-1">
+                  {createLoading ? 'Criando...' : 'Criar Usuário'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </Layout>
+  );
+}
