@@ -1,11 +1,14 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ConfigCadastroProvider } from './contexts/ConfigCadastroContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Users } from './pages/Users';
 import { Teams } from './pages/Teams';
 import { Profile } from './pages/Profile';
+import { Cadastro } from './pages/Cadastro';
+import { ConfiguracoesCadastro } from './pages/ConfiguracoesCadastro';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -52,6 +55,22 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/cadastro"
+        element={
+          <ProtectedRoute>
+            <Cadastro />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/configuracoes"
+        element={
+          <ProtectedRoute>
+            <ConfiguracoesCadastro />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/profile"
         element={
           <ProtectedRoute>
@@ -69,7 +88,9 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <ConfigCadastroProvider>
+          <AppRoutes />
+        </ConfigCadastroProvider>
       </AuthProvider>
     </BrowserRouter>
   );

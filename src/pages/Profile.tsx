@@ -15,10 +15,12 @@ export function Profile() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [name, setName] = useState('');
+  const [externalId, setExternalId] = useState('');
 
   useEffect(() => {
     if (profile) {
       setName(profile.name);
+      setExternalId(profile.external_id || '');
       if (profile.team_id) {
         fetchTeam();
       }
@@ -49,9 +51,15 @@ export function Profile() {
     setLoading(true);
 
     try {
+      const updateData: { name: string; external_id?: string } = { name };
+
+      if (externalId.trim()) {
+        updateData.external_id = externalId.trim();
+      }
+
       const { error } = await supabase
         .from('profiles')
-        .update({ name })
+        .update(updateData)
         .eq('id', profile?.id);
 
       if (error) throw error;
@@ -128,15 +136,26 @@ export function Profile() {
                 </p>
               </div>
 
-              {profile?.external_id && (
-                <div>
-                  <div className="flex items-center text-sm text-slate-600 mb-2">
-                    <Hash className="w-4 h-4 mr-2" />
-                    <span className="font-medium">ID Externo</span>
-                  </div>
-                  <p className="text-slate-800 font-medium">{profile.external_id}</p>
+              <div>
+                <div className="flex items-center text-sm text-slate-600 mb-2">
+                  <Hash className="w-4 h-4 mr-2" />
+                  <span className="font-medium">Código do Usuário (ID Externo)</span>
                 </div>
-              )}
+                {editing ? (
+                  <Input
+                    value={externalId}
+                    onChange={(e) => setExternalId(e.target.value)}
+                    placeholder="Insira seu código do ERP"
+                  />
+                ) : (
+                  <p className="text-slate-800 font-medium">{profile?.external_id || '-'}</p>
+                )}
+                {editing && (
+                  <p className="text-xs text-slate-500 mt-1">
+                    Necessário para cadastrar clientes no sistema
+                  </p>
+                )}
+              </div>
 
               {team && (
                 <div>
@@ -180,6 +199,7 @@ export function Profile() {
                     onClick={() => {
                       setEditing(false);
                       setName(profile?.name || '');
+                      setExternalId(profile?.external_id || '');
                       setError('');
                       setSuccess('');
                     }}
