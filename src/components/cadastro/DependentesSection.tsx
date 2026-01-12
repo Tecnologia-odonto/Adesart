@@ -101,6 +101,19 @@ export function DependentesSection({
       return;
     }
 
+    if (!formData.nomeMae) {
+      alert('Campo obrigatório: Nome da Mãe');
+      return;
+    }
+
+    if (formData.tipo === 1) {
+      const titularExistente = dependentes.find((d, i) => d.tipo === 1 && i !== editingIndex);
+      if (titularExistente) {
+        alert('Só pode haver 1 titular nos dependentes. Já existe um titular cadastrado.');
+        return;
+      }
+    }
+
     const planoSelecionado = planos.find((p) => p.Plano === formData.plano);
     if (!planoSelecionado) {
       console.error('[DependentesSection] Plano não encontrado. Planos disponíveis:', planos);
@@ -268,6 +281,7 @@ export function DependentesSection({
                 label="Nome da Mãe"
                 value={formData.nomeMae}
                 onChange={(e) => setFormData({ ...formData, nomeMae: e.target.value })}
+                required
               />
             </div>
           </div>

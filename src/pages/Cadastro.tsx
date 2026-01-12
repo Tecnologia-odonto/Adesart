@@ -49,46 +49,46 @@ export function Cadastro() {
         <div className="flex border-b border-slate-200 -mx-3 sm:mx-0 px-3 sm:px-0 overflow-x-auto">
           <button
             onClick={() => setActiveTab('novo')}
-            className={`flex-1 sm:flex-none flex items-center justify-center px-3 sm:px-4 py-2.5 sm:py-3 font-medium text-xs sm:text-sm transition-colors relative whitespace-nowrap ${
+            className={`flex-1 sm:flex-none flex items-center justify-center px-4 sm:px-4 py-2.5 sm:py-3 font-medium text-xs sm:text-sm transition-colors relative whitespace-nowrap ${
               activeTab === 'novo'
                 ? 'text-emerald-700 border-b-2 border-emerald-600 bg-emerald-50'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 active:bg-slate-100'
             }`}
           >
-            <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
+            <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-2 sm:mr-2" />
             <span className="hidden xs:inline">Novo Cadastro</span>
             <span className="xs:hidden">Novo</span>
           </button>
           <button
             onClick={() => setActiveTab('incompletos')}
-            className={`flex-1 sm:flex-none flex items-center justify-center px-3 sm:px-4 py-2.5 sm:py-3 font-medium text-xs sm:text-sm transition-colors relative whitespace-nowrap ${
+            className={`flex-1 sm:flex-none flex items-center justify-center px-4 sm:px-4 py-2.5 sm:py-3 font-medium text-xs sm:text-sm transition-colors relative whitespace-nowrap ${
               activeTab === 'incompletos'
                 ? 'text-emerald-700 border-b-2 border-emerald-600 bg-emerald-50'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 active:bg-slate-100'
             }`}
           >
-            <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
-            <span className="hidden xs:inline">Incompletos</span>
-            <span className="xs:hidden">Inc.</span>
+            <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-2 sm:mr-2" />
+            <span className="hidden sm:inline">Inclusões Pendentes</span>
+            <span className="sm:hidden">Incl</span>
             {cadastros.filter((c) => c.status === 'incompleto').length > 0 && (
-              <span className="ml-1.5 sm:ml-2 px-1.5 sm:px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full">
+              <span className="ml-2 sm:ml-2 px-1.5 sm:px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full">
                 {cadastros.filter((c) => c.status === 'incompleto').length}
               </span>
             )}
           </button>
           <button
             onClick={() => setActiveTab('completos')}
-            className={`flex-1 sm:flex-none flex items-center justify-center px-3 sm:px-4 py-2.5 sm:py-3 font-medium text-xs sm:text-sm transition-colors relative whitespace-nowrap ${
+            className={`flex-1 sm:flex-none flex items-center justify-center px-4 sm:px-4 py-2.5 sm:py-3 font-medium text-xs sm:text-sm transition-colors relative whitespace-nowrap ${
               activeTab === 'completos'
                 ? 'text-emerald-700 border-b-2 border-emerald-600 bg-emerald-50'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 active:bg-slate-100'
             }`}
           >
-            <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
+            <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-2 sm:mr-2" />
             <span className="hidden xs:inline">Completos</span>
             <span className="xs:hidden">OK</span>
             {cadastros.filter((c) => c.status === 'enviado').length > 0 && (
-              <span className="ml-1.5 sm:ml-2 px-1.5 sm:px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
+              <span className="ml-2 sm:ml-2 px-1.5 sm:px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
                 {cadastros.filter((c) => c.status === 'enviado').length}
               </span>
             )}

@@ -166,6 +166,37 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    if (responseData?.data?.dados === null || !responseData?.data?.dados?.dependentes) {
+      statusCode = 400;
+      errorMessage = responseData?.data?.mensagem || "Erro no cadastro: dados inválidos retornados pelo ERP";
+      responseBody = {
+        error: errorMessage,
+        details: responseData,
+        status: statusCode,
+      };
+
+      await saveLog(supabase, {
+        user_id: userId,
+        user_email: userEmail,
+        endpoint: "erp-novo-usuario2",
+        method: "POST",
+        request_body: requestBody,
+        response_body: responseBody,
+        status_code: statusCode,
+        success: false,
+        error_message: errorMessage,
+        duration_ms: Date.now() - startTime,
+      });
+
+      return new Response(
+        JSON.stringify(responseBody),
+        {
+          status: statusCode,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     success = true;
     responseBody = {
       success: true,

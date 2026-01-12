@@ -1,6 +1,6 @@
 import { ReactNode, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { LogOut, Users, Briefcase, User as UserIcon, LayoutDashboard, Menu, X, FileText, Settings } from 'lucide-react';
+import { LogOut, Users, Briefcase, User as UserIcon, LayoutDashboard, Menu, X, FileText, Settings, Activity } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 interface LayoutProps {
@@ -28,7 +28,7 @@ export function Layout({ children }: LayoutProps) {
   };
 
   const canViewUsers = profile?.role && ['ADMINISTRADOR', 'GERENTE', 'SUPERVISOR'].includes(profile.role);
-  const canViewTeams = profile?.role && ['ADMINISTRADOR', 'GERENTE', 'SUPERVISOR', 'VENDEDOR', 'ADESIONISTA'].includes(profile.role);
+  const canViewTeams = profile?.role && ['ADMINISTRADOR', 'GERENTE', 'CADASTRO', 'SUPERVISOR', 'VENDEDOR', 'ADESIONISTA'].includes(profile.role);
   const canViewConfig = profile?.role && ['ADMINISTRADOR', 'GERENTE', 'CADASTRO', 'ADESIONISTA'].includes(profile.role);
 
   const menuItems = [
@@ -37,6 +37,7 @@ export function Layout({ children }: LayoutProps) {
     { path: '/teams', label: 'Equipes', icon: Briefcase, show: canViewTeams },
     { path: '/cadastro', label: 'Cadastro', icon: FileText, show: true },
     { path: '/configuracoes', label: 'Configurações', icon: Settings, show: canViewConfig },
+    { path: '/lemmit-usage', label: 'Uso Lemmit', icon: Activity, show: true },
     { path: '/profile', label: 'Meu Perfil', icon: UserIcon, show: true },
   ];
 

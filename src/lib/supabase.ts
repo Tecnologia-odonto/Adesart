@@ -13,10 +13,12 @@ export type Profile = {
   id: string;
   name: string;
   email: string;
-  role: 'ADMINISTRADOR' | 'GERENTE' | 'SUPERVISOR' | 'VENDEDOR' | 'ADESIONISTA';
+  role: 'ADMINISTRADOR' | 'GERENTE' | 'CADASTRO' | 'SUPERVISOR' | 'VENDEDOR' | 'ADESIONISTA';
   external_id: string | null;
   team_id: string | null;
   is_active: boolean;
+  lemmit_limite_consultas: number | null;
+  lemmit_consultas_mes_atual: number;
   created_at: string;
   updated_at: string;
 };

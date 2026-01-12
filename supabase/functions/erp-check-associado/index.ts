@@ -7,17 +7,30 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+interface Dependente {
+  codigoDependente: number;
+  nomeDependente: string;
+  numeroCpfDependente: string;
+  codigoPlano: number;
+  nomePlano: string;
+  codigoSituacao: number;
+  nomeSituacao: string;
+  [key: string]: unknown;
+}
+
+interface Associado {
+  codigo: number;
+  nome: string;
+  cpf: string;
+  codigoDaEmpresa: number;
+  nomeFantasiaDaEmpresa: string;
+  dependentes: Dependente[];
+  [key: string]: unknown;
+}
+
 interface AssociadoResponse {
   totalRegistros: number;
-  dados: Array<{
-    empresa?: { codigo?: string | number; nome?: string };
-    codigo?: string | number;
-    codigoContrato?: string | number;
-    nome?: string;
-    cpf?: string;
-    nomeFantasiaDaEmpresa?: string;
-    [key: string]: unknown;
-  }>;
+  dados: Associado[];
 }
 
 async function saveLog(
@@ -140,7 +153,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const erpUrl = `${ERP_BASE_URL}/v2/api/associados?token=${ERP_TOKEN}&cpfDependente=${cpfLimpo}&incluirAns=true`;
+    const erpUrl = `${ERP_BASE_URL}/v2/api/associados?token=${ERP_TOKEN}&cpfDependente=${cpfLimpo}`;
 
     const erpResponse = await fetch(erpUrl, {
       method: "GET",
@@ -188,46 +201,66 @@ Deno.serve(async (req: Request) => {
 
     let summary = {
       empresa: null as string | null,
-      codigo: null as string | number | null,
+      codigo: null as number | null,
       nomeFantasiaDaEmpresa: null as string | null,
       codigoPlano: null as number | null,
       codigoSituacao: null as number | null,
+      nomeSituacao: null as string | null,
     };
 
     let shouldBlock = false;
     let blockReason = '';
 
     if (exists && responseData.dados && responseData.dados.length > 0) {
-      const firstRecord = responseData.dados[0];
-
-      summary.empresa = firstRecord.empresa?.nome ||
-                       firstRecord.empresa?.codigo?.toString() ||
-                       null;
-
-      summary.codigo = firstRecord.codigoContrato ||
-                      firstRecord.codigo ||
-                      null;
-
-      summary.nomeFantasiaDaEmpresa = firstRecord.nomeFantasiaDaEmpresa || null;
-      summary.codigoPlano = firstRecord.codigoPlano as number || null;
-      summary.codigoSituacao = firstRecord.codigoSituacao as number || null;
-
       const { data: config } = await supabase
         .from('cadastro_config')
         .select('situacoes_que_barram, planos_validos')
         .eq('id', 1)
         .maybeSingle();
 
-      if (config && summary.codigoSituacao !== null) {
-        const situacoesQueBarram = config.situacoes_que_barram || [1, 4, 6];
-        const planosValidos = config.planos_validos || [4, 11, 3, 26];
+      const situacoesQueBarram = config?.situacoes_que_barram || [1, 4, 6];
+      const planosValidos = config?.planos_validos || [4, 11, 3, 26];
 
-        if (situacoesQueBarram.includes(summary.codigoSituacao)) {
-          shouldBlock = true;
-          blockReason = `Associado já cadastrado com situação ${summary.codigoSituacao}`;
-        } else if (summary.codigoPlano !== null && !planosValidos.includes(summary.codigoPlano)) {
-          shouldBlock = true;
-          blockReason = `Associado possui plano ${summary.codigoPlano} que não permite recadastro`;
+      for (const associado of responseData.dados) {
+        if (!associado.dependentes || associado.dependentes.length === 0) {
+          continue;
+        }
+
+        for (const dependente of associado.dependentes) {
+          const codigoSituacao = dependente.codigoSituacao;
+          const codigoPlano = dependente.codigoPlano;
+
+          if (situacoesQueBarram.includes(codigoSituacao)) {
+            if (!planosValidos.includes(codigoPlano)) {
+              shouldBlock = true;
+              blockReason = `Associado já cadastrado na empresa ${associado.nomeFantasiaDaEmpresa} com situação "${dependente.nomeSituacao}" (código ${codigoSituacao}) e plano ${codigoPlano} que não permite recadastro`;
+
+              summary.empresa = associado.codigoDaEmpresa?.toString() || null;
+              summary.codigo = associado.codigo;
+              summary.nomeFantasiaDaEmpresa = associado.nomeFantasiaDaEmpresa;
+              summary.codigoPlano = codigoPlano;
+              summary.codigoSituacao = codigoSituacao;
+              summary.nomeSituacao = dependente.nomeSituacao;
+
+              break;
+            }
+          }
+        }
+
+        if (shouldBlock) break;
+      }
+
+      if (!shouldBlock && responseData.dados.length > 0) {
+        const firstRecord = responseData.dados[0];
+        summary.empresa = firstRecord.codigoDaEmpresa?.toString() || null;
+        summary.codigo = firstRecord.codigo;
+        summary.nomeFantasiaDaEmpresa = firstRecord.nomeFantasiaDaEmpresa;
+
+        if (firstRecord.dependentes && firstRecord.dependentes.length > 0) {
+          const firstDep = firstRecord.dependentes[0];
+          summary.codigoPlano = firstDep.codigoPlano;
+          summary.codigoSituacao = firstDep.codigoSituacao;
+          summary.nomeSituacao = firstDep.nomeSituacao;
         }
       }
     }

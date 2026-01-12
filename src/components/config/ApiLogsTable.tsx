@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Card } from '../Card';
 import { AlertCircle, CheckCircle, Clock, User } from 'lucide-react';
 
 interface ApiLog {
@@ -172,9 +171,9 @@ export function ApiLogsTable() {
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
           onClick={() => setSelectedLog(null)}
         >
-          <Card
-            className="max-w-4xl w-full max-h-[90vh] overflow-auto"
-            onClick={(e: React.MouseEvent) => e.stopPropagation()}
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-auto"
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="p-6">
               <div className="flex justify-between items-start mb-4">
@@ -267,7 +266,7 @@ export function ApiLogsTable() {
                 </div>
               </div>
             </div>
-          </Card>
+          </div>
         </div>
       )}
     </div>

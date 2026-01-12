@@ -26,6 +26,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   const [loadingCEP, setLoadingCEP] = useState(false);
   const [dependentes, setDependentes] = useState<Dependente[]>([]);
   const [planosEmpresa, setPlanosEmpresa] = useState<any[]>([]);
+  const [dependentesInicializados, setDependentesInicializados] = useState(false);
 
   const funcionarioCadastroId = profile?.external_id ? parseInt(profile.external_id) : null;
 
@@ -64,10 +65,18 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   });
 
   useEffect(() => {
+    console.log('[CadastroModal] Inicializando dependentes...');
+    console.log('[CadastroModal] cadastro.dependentes:', cadastro.dependentes);
+
     if (cadastro.dependentes && Array.isArray(cadastro.dependentes) && cadastro.dependentes.length > 0) {
+      console.log('[CadastroModal] Carregando dependentes salvos do banco:', cadastro.dependentes);
       setDependentes(cadastro.dependentes as Dependente[]);
+      setDependentesInicializados(true);
+    } else {
+      console.log('[CadastroModal] Nenhum dependente salvo no banco');
+      setDependentesInicializados(true);
     }
-  }, [cadastro.dependentes]);
+  }, [cadastro.id]);
 
   useEffect(() => {
     const lemitRaw = cadastro.lemit_raw as { nome_mae?: string } | undefined;
@@ -122,8 +131,15 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   }, [cadastro, planosMap]);
 
   useEffect(() => {
-    if (dependentes.length === 0 && cadastro.cpf) {
-      const primeiroPlano = planosEmpresa.length > 0 ? planosEmpresa[0] : null;
+    const temDependentesSalvos = cadastro.dependentes && Array.isArray(cadastro.dependentes) && cadastro.dependentes.length > 0;
+
+    if (!dependentesInicializados || temDependentesSalvos) {
+      return;
+    }
+
+    if (dependentes.length === 0 && cadastro.cpf && planosEmpresa.length > 0) {
+      console.log('[CadastroModal] Criando titular automaticamente (não há dependentes salvos)');
+      const primeiroPlano = planosEmpresa[0];
       const sexoDescricao = (formData.sexo === 1) ? 'Masculino' : (formData.sexo === 0) ? 'Feminino' : '';
 
       const responsavelComoDependente: Dependente = {
@@ -133,8 +149,8 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         cpf: cadastro.cpf,
         sexo: formData.sexo || 0,
         sexoDescricao: sexoDescricao,
-        plano: primeiroPlano ? primeiroPlano.Plano : 0,
-        planoValor: primeiroPlano ? (primeiroPlano.ValorTitular?.toString() || '0,00') : '0,00',
+        plano: primeiroPlano.Plano,
+        planoValor: primeiroPlano.ValorTitular?.toString() || '0,00',
         nomeMae: formData.nomeMae || '',
         carenciaAtendimento: 0,
         funcionarioCadastro: funcionarioCadastroId || 0,
@@ -142,7 +158,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
       setDependentes([responsavelComoDependente]);
     }
-  }, [cadastro.cpf, planosEmpresa, funcionarioCadastroId]);
+  }, [dependentesInicializados, planosEmpresa, cadastro.cpf, cadastro.dependentes, funcionarioCadastroId]);
 
   useEffect(() => {
     if (dependentes.length > 0 && dependentes[0].tipo === 1) {
@@ -169,7 +185,10 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     setLoading(true);
 
     try {
-      await updateCadastro(cadastro.id, {
+      console.log('[CadastroModal] Salvando dependentes:', dependentes);
+      console.log('[CadastroModal] Número de dependentes:', dependentes.length);
+
+      const updateData = {
         nome: formData.nome,
         data_nascimento: formData.dataNascimento,
         sexo_codigo: formData.sexo,
@@ -179,7 +198,11 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         contatos: formData.contatos,
         endereco: formData.endereco,
         dependentes: dependentes,
-      });
+      };
+
+      console.log('[CadastroModal] Dados para atualizar:', updateData);
+
+      await updateCadastro(cadastro.id, updateData);
 
       setSuccess('Cadastro salvo com sucesso!');
       setTimeout(() => {
@@ -199,6 +222,11 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
     if (!formData.nome) {
       setError('Campo obrigatório: Nome Completo');
+      return;
+    }
+
+    if (!formData.nomeMae) {
+      setError('Campo obrigatório: Nome da Mãe');
       return;
     }
 
@@ -275,6 +303,17 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
     if (!cadastro.empresa_id) {
       setError('ID da empresa não encontrado. Por favor, busque a empresa novamente.');
+      return;
+    }
+
+    const titulares = dependentes.filter(d => d.tipo === 1);
+    if (titulares.length === 0) {
+      setError('É necessário ter pelo menos 1 titular nos dependentes');
+      return;
+    }
+
+    if (titulares.length > 1) {
+      setError('Só pode haver 1 titular nos dependentes');
       return;
     }
 
@@ -499,6 +538,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
                 label="Nome da Mãe"
                 value={formData.nomeMae}
                 onChange={(e) => setFormData({ ...formData, nomeMae: e.target.value })}
+                required
               />
             </div>
 

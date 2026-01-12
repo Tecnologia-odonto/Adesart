@@ -1,7 +1,9 @@
-import { FileText, CheckCircle2, Eye, Building2, ChevronDown, ChevronRight } from 'lucide-react';
-import { useState } from 'react';
+import { FileText, CheckCircle2, Eye, Building2, ChevronDown, ChevronRight, Search, X } from 'lucide-react';
+import { useState, useMemo } from 'react';
 import { Cadastro } from '../../hooks/useCadastros';
 import { formatCPF, formatDate } from '../../lib/cpf';
+import { Input } from '../Input';
+import { Select } from '../Select';
 
 interface CadastrosCompletosListProps {
   cadastros: Cadastro[];
@@ -17,12 +19,47 @@ interface EmpresaGroup {
 export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProps) {
   const [expandedEmpresas, setExpandedEmpresas] = useState<Set<string>>(new Set());
   const [viewDetails, setViewDetails] = useState<Cadastro | null>(null);
+  const [filtroEmpresa, setFiltroEmpresa] = useState<string>('');
+  const [filtroBusca, setFiltroBusca] = useState<string>('');
+
   const completos = cadastros.filter((c) => c.status === 'enviado');
+
+  const empresasUnicas = useMemo(() => {
+    const empresasSet = new Map<string, { id: number | null; nome: string }>();
+    completos.forEach((cadastro) => {
+      const key = cadastro.empresa_id !== null ? `${cadastro.empresa_id}` : 'sem_empresa';
+      if (!empresasSet.has(key)) {
+        empresasSet.set(key, {
+          id: cadastro.empresa_id,
+          nome: cadastro.empresa_nome || 'Empresa não informada',
+        });
+      }
+    });
+    return Array.from(empresasSet.values()).sort((a, b) => {
+      if (a.id === null) return 1;
+      if (b.id === null) return -1;
+      return a.nome.localeCompare(b.nome);
+    });
+  }, [completos]);
+
+  const cadastrosFiltrados = useMemo(() => {
+    return completos.filter((cadastro) => {
+      const matchEmpresa = !filtroEmpresa ||
+        (filtroEmpresa === 'sem_empresa' && cadastro.empresa_id === null) ||
+        (cadastro.empresa_id !== null && cadastro.empresa_id.toString() === filtroEmpresa);
+
+      const matchBusca = !filtroBusca ||
+        cadastro.nome?.toLowerCase().includes(filtroBusca.toLowerCase()) ||
+        cadastro.cpf.includes(filtroBusca.replace(/\D/g, ''));
+
+      return matchEmpresa && matchBusca;
+    });
+  }, [completos, filtroEmpresa, filtroBusca]);
 
   const empresasGrouped: EmpresaGroup[] = [];
   const cadastrosMap = new Map<string, Cadastro[]>();
 
-  completos.forEach((cadastro) => {
+  cadastrosFiltrados.forEach((cadastro) => {
     const key = cadastro.empresa_id !== null ? `empresa_${cadastro.empresa_id}` : 'sem_empresa';
     if (!cadastrosMap.has(key)) {
       cadastrosMap.set(key, []);
@@ -67,9 +104,81 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
     );
   }
 
+  const limparFiltros = () => {
+    setFiltroEmpresa('');
+    setFiltroBusca('');
+  };
+
+  const temFiltrosAtivos = filtroEmpresa || filtroBusca;
+
   return (
     <>
-      <div className="space-y-4">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Search className="w-5 h-5 text-slate-500" />
+          <h3 className="font-semibold text-slate-800">Filtros</h3>
+          {temFiltrosAtivos && (
+            <button
+              onClick={limparFiltros}
+              className="ml-auto text-sm text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
+            >
+              <X className="w-4 h-4" />
+              Limpar filtros
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Select
+            label="Empresa"
+            value={filtroEmpresa}
+            onChange={(e) => setFiltroEmpresa(e.target.value)}
+          >
+            <option value="">Todas as empresas</option>
+            {empresasUnicas.map((empresa) => (
+              <option
+                key={empresa.id !== null ? empresa.id : 'sem_empresa'}
+                value={empresa.id !== null ? empresa.id.toString() : 'sem_empresa'}
+              >
+                {empresa.nome}
+              </option>
+            ))}
+          </Select>
+
+          <div className="relative">
+            <Input
+              label="Buscar por CPF ou Nome"
+              value={filtroBusca}
+              onChange={(e) => setFiltroBusca(e.target.value)}
+              placeholder="Digite o CPF ou nome..."
+            />
+            {filtroBusca && (
+              <button
+                onClick={() => setFiltroBusca('')}
+                className="absolute right-2 top-9 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {temFiltrosAtivos && (
+          <div className="mt-3 text-sm text-slate-600">
+            Mostrando {cadastrosFiltrados.length} de {completos.length} cadastros
+          </div>
+        )}
+      </div>
+
+      {cadastrosFiltrados.length === 0 ? (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12">
+          <div className="text-center">
+            <Search className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            <p className="text-slate-500">Nenhum cadastro encontrado com os filtros aplicados</p>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
         {empresasGrouped.map((empresa) => {
           const empresaKey = empresa.empresaId !== null ? `empresa_${empresa.empresaId}` : 'sem_empresa';
           const isExpanded = expandedEmpresas.has(empresaKey);
@@ -153,7 +262,8 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
             </div>
           );
         })}
-      </div>
+        </div>
+      )}
 
       {viewDetails && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">

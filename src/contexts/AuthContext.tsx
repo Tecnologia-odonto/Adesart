@@ -76,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
 
     if (data.user) {
+      setUser(data.user);
       const profileData = await fetchProfile(data.user.id);
       setProfile(profileData);
     }

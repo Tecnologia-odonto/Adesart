@@ -66,10 +66,13 @@ export function useCadastros() {
   const checkERPAssociado = async (cpf: string) => {
     const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-check-associado`;
 
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ cpf }),
@@ -86,10 +89,13 @@ export function useCadastros() {
   const consultarCPF = async (cpf: string) => {
     const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/lemit-consulta-pessoa`;
 
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ cpf }),
@@ -110,10 +116,13 @@ export function useCadastros() {
     console.log('[CEP] URL da API:', apiUrl);
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ cep }),
@@ -166,10 +175,13 @@ export function useCadastros() {
       body.empresaId = searchValue;
     }
 
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
@@ -181,6 +193,90 @@ export function useCadastros() {
     }
 
     return response.json();
+  };
+
+  const findClienteByCPF = async (cpf: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('cadastros')
+        .select('*')
+        .eq('cpf', cpf)
+        .not('erp_dados_associado', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (!data) return null;
+
+      const erpDados = data.erp_dados_associado as any;
+      if (!erpDados || !erpDados.dados || erpDados.dados.length === 0) {
+        return null;
+      }
+
+      let maisRecente = null;
+      let dataMaisRecente: Date | null = null;
+
+      for (const associado of erpDados.dados) {
+        if (!associado.dependentes || associado.dependentes.length === 0) {
+          continue;
+        }
+
+        for (const dependente of associado.dependentes) {
+          const dataSituacao = dependente.dataSituacao
+            ? new Date(dependente.dataSituacao)
+            : null;
+
+          if (dataSituacao && (!dataMaisRecente || dataSituacao > dataMaisRecente)) {
+            dataMaisRecente = dataSituacao;
+            maisRecente = {
+              nome: associado.nome || data.nome,
+              nomeMae: data.nome_mae,
+              dataNascimento: dependente.dataNascimento || data.data_nascimento,
+              sexo: data.sexo,
+              sexoCodigo: data.sexo_codigo,
+              contatos: data.contatos,
+              endereco: data.endereco,
+              empresa_id: associado.codigoDaEmpresa,
+              empresa_nome: associado.nomeFantasiaDaEmpresa,
+              codigoAssociado: associado.codigo,
+              codigoPlano: dependente.codigoPlano,
+              codigoSituacao: dependente.codigoSituacao,
+              nomeSituacao: dependente.nomeSituacao,
+              dataSituacao: dependente.dataSituacao,
+            };
+          }
+        }
+      }
+
+      if (!maisRecente && erpDados.dados[0]) {
+        const primeiroAssociado = erpDados.dados[0];
+        const primeiroDependente = primeiroAssociado.dependentes?.[0];
+
+        maisRecente = {
+          nome: primeiroAssociado.nome || data.nome,
+          nomeMae: data.nome_mae,
+          dataNascimento: primeiroDependente?.dataNascimento || data.data_nascimento,
+          sexo: data.sexo,
+          sexoCodigo: data.sexo_codigo,
+          contatos: data.contatos,
+          endereco: data.endereco,
+          empresa_id: primeiroAssociado.codigoDaEmpresa,
+          empresa_nome: primeiroAssociado.nomeFantasiaDaEmpresa,
+          codigoAssociado: primeiroAssociado.codigo,
+          codigoPlano: primeiroDependente?.codigoPlano,
+          codigoSituacao: primeiroDependente?.codigoSituacao,
+          nomeSituacao: primeiroDependente?.nomeSituacao,
+          dataSituacao: primeiroDependente?.dataSituacao,
+        };
+      }
+
+      return maisRecente;
+    } catch (error) {
+      console.error('Error finding client by CPF:', error);
+      return null;
+    }
   };
 
   const createOrUpdateRascunho = async (data: Partial<Cadastro>) => {
@@ -222,6 +318,9 @@ export function useCadastros() {
   };
 
   const updateCadastro = async (id: string, data: Partial<Cadastro>) => {
+    console.log('[useCadastros] updateCadastro chamado com:', { id, data });
+    console.log('[useCadastros] Dependentes sendo salvos:', data.dependentes);
+
     const { data: updated, error } = await supabase
       .from('cadastros')
       .update(data)
@@ -229,7 +328,13 @@ export function useCadastros() {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('[useCadastros] Erro ao atualizar:', error);
+      throw error;
+    }
+
+    console.log('[useCadastros] Cadastro atualizado com sucesso:', updated);
+    console.log('[useCadastros] Dependentes salvos no banco:', updated.dependentes);
 
     await fetchCadastros();
     return updated;
@@ -239,10 +344,13 @@ export function useCadastros() {
     const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-novo-usuario2`;
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
@@ -250,22 +358,34 @@ export function useCadastros() {
 
       const result = await response.json();
 
-      if (!response.ok) {
+      if (!response.ok || result.error) {
+        let mensagemErro = result.error || 'Erro ao enviar para o ERP';
+
+        if (result.details?.mensagem) {
+          mensagemErro = `${mensagemErro} (${result.details.mensagem.trim()})`;
+        }
+
         await updateCadastro(id, {
           status: 'erro_envio',
           payload_erp: payload,
           erp_response: result,
         });
-        throw new Error(result.error || 'Erro ao enviar para o ERP');
+        throw new Error(mensagemErro);
       }
 
-      if (result.dados === null && result.mensagem) {
+      if (result.data?.dados === null || result.data?.dados === undefined) {
+        let mensagemErro = 'Erro ao cadastrar: dados inválidos retornados pelo ERP';
+
+        if (result.data?.mensagem) {
+          mensagemErro = `${mensagemErro} (${result.data.mensagem.trim()})`;
+        }
+
         await updateCadastro(id, {
           status: 'erro_envio',
           payload_erp: payload,
           erp_response: result,
         });
-        throw new Error(result.mensagem);
+        throw new Error(mensagemErro);
       }
 
       await updateCadastro(id, {
@@ -299,6 +419,7 @@ export function useCadastros() {
     consultarCPF,
     consultarEnderecoCEP,
     searchEmpresa,
+    findClienteByCPF,
     createOrUpdateRascunho,
     updateCadastro,
     enviarParaERP,

@@ -152,7 +152,10 @@ export function mapLemitToCadastro(lemitData: LemitResponse, cpf: string): Parti
 
 export function buildERPPayload(cadastro: CadastroFormData, empresaId: number, vendedorCodigo?: string | null, funcionarioCadastroId?: number | null): Record<string, unknown> {
   const sexoDescricao = cadastro.sexoCodigo === 1 ? 'Masculino' : 'Feminino';
-  const codigoParceiro = funcionarioCadastroId || 0;
+
+  const codigoParceiro = vendedorCodigo
+    ? parseInt(vendedorCodigo)
+    : (funcionarioCadastroId || 0);
 
   const contatosRespFin = cadastro.contatos.map(contato => {
     let tipo: number;

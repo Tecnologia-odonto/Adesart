@@ -25,6 +25,7 @@ export function EditUserModal({ user, onClose, onSuccess, canEditRole }: EditUse
     external_id: user.external_id || '',
     team_id: user.team_id || '',
     is_active: user.is_active,
+    lemmit_limite_consultas: user.lemmit_limite_consultas ?? '',
   });
 
   useEffect(() => {
@@ -58,6 +59,7 @@ export function EditUserModal({ user, onClose, onSuccess, canEditRole }: EditUse
         name: formData.name,
         email: formData.email,
         is_active: formData.is_active,
+        lemmit_limite_consultas: formData.lemmit_limite_consultas === '' ? null : parseInt(formData.lemmit_limite_consultas as string),
       };
 
       if (canEditRole) {
@@ -94,6 +96,7 @@ export function EditUserModal({ user, onClose, onSuccess, canEditRole }: EditUse
   const roleLabels: Record<Profile['role'], string> = {
     ADMINISTRADOR: 'Administrador',
     GERENTE: 'Gerente',
+    CADASTRO: 'Cadastro',
     SUPERVISOR: 'Supervisor',
     VENDEDOR: 'Vendedor',
     ADESIONISTA: 'Adesionista',
@@ -171,6 +174,20 @@ export function EditUserModal({ user, onClose, onSuccess, canEditRole }: EditUse
               )}
             </>
           )}
+
+          <div>
+            <Input
+              label="Limite de Consultas Lemmit (Mensal)"
+              type="number"
+              value={formData.lemmit_limite_consultas}
+              onChange={(e) => setFormData({ ...formData, lemmit_limite_consultas: e.target.value })}
+              placeholder="Deixe em branco para ilimitado"
+              min="0"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Deixe em branco para permitir consultas ilimitadas. Digite 0 para bloquear consultas.
+            </p>
+          </div>
 
           <div className="flex items-center space-x-3 pt-2">
             <input

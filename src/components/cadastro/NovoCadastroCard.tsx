@@ -47,7 +47,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
   const [selectedEmpresa, setSelectedEmpresa] = useState<Empresa | null>(null);
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [selectedVendedor, setSelectedVendedor] = useState<string>('');
-  const { checkERPAssociado, consultarCPF, consultarEnderecoCEP, createOrUpdateRascunho } = useCadastros();
+  const { checkERPAssociado, consultarCPF, consultarEnderecoCEP, findClienteByCPF, createOrUpdateRascunho } = useCadastros();
   const { loadConfig } = useConfigCadastro();
   const { profile } = useAuth();
 
@@ -109,20 +109,8 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         return;
       }
 
-      if (erpCheck.exists && !erpCheck.shouldBlock) {
-        setClientExists({
-          cpf: formatCPF(cpfLimpo),
-          nome: erpCheck.summary.nomeFantasiaDaEmpresa || erpCheck.summary.empresa || 'Cliente já cadastrado',
-          erpData: erpCheck,
-        });
-        setLoading(false);
-        return;
-      }
-
-      const configAtual = await loadConfig();
-      const lemitAtivo = configAtual?.ativar_lemmit ?? true;
-
-      console.log('🔍 Configuração Lemmit:', { lemitAtivo, configAtual });
+      console.log('🔍 Buscando dados anteriores do cliente no banco...');
+      const clienteAnterior = await findClienteByCPF(cpfLimpo);
 
       let cadastroData: any = {
         nome: '',
@@ -134,37 +122,166 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
       };
       let lemitData = null;
 
-      if (lemitAtivo) {
-        console.log('✅ Lemmit ATIVO - Consultando API');
+      const configAtual = await loadConfig();
+      const lemitAtivo = configAtual?.ativar_lemmit ?? true;
 
-        lemitData = await consultarCPF(cpfLimpo);
-        cadastroData = mapLemitToCadastro(lemitData, cpfLimpo);
+      if (clienteAnterior) {
+        console.log('✅ Cliente encontrado no banco. Usando dados anteriores:', clienteAnterior);
 
-        if (cadastroData.endereco?.cep) {
-          try {
-            const enderecoERP = await consultarEnderecoCEP(cadastroData.endereco.cep);
-            if (enderecoERP.ok && enderecoERP.dados) {
-              const dados = enderecoERP.dados;
-              cadastroData.endereco = {
-                ...cadastroData.endereco,
-                ...(dados.IdTipoLogradouro && { idTipoLogradouro: dados.IdTipoLogradouro }),
-                ...(dados.TipoLogradouro && { tipoLogradouro: dados.TipoLogradouro }),
-                ...(dados.Logradouro && { logradouro: dados.Logradouro }),
-                ...(dados.IdBairro && { idBairro: dados.IdBairro }),
-                ...(dados.Bairro && { bairro: dados.Bairro }),
-                ...(dados.IdMunicipio && { idMunicipio: dados.IdMunicipio }),
-                ...(dados.Municipio && { cidade: dados.Municipio }),
-                ...(dados.IdUf && { idUf: dados.IdUf }),
-                ...(dados.Uf && { uf: dados.Uf }),
-                ...(dados.UfSigla && { ufSigla: dados.UfSigla }),
-              };
+        cadastroData = {
+          nome: clienteAnterior.nome || '',
+          nomeMae: clienteAnterior.nomeMae || null,
+          dataNascimento: clienteAnterior.dataNascimento || null,
+          sexo: clienteAnterior.sexo || null,
+          sexoCodigo: clienteAnterior.sexoCodigo || null,
+          contatos: clienteAnterior.contatos || null,
+          endereco: clienteAnterior.endereco || null,
+        };
+
+        const temCEP = !!(cadastroData.endereco?.cep);
+        const temTelefones = !!(cadastroData.contatos && cadastroData.contatos.length > 0);
+
+        console.log('📋 Dados do cadastro:', {
+          temNome: !!cadastroData.nome,
+          temNomeMae: !!cadastroData.nomeMae,
+          temCEP,
+          temTelefones,
+          totalContatos: cadastroData.contatos?.length || 0,
+        });
+
+        if (!temCEP || !temTelefones) {
+          console.log('⚠️ Falta CEP ou telefones. Consultando Lemmit para complementar dados...');
+
+          if (lemitAtivo) {
+            try {
+              const { data: canUse } = await supabase.rpc('can_use_lemmit', {
+                p_user_id: profile?.id,
+              });
+
+              if (canUse) {
+                console.log('✅ Lemmit ATIVO - Consultando API para complementar dados');
+
+                try {
+                  lemitData = await consultarCPF(cpfLimpo);
+                  const lemitMapped = mapLemitToCadastro(lemitData, cpfLimpo);
+
+                  await supabase.from('lemmit_consultas').insert({
+                    user_id: profile?.id,
+                    cpf: cpfLimpo,
+                    success: true,
+                    response_data: lemitData,
+                  });
+
+                  await supabase.rpc('increment_lemmit_counter', {
+                    p_user_id: profile?.id,
+                  });
+
+                  if (!temCEP && lemitMapped.endereco) {
+                    cadastroData.endereco = lemitMapped.endereco;
+                  }
+                  if (!temTelefones && lemitMapped.contatos) {
+                    cadastroData.contatos = lemitMapped.contatos;
+                  }
+                  if (!cadastroData.nomeMae && lemitMapped.nomeMae) {
+                    cadastroData.nomeMae = lemitMapped.nomeMae;
+                  }
+
+                  console.log('✅ Dados complementados com sucesso');
+                } catch (lemitError) {
+                  console.error('❌ Erro ao consultar Lemmit:', lemitError);
+
+                  await supabase.from('lemmit_consultas').insert({
+                    user_id: profile?.id,
+                    cpf: cpfLimpo,
+                    success: false,
+                    error_message: lemitError instanceof Error ? lemitError.message : 'Erro desconhecido',
+                  });
+                }
+              } else {
+                console.log('❌ Limite de consultas Lemmit atingido');
+                setError('Limite de consultas Lemmit atingido para este mês');
+                setLoading(false);
+                return;
+              }
+            } catch (error) {
+              console.error('Erro ao verificar limite Lemmit:', error);
             }
-          } catch (cepError) {
-            console.warn('Error fetching CEP from ERP:', cepError);
+          } else {
+            console.log('❌ Lemmit DESATIVADO - Dados podem estar incompletos');
           }
         }
       } else {
-        console.log('❌ Lemmit DESATIVADO - Pulando consulta');
+        console.log('❌ Cliente não encontrado no banco. Consultando APIs externas...');
+
+        if (lemitAtivo) {
+          try {
+            const { data: canUse } = await supabase.rpc('can_use_lemmit', {
+              p_user_id: profile?.id,
+            });
+
+            if (canUse) {
+              console.log('✅ Lemmit ATIVO - Consultando API');
+
+              try {
+                lemitData = await consultarCPF(cpfLimpo);
+                cadastroData = mapLemitToCadastro(lemitData, cpfLimpo);
+
+                await supabase.from('lemmit_consultas').insert({
+                  user_id: profile?.id,
+                  cpf: cpfLimpo,
+                  success: true,
+                  response_data: lemitData,
+                });
+
+                await supabase.rpc('increment_lemmit_counter', {
+                  p_user_id: profile?.id,
+                });
+              } catch (lemitError) {
+                console.error('❌ Erro ao consultar Lemmit:', lemitError);
+
+                await supabase.from('lemmit_consultas').insert({
+                  user_id: profile?.id,
+                  cpf: cpfLimpo,
+                  success: false,
+                  error_message: lemitError instanceof Error ? lemitError.message : 'Erro desconhecido',
+                });
+              }
+            } else {
+              console.log('❌ Limite de consultas Lemmit atingido');
+              setError('Limite de consultas Lemmit atingido para este mês');
+              setLoading(false);
+              return;
+            }
+          } catch (error) {
+            console.error('Erro ao verificar limite Lemmit:', error);
+          }
+        } else {
+          console.log('❌ Lemmit DESATIVADO - Pulando consulta');
+        }
+      }
+
+      if (cadastroData.endereco?.cep) {
+        try {
+          const enderecoERP = await consultarEnderecoCEP(cadastroData.endereco.cep);
+          if (enderecoERP.ok && enderecoERP.dados) {
+            const dados = enderecoERP.dados;
+            cadastroData.endereco = {
+              ...cadastroData.endereco,
+              ...(dados.IdTipoLogradouro && { idTipoLogradouro: dados.IdTipoLogradouro }),
+              ...(dados.TipoLogradouro && { tipoLogradouro: dados.TipoLogradouro }),
+              ...(dados.Logradouro && { logradouro: dados.Logradouro }),
+              ...(dados.IdBairro && { idBairro: dados.IdBairro }),
+              ...(dados.Bairro && { bairro: dados.Bairro }),
+              ...(dados.IdMunicipio && { idMunicipio: dados.IdMunicipio }),
+              ...(dados.Municipio && { cidade: dados.Municipio }),
+              ...(dados.IdUf && { idUf: dados.IdUf }),
+              ...(dados.Uf && { uf: dados.Uf }),
+              ...(dados.UfSigla && { ufSigla: dados.UfSigla }),
+            };
+          }
+        } catch (cepError) {
+          console.warn('Error fetching CEP from ERP:', cepError);
+        }
       }
 
       const vendedorSelecionado = vendedores.find(v => v.id === selectedVendedor);
@@ -172,6 +289,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
       const rascunho = await createOrUpdateRascunho({
         cpf: cpfLimpo,
         nome: cadastroData.nome,
+        nome_mae: cadastroData.nomeMae,
         data_nascimento: cadastroData.dataNascimento,
         sexo: cadastroData.sexo,
         sexo_codigo: cadastroData.sexoCodigo,

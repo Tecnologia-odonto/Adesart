@@ -9,6 +9,7 @@ import { Teams } from './pages/Teams';
 import { Profile } from './pages/Profile';
 import { Cadastro } from './pages/Cadastro';
 import { ConfiguracoesCadastro } from './pages/ConfiguracoesCadastro';
+import { LemmitUsage } from './pages/LemmitUsage';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -67,6 +68,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <ConfiguracoesCadastro />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/lemmit-usage"
+        element={
+          <ProtectedRoute>
+            <LemmitUsage />
           </ProtectedRoute>
         }
       />
