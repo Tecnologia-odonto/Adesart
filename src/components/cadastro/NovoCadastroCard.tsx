@@ -1,11 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, Loader2 } from 'lucide-react';
 import { Input } from '../Input';
 import { Button } from '../Button';
+import { Select } from '../Select';
 import { formatCPF, validateCPF, removeCPFMask } from '../../lib/cpf';
 import { mapLemitToCadastro, CadastroFormData } from '../../lib/mappers';
 import { useCadastros } from '../../hooks/useCadastros';
 import { useConfigCadastro } from '../../contexts/ConfigCadastroContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
 import { ClientExistsModal } from './ClientExistsModal';
 import { EmpresaSearchCard } from './EmpresaSearchCard';
 
@@ -29,14 +32,49 @@ interface Empresa {
   raw: any;
 }
 
+interface Vendedor {
+  id: string;
+  name: string;
+  external_id: string;
+}
+
 export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
   const [cpf, setCpf] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [clientExists, setClientExists] = useState<ClientExistsData | null>(null);
   const [selectedEmpresa, setSelectedEmpresa] = useState<Empresa | null>(null);
+  const [vendedores, setVendedores] = useState<Vendedor[]>([]);
+  const [selectedVendedor, setSelectedVendedor] = useState<string>('');
   const { checkERPAssociado, consultarCPF, consultarEnderecoCEP, createOrUpdateRascunho } = useCadastros();
   const { loadConfig } = useConfigCadastro();
+  const { profile } = useAuth();
+
+  useEffect(() => {
+    const fetchVendedores = async () => {
+      if (profile && (profile.role === 'CADASTRO' || profile.role === 'ADESIONISTA')) {
+        try {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('id, name, external_id')
+            .eq('role', 'VENDEDOR')
+            .eq('is_active', true)
+            .not('external_id', 'is', null)
+            .order('name');
+
+          if (error) throw error;
+
+          setVendedores(data || []);
+        } catch (err) {
+          console.error('Error fetching vendedores:', err);
+        }
+      }
+    };
+
+    fetchVendedores();
+  }, [profile]);
+
+  const needsVendedor = profile && (profile.role === 'CADASTRO' || profile.role === 'ADESIONISTA');
 
   const handleCPFChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatCPF(e.target.value);
@@ -49,6 +87,11 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
 
     if (!validateCPF(cpf)) {
       setError('CPF inválido. Verifique os dígitos.');
+      return;
+    }
+
+    if (needsVendedor && !selectedVendedor) {
+      setError('Selecione um vendedor antes de consultar.');
       return;
     }
 
@@ -117,6 +160,8 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         console.log('❌ Lemmit DESATIVADO - Pulando consulta');
       }
 
+      const vendedorSelecionado = vendedores.find(v => v.id === selectedVendedor);
+
       const rascunho = await createOrUpdateRascunho({
         cpf: cpfLimpo,
         nome: cadastroData.nome,
@@ -132,6 +177,10 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         empresa_cnpj: selectedEmpresa?.cnpj,
         empresa_raw: selectedEmpresa?.raw,
         planos_raw: selectedEmpresa?.precoPlano,
+        ...(needsVendedor && vendedorSelecionado && {
+          vendedor_id: vendedorSelecionado.id,
+          vendedor_codigo: vendedorSelecionado.external_id,
+        }),
       });
 
       setCpf('');
@@ -186,6 +235,22 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
           <h3 className="text-lg font-semibold text-slate-800 mb-4">Consultar CPF</h3>
 
           <div className="space-y-4">
+            {needsVendedor && (
+              <Select
+                label="Vendedor"
+                value={selectedVendedor}
+                onChange={(e) => setSelectedVendedor(e.target.value)}
+                disabled={loading}
+              >
+                <option value="">Selecione um vendedor</option>
+                {vendedores.map((vendedor) => (
+                  <option key={vendedor.id} value={vendedor.id}>
+                    {vendedor.name} - Código: {vendedor.external_id}
+                  </option>
+                ))}
+              </Select>
+            )}
+
             <Input
               label="CPF"
               type="text"
@@ -205,7 +270,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
 
             <Button
               onClick={handleConsultar}
-              disabled={loading || !cpf}
+              disabled={loading || !cpf || (needsVendedor && !selectedVendedor)}
               className="w-full"
             >
               {loading ? (

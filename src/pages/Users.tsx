@@ -7,15 +7,19 @@ import { Select } from '../components/Select';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase, Profile, Team } from '../lib/supabase';
 import { Plus, X, Edit, UserCheck, UserX } from 'lucide-react';
+import { EditUserModal } from '../components/users/EditUserModal';
+
+type UserWithTeam = Profile & { team_name?: string };
 
 export function Users() {
   const { profile } = useAuth();
-  const [users, setUsers] = useState<Profile[]>([]);
+  const [users, setUsers] = useState<UserWithTeam[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
   const [error, setError] = useState('');
+  const [editingUser, setEditingUser] = useState<Profile | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -27,6 +31,7 @@ export function Users() {
   });
 
   const canCreate = profile?.role && ['ADMINISTRADOR', 'GERENTE', 'SUPERVISOR'].includes(profile.role);
+  const canEditRole = profile?.role === 'ADMINISTRADOR';
 
   useEffect(() => {
     fetchUsers();
@@ -35,13 +40,27 @@ export function Users() {
 
   const fetchUsers = async () => {
     try {
-      const { data, error } = await supabase
+      const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setUsers(data || []);
+      if (profilesError) throw profilesError;
+
+      const { data: teamsData, error: teamsError } = await supabase
+        .from('teams')
+        .select('id, name');
+
+      if (teamsError) throw teamsError;
+
+      const teamsMap = new Map(teamsData?.map(t => [t.id, t.name]) || []);
+
+      const usersWithTeams: UserWithTeam[] = (profilesData || []).map(user => ({
+        ...user,
+        team_name: user.team_id ? teamsMap.get(user.team_id) : undefined,
+      }));
+
+      setUsers(usersWithTeams);
     } catch (error) {
       console.error('Error fetching users:', error);
     } finally {
@@ -172,8 +191,10 @@ export function Users() {
                       <th className="text-left py-3 px-4 text-sm font-semibold text-slate-600">Nome</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-slate-600">Email</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-slate-600">Função</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-slate-600">Equipe</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-slate-600">ID Externo</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-slate-600">Status</th>
+                      <th className="text-center py-3 px-4 text-sm font-semibold text-slate-600">Ações</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -185,6 +206,13 @@ export function Users() {
                           <span className={`px-2 py-1 rounded-lg text-xs font-medium border ${roleBadgeColors[user.role]}`}>
                             {roleLabels[user.role]}
                           </span>
+                        </td>
+                        <td className="py-3 px-4 text-slate-600">
+                          {user.team_name ? (
+                            <span className="text-sm">{user.team_name}</span>
+                          ) : (
+                            <span className="text-sm text-slate-400">Sem equipe</span>
+                          )}
                         </td>
                         <td className="py-3 px-4 text-slate-600">{user.external_id || '-'}</td>
                         <td className="py-3 px-4">
@@ -200,6 +228,14 @@ export function Users() {
                             </div>
                           )}
                         </td>
+                        <td className="py-3 px-4 text-center">
+                          <button
+                            onClick={() => setEditingUser(user)}
+                            className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors inline-flex items-center justify-center"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -214,11 +250,19 @@ export function Users() {
                         <h3 className="font-semibold text-slate-800">{user.name}</h3>
                         <p className="text-sm text-slate-600 mt-1">{user.email}</p>
                       </div>
-                      {user.is_active ? (
-                        <UserCheck className="w-5 h-5 text-green-600 flex-shrink-0" />
-                      ) : (
-                        <UserX className="w-5 h-5 text-slate-400 flex-shrink-0" />
-                      )}
+                      <div className="flex items-center gap-2">
+                        {user.is_active ? (
+                          <UserCheck className="w-5 h-5 text-green-600 flex-shrink-0" />
+                        ) : (
+                          <UserX className="w-5 h-5 text-slate-400 flex-shrink-0" />
+                        )}
+                        <button
+                          onClick={() => setEditingUser(user)}
+                          className="p-1 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
@@ -227,6 +271,12 @@ export function Users() {
                           {roleLabels[user.role]}
                         </span>
                       </div>
+                      {user.team_name && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-slate-500">Equipe</span>
+                          <span className="text-xs text-slate-700 font-medium">{user.team_name}</span>
+                        </div>
+                      )}
                       {user.external_id && (
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-slate-500">ID Externo</span>
@@ -344,6 +394,18 @@ export function Users() {
             </form>
           </div>
         </div>
+      )}
+
+      {editingUser && (
+        <EditUserModal
+          user={editingUser}
+          onClose={() => setEditingUser(null)}
+          onSuccess={() => {
+            setEditingUser(null);
+            fetchUsers();
+          }}
+          canEditRole={canEditRole}
+        />
       )}
     </Layout>
   );

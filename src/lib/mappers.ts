@@ -148,8 +148,9 @@ export function mapLemitToCadastro(lemitData: LemitResponse, cpf: string): Parti
   };
 }
 
-export function buildERPPayload(cadastro: CadastroFormData, empresaId: number): Record<string, unknown> {
+export function buildERPPayload(cadastro: CadastroFormData, empresaId: number, vendedorCodigo?: string): Record<string, unknown> {
   const sexoDescricao = cadastro.sexoCodigo === 1 ? 'Masculino' : 'Feminino';
+  const codigoParceiro = vendedorCodigo ? parseInt(vendedorCodigo, 10) : 15921;
 
   const contatosRespFin = cadastro.contatos.map(contato => {
     let tipo: number;
@@ -174,7 +175,7 @@ export function buildERPPayload(cadastro: CadastroFormData, empresaId: number): 
   const payload = {
     dados: {
       parceiro: {
-        codigo: 15921,
+        codigo: codigoParceiro,
         tipoCobranca: 1,
       },
       parcelaRetidaComissao: '0',
@@ -214,7 +215,7 @@ export function buildERPPayload(cadastro: CadastroFormData, empresaId: number): 
           planoValor: dep.planoValor,
           nomeMae: dep.nomeMae,
           carenciaAtendimento: dep.carenciaAtendimento,
-          funcionarioCadastro: dep.funcionarioCadastro,
+          funcionarioCadastro: codigoParceiro,
         })),
       ],
     },

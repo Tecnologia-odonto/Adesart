@@ -28,6 +28,8 @@ export interface Cadastro {
   planos_raw: unknown;
   dependentes: unknown;
   contatos_responsavel_financeiro: unknown;
+  vendedor_id: string | null;
+  vendedor_codigo: string | null;
   created_at: string;
   updated_at: string;
 }

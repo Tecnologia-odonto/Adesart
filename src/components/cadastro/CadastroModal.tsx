@@ -248,7 +248,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         dependentes: dependentes,
       };
 
-      const payload = buildERPPayload(cadastroCompleto, cadastro.empresa_id);
+      const payload = buildERPPayload(cadastroCompleto, cadastro.empresa_id, cadastro.vendedor_codigo);
 
       const result = await enviarParaERP(cadastro.id, payload);
 
@@ -405,6 +405,9 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
               {cadastro.nome || 'Editar Cadastro'}
             </h2>
             <p className="text-sm text-slate-600 mt-1">CPF: {formatCPF(cadastro.cpf)}</p>
+            {cadastro.vendedor_codigo && (
+              <p className="text-sm text-emerald-600 mt-0.5">Vendedor: Código {cadastro.vendedor_codigo}</p>
+            )}
           </div>
           <button
             onClick={onClose}
