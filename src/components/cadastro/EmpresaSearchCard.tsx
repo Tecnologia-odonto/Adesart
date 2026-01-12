@@ -11,6 +11,7 @@ interface Empresa {
   cnpj: string;
   enderecoEmpresa: any;
   precoPlano: any[];
+  exigeMatricula?: number;
   raw: any;
 }
 
@@ -141,6 +142,12 @@ export function EmpresaSearchCard({ onEmpresaSelected, selectedEmpresa }: Empres
                 <span className="font-medium text-slate-700 sm:w-32 mb-0.5 sm:mb-0">Planos:</span>
                 <span className="text-slate-600">{selectedEmpresa.precoPlano.length} disponíveis</span>
               </div>
+              {selectedEmpresa.exigeMatricula === 1 && (
+                <div className="flex flex-col sm:flex-row">
+                  <span className="font-medium text-red-700 sm:w-32 mb-0.5 sm:mb-0">Matrícula:</span>
+                  <span className="text-red-600 font-semibold">OBRIGATÓRIA</span>
+                </div>
+              )}
             </div>
           </div>
 

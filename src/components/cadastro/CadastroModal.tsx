@@ -59,6 +59,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       uf: '',
     },
     nomeMae: cadastro.nome_mae || '',
+    numeroMatricula: cadastro.numero_matricula || '',
   });
 
   useEffect(() => {
@@ -122,7 +123,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   useEffect(() => {
     if (dependentes.length === 0 && cadastro.cpf) {
       const primeiroPlano = planosEmpresa.length > 0 ? planosEmpresa[0] : null;
-      const sexoDescricao = (formData.sexo === 1) ? 'Masculino' : (formData.sexo === 2) ? 'Feminino' : '';
+      const sexoDescricao = (formData.sexo === 1) ? 'Masculino' : (formData.sexo === 0) ? 'Feminino' : '';
 
       const responsavelComoDependente: Dependente = {
         tipo: 1,
@@ -145,7 +146,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   useEffect(() => {
     if (dependentes.length > 0 && dependentes[0].tipo === 1) {
       const titularAtualizado = [...dependentes];
-      const sexoDescricao = (formData.sexo === 1) ? 'Masculino' : (formData.sexo === 2) ? 'Feminino' : '';
+      const sexoDescricao = (formData.sexo === 1) ? 'Masculino' : (formData.sexo === 0) ? 'Feminino' : '';
 
       titularAtualizado[0] = {
         ...titularAtualizado[0],
@@ -171,6 +172,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         data_nascimento: formData.dataNascimento,
         sexo_codigo: formData.sexo,
         nome_mae: formData.nomeMae,
+        numero_matricula: formData.numeroMatricula,
         contatos: formData.contatos,
         endereco: formData.endereco,
         dependentes: dependentes,
@@ -228,6 +230,11 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       return;
     }
 
+    if (cadastro.empresa_exige_matricula === 1 && !formData.numeroMatricula) {
+      setError('Matrícula é obrigatória para esta empresa');
+      return;
+    }
+
     if (!cadastro.empresa_id) {
       setError('ID da empresa não encontrado. Por favor, busque a empresa novamente.');
       return;
@@ -245,6 +252,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         contatos: formData.contatos,
         endereco: formData.endereco,
         nomeMae: formData.nomeMae,
+        numeroMatricula: formData.numeroMatricula,
         dependentes: dependentes,
       };
 
@@ -442,9 +450,9 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
               onChange={(e) => setFormData({ ...formData, sexo: parseInt(e.target.value) })}
               required
             >
-              <option value="0">Selecione</option>
+              <option value="">Selecione</option>
               <option value="1">Masculino</option>
-              <option value="2">Feminino</option>
+              <option value="0">Feminino</option>
             </Select>
 
             <div className="md:col-span-2">
@@ -454,6 +462,20 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
                 onChange={(e) => setFormData({ ...formData, nomeMae: e.target.value })}
               />
             </div>
+
+            {cadastro.empresa_exige_matricula === 1 && (
+              <div className="md:col-span-2">
+                <Input
+                  label="Matrícula"
+                  value={formData.numeroMatricula}
+                  onChange={(e) => setFormData({ ...formData, numeroMatricula: e.target.value })}
+                  required
+                />
+                <p className="text-xs text-red-600 mt-1 font-medium">
+                  * Campo obrigatório para esta empresa
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="border-t border-slate-200 pt-6">

@@ -25,6 +25,8 @@ export interface Cadastro {
   empresa_nome: string | null;
   empresa_cnpj: string | null;
   empresa_raw: unknown;
+  empresa_exige_matricula: number | null;
+  numero_matricula: string | null;
   planos_raw: unknown;
   dependentes: unknown;
   contatos_responsavel_financeiro: unknown;

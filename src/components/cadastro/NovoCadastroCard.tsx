@@ -29,6 +29,7 @@ interface Empresa {
   cnpj: string;
   enderecoEmpresa: any;
   precoPlano: any[];
+  exigeMatricula?: number;
   raw: any;
 }
 
@@ -176,6 +177,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         empresa_nome: selectedEmpresa?.nomeFantasia,
         empresa_cnpj: selectedEmpresa?.cnpj,
         empresa_raw: selectedEmpresa?.raw,
+        empresa_exige_matricula: selectedEmpresa?.exigeMatricula || 0,
         planos_raw: selectedEmpresa?.precoPlano,
         ...(needsVendedor && vendedorSelecionado && {
           vendedor_id: vendedorSelecionado.id,

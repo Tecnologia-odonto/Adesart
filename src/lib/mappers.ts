@@ -72,6 +72,7 @@ export interface CadastroFormData {
   endereco: CadastroEndereco;
   nomeMae?: string;
   dependentes?: Dependente[];
+  numeroMatricula?: string;
 }
 
 export function mapLemitToCadastro(lemitData: LemitResponse, cpf: string): Partial<CadastroFormData> {
@@ -133,7 +134,7 @@ export function mapLemitToCadastro(lemitData: LemitResponse, cpf: string): Parti
   if (sexoStr === 'M' || sexoStr === 'MASCULINO') {
     sexoCodigo = 1;
   } else if (sexoStr === 'F' || sexoStr === 'FEMININO') {
-    sexoCodigo = 2;
+    sexoCodigo = 0;
   }
 
   return {
@@ -148,9 +149,9 @@ export function mapLemitToCadastro(lemitData: LemitResponse, cpf: string): Parti
   };
 }
 
-export function buildERPPayload(cadastro: CadastroFormData, empresaId: number, vendedorCodigo?: string): Record<string, unknown> {
+export function buildERPPayload(cadastro: CadastroFormData, empresaId: number, vendedorCodigo?: string | null): Record<string, unknown> {
   const sexoDescricao = cadastro.sexoCodigo === 1 ? 'Masculino' : 'Feminino';
-  const codigoParceiro = vendedorCodigo ? parseInt(vendedorCodigo, 10) : 15921;
+  const codigoParceiro = vendedorCodigo ? parseInt(vendedorCodigo, 10) : 0;
 
   const contatosRespFin = cadastro.contatos.map(contato => {
     let tipo: number;
@@ -172,6 +173,35 @@ export function buildERPPayload(cadastro: CadastroFormData, empresaId: number, v
     };
   });
 
+  const responsavelFinanceiro: Record<string, any> = {
+    codigoContrato: empresaId,
+    nome: cadastro.nome,
+    dataNascimento: formatDate(cadastro.dataNascimento),
+    cpf: formatCPF(cadastro.cpf),
+    sexo: cadastro.sexoCodigo,
+    grupoFaturamento: 0,
+    sexoDescricao: sexoDescricao,
+    identidadeNumero: '123456789',
+    identidadeOrgaoExpeditor: 'SSPDS',
+    endereco: {
+      cep: cadastro.endereco.cep,
+      tipoLogradouro: cadastro.endereco.idTipoLogradouro?.toString() || '816',
+      logradouro: cadastro.endereco.logradouro,
+      numero: cadastro.endereco.numero,
+      complemento: cadastro.endereco.complemento || 'N/D',
+      bairro: cadastro.endereco.idBairro?.toString() || '1262',
+      municipio: cadastro.endereco.idMunicipio?.toString() || '2',
+      uf: cadastro.endereco.idUf?.toString() || '5',
+      descricaoUf: cadastro.endereco.ufSigla || cadastro.endereco.uf,
+    },
+    contatoResponsavelFinanceiro: contatosRespFin,
+    fl_AlteraSituacao: 1,
+  };
+
+  if (cadastro.numeroMatricula) {
+    responsavelFinanceiro.numeroMatricula = cadastro.numeroMatricula;
+  }
+
   const payload = {
     dados: {
       parceiro: {
@@ -179,30 +209,7 @@ export function buildERPPayload(cadastro: CadastroFormData, empresaId: number, v
         tipoCobranca: 1,
       },
       parcelaRetidaComissao: '0',
-      responsavelFinanceiro: {
-        codigoContrato: empresaId,
-        nome: cadastro.nome,
-        dataNascimento: formatDate(cadastro.dataNascimento),
-        cpf: formatCPF(cadastro.cpf),
-        sexo: cadastro.sexoCodigo,
-        grupoFaturamento: 0,
-        sexoDescricao: sexoDescricao,
-        identidadeNumero: '123456789',
-        identidadeOrgaoExpeditor: 'SSPDS',
-        endereco: {
-          cep: cadastro.endereco.cep,
-          tipoLogradouro: cadastro.endereco.idTipoLogradouro?.toString() || '816',
-          logradouro: cadastro.endereco.logradouro,
-          numero: cadastro.endereco.numero,
-          complemento: cadastro.endereco.complemento || 'N/D',
-          bairro: cadastro.endereco.idBairro?.toString() || '1262',
-          municipio: cadastro.endereco.idMunicipio?.toString() || '2',
-          uf: cadastro.endereco.idUf?.toString() || '5',
-          descricaoUf: cadastro.endereco.ufSigla || cadastro.endereco.uf,
-        },
-        contatoResponsavelFinanceiro: contatosRespFin,
-        fl_AlteraSituacao: 1,
-      },
+      responsavelFinanceiro: responsavelFinanceiro,
       dependente: [
         ...(cadastro.dependentes || []).map((dep) => ({
           tipo: dep.tipo,
