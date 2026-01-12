@@ -5,6 +5,10 @@ import { Loader2 } from 'lucide-react';
 export function GeralConfigCard() {
   const { config, updateConfig, loading: hookLoading } = useConfigCadastro();
   const [updating, setUpdating] = useState(false);
+  const [editingSituacoes, setEditingSituacoes] = useState(false);
+  const [editingPlanos, setEditingPlanos] = useState(false);
+  const [tempSituacoes, setTempSituacoes] = useState('');
+  const [tempPlanos, setTempPlanos] = useState('');
 
   const handleToggleLemmit = async () => {
     if (!config) return;
@@ -19,6 +23,60 @@ export function GeralConfigCard() {
     } catch (error) {
       console.error('Error updating config:', error);
       alert('Erro ao atualizar configuração');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleEditSituacoes = () => {
+    if (config) {
+      setTempSituacoes(config.situacoes_que_barram.join(', '));
+      setEditingSituacoes(true);
+    }
+  };
+
+  const handleSaveSituacoes = async () => {
+    if (!config) return;
+
+    const valores = tempSituacoes
+      .split(',')
+      .map(v => parseInt(v.trim()))
+      .filter(v => !isNaN(v));
+
+    setUpdating(true);
+    try {
+      await updateConfig({ situacoes_que_barram: valores });
+      setEditingSituacoes(false);
+    } catch (error) {
+      console.error('Error updating situacoes:', error);
+      alert('Erro ao atualizar situações');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleEditPlanos = () => {
+    if (config) {
+      setTempPlanos(config.planos_validos.join(', '));
+      setEditingPlanos(true);
+    }
+  };
+
+  const handleSavePlanos = async () => {
+    if (!config) return;
+
+    const valores = tempPlanos
+      .split(',')
+      .map(v => parseInt(v.trim()))
+      .filter(v => !isNaN(v));
+
+    setUpdating(true);
+    try {
+      await updateConfig({ planos_validos: valores });
+      setEditingPlanos(false);
+    } catch (error) {
+      console.error('Error updating planos:', error);
+      alert('Erro ao atualizar planos');
     } finally {
       setUpdating(false);
     }
@@ -70,6 +128,108 @@ export function GeralConfigCard() {
             </p>
           </div>
         )}
+      </div>
+
+      <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-800 mb-1">
+            Situações que Barram Cadastro
+          </h3>
+          <p className="text-xs text-slate-600 mb-3">
+            Códigos de situação que impedem o recadastro de um associado existente no ERP.
+          </p>
+
+          {editingSituacoes ? (
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={tempSituacoes}
+                onChange={(e) => setTempSituacoes(e.target.value)}
+                placeholder="Ex: 1, 4, 6"
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSaveSituacoes}
+                  disabled={updating}
+                  className="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  Salvar
+                </button>
+                <button
+                  onClick={() => setEditingSituacoes(false)}
+                  disabled={updating}
+                  className="px-3 py-1.5 text-sm bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-slate-700">
+                {config?.situacoes_que_barram?.join(', ') || 'Não configurado'}
+              </p>
+              <button
+                onClick={handleEditSituacoes}
+                className="px-3 py-1.5 text-sm bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300"
+              >
+                Editar
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-800 mb-1">
+            Planos Válidos
+          </h3>
+          <p className="text-xs text-slate-600 mb-3">
+            Códigos de planos permitidos para recadastro. Se o associado tiver um plano diferente destes, será bloqueado.
+          </p>
+
+          {editingPlanos ? (
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={tempPlanos}
+                onChange={(e) => setTempPlanos(e.target.value)}
+                placeholder="Ex: 4, 11, 3, 26"
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSavePlanos}
+                  disabled={updating}
+                  className="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  Salvar
+                </button>
+                <button
+                  onClick={() => setEditingPlanos(false)}
+                  disabled={updating}
+                  className="px-3 py-1.5 text-sm bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-slate-700">
+                {config?.planos_validos?.join(', ') || 'Não configurado'}
+              </p>
+              <button
+                onClick={handleEditPlanos}
+                className="px-3 py-1.5 text-sm bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300"
+              >
+                Editar
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

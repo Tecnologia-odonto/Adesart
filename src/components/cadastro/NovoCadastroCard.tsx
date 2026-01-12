@@ -103,7 +103,13 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
 
       const erpCheck = await checkERPAssociado(cpfLimpo);
 
-      if (erpCheck.exists) {
+      if (erpCheck.exists && erpCheck.shouldBlock) {
+        setError(erpCheck.blockReason || 'Cliente já cadastrado no sistema');
+        setLoading(false);
+        return;
+      }
+
+      if (erpCheck.exists && !erpCheck.shouldBlock) {
         setClientExists({
           cpf: formatCPF(cpfLimpo),
           nome: erpCheck.summary.nomeFantasiaDaEmpresa || erpCheck.summary.empresa || 'Cliente já cadastrado',

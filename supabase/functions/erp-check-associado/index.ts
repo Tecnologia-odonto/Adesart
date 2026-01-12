@@ -190,7 +190,12 @@ Deno.serve(async (req: Request) => {
       empresa: null as string | null,
       codigo: null as string | number | null,
       nomeFantasiaDaEmpresa: null as string | null,
+      codigoPlano: null as number | null,
+      codigoSituacao: null as number | null,
     };
+
+    let shouldBlock = false;
+    let blockReason = '';
 
     if (exists && responseData.dados && responseData.dados.length > 0) {
       const firstRecord = responseData.dados[0];
@@ -204,11 +209,34 @@ Deno.serve(async (req: Request) => {
                       null;
 
       summary.nomeFantasiaDaEmpresa = firstRecord.nomeFantasiaDaEmpresa || null;
+      summary.codigoPlano = firstRecord.codigoPlano as number || null;
+      summary.codigoSituacao = firstRecord.codigoSituacao as number || null;
+
+      const { data: config } = await supabase
+        .from('cadastro_config')
+        .select('situacoes_que_barram, planos_validos')
+        .eq('id', 1)
+        .maybeSingle();
+
+      if (config && summary.codigoSituacao !== null) {
+        const situacoesQueBarram = config.situacoes_que_barram || [1, 4, 6];
+        const planosValidos = config.planos_validos || [4, 11, 3, 26];
+
+        if (situacoesQueBarram.includes(summary.codigoSituacao)) {
+          shouldBlock = true;
+          blockReason = `Associado já cadastrado com situação ${summary.codigoSituacao}`;
+        } else if (summary.codigoPlano !== null && !planosValidos.includes(summary.codigoPlano)) {
+          shouldBlock = true;
+          blockReason = `Associado possui plano ${summary.codigoPlano} que não permite recadastro`;
+        }
+      }
     }
 
     success = true;
     responseBody = {
       exists,
+      shouldBlock,
+      blockReason,
       totalRegistros: responseData.totalRegistros,
       dados: responseData.dados,
       summary,

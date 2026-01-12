@@ -24,6 +24,8 @@ export interface ParentescoMap {
 export interface CadastroConfig {
   id: number;
   ativar_lemmit: boolean;
+  situacoes_que_barram: number[];
+  planos_validos: number[];
   created_at: string;
   updated_at: string;
 }

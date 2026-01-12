@@ -73,6 +73,7 @@ export interface CadastroFormData {
   nomeMae?: string;
   dependentes?: Dependente[];
   numeroMatricula?: string;
+  codigoContrato?: string;
 }
 
 export function mapLemitToCadastro(lemitData: LemitResponse, cpf: string): Partial<CadastroFormData> {
@@ -174,7 +175,7 @@ export function buildERPPayload(cadastro: CadastroFormData, empresaId: number, v
   });
 
   const responsavelFinanceiro: Record<string, any> = {
-    codigoContrato: empresaId,
+    codigoContrato: cadastro.codigoContrato || empresaId,
     nome: cadastro.nome,
     dataNascimento: formatDate(cadastro.dataNascimento),
     cpf: formatCPF(cadastro.cpf),
@@ -199,7 +200,7 @@ export function buildERPPayload(cadastro: CadastroFormData, empresaId: number, v
   };
 
   if (cadastro.numeroMatricula) {
-    responsavelFinanceiro.numeroMatricula = cadastro.numeroMatricula;
+    responsavelFinanceiro.Matricula = cadastro.numeroMatricula;
   }
 
   responsavelFinanceiro.dataApresentacao = new Date().toISOString();
