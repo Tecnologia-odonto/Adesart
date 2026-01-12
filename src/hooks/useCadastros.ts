@@ -259,6 +259,15 @@ export function useCadastros() {
         throw new Error(result.error || 'Erro ao enviar para o ERP');
       }
 
+      if (result.dados === null && result.mensagem) {
+        await updateCadastro(id, {
+          status: 'erro_envio',
+          payload_erp: payload,
+          erp_response: result,
+        });
+        throw new Error(result.mensagem);
+      }
+
       await updateCadastro(id, {
         status: 'enviado',
         payload_erp: payload,

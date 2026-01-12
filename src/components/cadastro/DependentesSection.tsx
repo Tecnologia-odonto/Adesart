@@ -40,12 +40,20 @@ export function DependentesSection({
   console.log('[DependentesSection] Planos recebidos:', planos);
   console.log('[DependentesSection] Número de planos:', planos?.length || 0);
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    tipo: number;
+    nome: string;
+    dataNascimento: string;
+    cpf: string;
+    sexo: number | null;
+    plano: number;
+    nomeMae: string;
+  }>({
     tipo: 0,
     nome: '',
     dataNascimento: '',
     cpf: '',
-    sexo: 0,
+    sexo: null,
     plano: 0,
     nomeMae: '',
   });
@@ -56,15 +64,40 @@ export function DependentesSection({
       nome: '',
       dataNascimento: '',
       cpf: '',
-      sexo: 0,
+      sexo: null,
       plano: 0,
       nomeMae: '',
     });
   };
 
   const handleAdd = () => {
-    if (!formData.nome || !formData.dataNascimento || !formData.cpf || !formData.sexo || !formData.tipo || !formData.plano) {
-      alert('Preencha todos os campos obrigatórios');
+    if (!formData.nome) {
+      alert('Campo obrigatório: Nome');
+      return;
+    }
+
+    if (!formData.dataNascimento) {
+      alert('Campo obrigatório: Data de Nascimento');
+      return;
+    }
+
+    if (!formData.cpf) {
+      alert('Campo obrigatório: CPF');
+      return;
+    }
+
+    if (formData.sexo === null || formData.sexo === undefined) {
+      alert('Campo obrigatório: Sexo');
+      return;
+    }
+
+    if (!formData.tipo) {
+      alert('Campo obrigatório: Grau de Parentesco');
+      return;
+    }
+
+    if (!formData.plano) {
+      alert('Campo obrigatório: Plano');
       return;
     }
 
@@ -83,8 +116,8 @@ export function DependentesSection({
       nome: formData.nome,
       dataNascimento: dataNascimentoFormatada,
       cpf: formData.cpf.replace(/\D/g, ''),
-      sexo: formData.sexo,
-      sexoDescricao: formData.sexo === 1 ? 'Masculino' : 'Feminino',
+      sexo: formData.sexo ?? 0,
+      sexoDescricao: formData.sexo === 1 ? 'Masculino' : (formData.sexo === 0 ? 'Feminino' : ''),
       plano: formData.plano,
       planoValor: planoSelecionado.ValorTitular?.toString() || '0,00',
       nomeMae: formData.nomeMae,
@@ -207,13 +240,13 @@ export function DependentesSection({
 
             <Select
               label="Sexo"
-              value={formData.sexo.toString()}
-              onChange={(e) => setFormData({ ...formData, sexo: parseInt(e.target.value) })}
+              value={formData.sexo === null ? '' : formData.sexo.toString()}
+              onChange={(e) => setFormData({ ...formData, sexo: e.target.value === '' ? null : parseInt(e.target.value) })}
               required
             >
-              <option value="0">Selecione</option>
+              <option value="">Selecione</option>
               <option value="1">Masculino</option>
-              <option value="2">Feminino</option>
+              <option value="0">Feminino</option>
             </Select>
 
             <Select

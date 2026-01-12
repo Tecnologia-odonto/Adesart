@@ -145,19 +145,20 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
   useEffect(() => {
     if (dependentes.length > 0 && dependentes[0].tipo === 1) {
-      const titularAtualizado = [...dependentes];
       const sexoDescricao = (formData.sexo === 1) ? 'Masculino' : (formData.sexo === 0) ? 'Feminino' : '';
 
-      titularAtualizado[0] = {
-        ...titularAtualizado[0],
-        nome: formData.nome || '',
-        dataNascimento: formData.dataNascimento || '',
-        sexo: formData.sexo || 0,
-        sexoDescricao: sexoDescricao,
-        nomeMae: formData.nomeMae || '',
-      };
-
-      setDependentes(titularAtualizado);
+      setDependentes(prev => {
+        const titularAtualizado = [...prev];
+        titularAtualizado[0] = {
+          ...titularAtualizado[0],
+          nome: formData.nome || '',
+          dataNascimento: formData.dataNascimento || '',
+          sexo: formData.sexo || 0,
+          sexoDescricao: sexoDescricao,
+          nomeMae: formData.nomeMae || '',
+        };
+        return titularAtualizado;
+      });
     }
   }, [formData.nome, formData.dataNascimento, formData.sexo, formData.nomeMae]);
 
@@ -194,8 +195,18 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     setError('');
     setSuccess('');
 
-    if (!formData.nome || !formData.dataNascimento || !formData.sexo) {
-      setError('Preencha todos os campos obrigatórios');
+    if (!formData.nome) {
+      setError('Campo obrigatório: Nome Completo');
+      return;
+    }
+
+    if (!formData.dataNascimento) {
+      setError('Campo obrigatório: Data de Nascimento');
+      return;
+    }
+
+    if (formData.sexo === null || formData.sexo === undefined || formData.sexo === '') {
+      setError('Campo obrigatório: Sexo');
       return;
     }
 
@@ -225,13 +236,38 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       });
     }
 
-    if (!formData.endereco.cep || !formData.endereco.logradouro) {
-      setError('Preencha os dados de endereço');
+    if (!formData.endereco.cep) {
+      setError('Campo obrigatório: CEP');
+      return;
+    }
+
+    if (!formData.endereco.logradouro) {
+      setError('Campo obrigatório: Logradouro');
+      return;
+    }
+
+    if (!formData.endereco.numero) {
+      setError('Campo obrigatório: Número do endereço');
+      return;
+    }
+
+    if (!formData.endereco.bairro) {
+      setError('Campo obrigatório: Bairro');
+      return;
+    }
+
+    if (!formData.endereco.cidade) {
+      setError('Campo obrigatório: Cidade');
+      return;
+    }
+
+    if (!formData.endereco.uf) {
+      setError('Campo obrigatório: UF');
       return;
     }
 
     if (cadastro.empresa_exige_matricula === 1 && !formData.numeroMatricula) {
-      setError('Matrícula é obrigatória para esta empresa');
+      setError('Campo obrigatório: Matrícula (obrigatória para esta empresa)');
       return;
     }
 
@@ -256,7 +292,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         dependentes: dependentes,
       };
 
-      const payload = buildERPPayload(cadastroCompleto, cadastro.empresa_id, cadastro.vendedor_codigo);
+      const payload = buildERPPayload(cadastroCompleto, cadastro.empresa_id, cadastro.vendedor_codigo, funcionarioCadastroId);
 
       const result = await enviarParaERP(cadastro.id, payload);
 
