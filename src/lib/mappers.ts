@@ -149,12 +149,23 @@ export function mapLemitToCadastro(lemitData: LemitResponse, cpf: string): Parti
   };
 }
 
+function gerarCodigoContrato(cpf: string, dataNascimento: string): string {
+  const cpfSemMascara = cpf.replace(/\D/g, '');
+  const ultimos4DigitosCPF = cpfSemMascara.slice(-4);
+
+  const dia = dataNascimento.split('-')[2] || '01';
+
+  return `${ultimos4DigitosCPF}${dia}`;
+}
+
 export function buildERPPayload(cadastro: CadastroFormData, empresaId: number, vendedorCodigo?: string | null, funcionarioCadastroId?: number | null): Record<string, unknown> {
   const sexoDescricao = cadastro.sexoCodigo === 1 ? 'Masculino' : 'Feminino';
 
   const codigoParceiro = vendedorCodigo
     ? parseInt(vendedorCodigo)
     : (funcionarioCadastroId || 0);
+
+  const codigoContrato = gerarCodigoContrato(cadastro.cpf, cadastro.dataNascimento);
 
   const contatosRespFin = cadastro.contatos.map(contato => {
     let tipo: number;
@@ -177,6 +188,7 @@ export function buildERPPayload(cadastro: CadastroFormData, empresaId: number, v
   });
 
   const responsavelFinanceiro: Record<string, any> = {
+    codigoContrato: codigoContrato,
     nome: cadastro.nome,
     dataNascimento: formatDate(cadastro.dataNascimento),
     cpf: formatCPF(cadastro.cpf),
