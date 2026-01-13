@@ -32,6 +32,7 @@ export interface Cadastro {
   contatos_responsavel_financeiro: unknown;
   vendedor_id: string | null;
   vendedor_codigo: string | null;
+  vendedor_nome: string | null;
   created_at: string;
   updated_at: string;
 }

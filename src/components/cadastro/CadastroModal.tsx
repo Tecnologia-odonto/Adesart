@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Save, Send, Trash2, Loader2, Plus, Trash } from 'lucide-react';
 import { Input } from '../Input';
+import { DateInput } from '../DateInput';
 import { Button } from '../Button';
 import { Select } from '../Select';
 import { Cadastro, useCadastros } from '../../hooks/useCadastros';
@@ -518,9 +519,8 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
               />
             </div>
 
-            <Input
+            <DateInput
               label="Data de Nascimento"
-              type="date"
               value={formData.dataNascimento}
               onChange={(e) => setFormData({ ...formData, dataNascimento: e.target.value })}
               required

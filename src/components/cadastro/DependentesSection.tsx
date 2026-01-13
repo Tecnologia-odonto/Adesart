@@ -3,6 +3,7 @@ import { Plus, Trash2, Edit2, X, Check } from 'lucide-react';
 import { Input } from '../Input';
 import { Select } from '../Select';
 import { Button } from '../Button';
+import { DateInput } from '../DateInput';
 import { formatCPF, formatDate } from '../../lib/cpf';
 import { useConfigCadastro } from '../../contexts/ConfigCadastroContext';
 
@@ -46,7 +47,7 @@ export function DependentesSection({
     dataNascimento: string;
     cpf: string;
     sexo: number | null;
-    plano: number;
+    plano: number | null;
     nomeMae: string;
   }>({
     tipo: 0,
@@ -54,7 +55,7 @@ export function DependentesSection({
     dataNascimento: '',
     cpf: '',
     sexo: null,
-    plano: 0,
+    plano: null,
     nomeMae: '',
   });
 
@@ -65,7 +66,7 @@ export function DependentesSection({
       dataNascimento: '',
       cpf: '',
       sexo: null,
-      plano: 0,
+      plano: null,
       nomeMae: '',
     });
   };
@@ -96,7 +97,7 @@ export function DependentesSection({
       return;
     }
 
-    if (!formData.plano) {
+    if (!formData.plano || formData.plano === 0) {
       alert('Campo obrigatório: Plano');
       return;
     }
@@ -159,7 +160,7 @@ export function DependentesSection({
       dataNascimento: dep.dataNascimento ?? '',
       cpf: dep.cpf ?? '',
       sexo: dep.sexo ?? 0,
-      plano: dep.plano ?? 0,
+      plano: dep.plano ?? null,
       nomeMae: dep.nomeMae ?? '',
     });
     setEditingIndex(index);
@@ -235,9 +236,8 @@ export function DependentesSection({
               />
             </div>
 
-            <Input
+            <DateInput
               label="Data de Nascimento"
-              type="date"
               value={formData.dataNascimento}
               onChange={(e) => setFormData({ ...formData, dataNascimento: e.target.value })}
               required
@@ -264,11 +264,11 @@ export function DependentesSection({
 
             <Select
               label="Plano"
-              value={formData.plano.toString()}
-              onChange={(e) => setFormData({ ...formData, plano: parseInt(e.target.value) })}
+              value={formData.plano !== null ? formData.plano.toString() : ''}
+              onChange={(e) => setFormData({ ...formData, plano: e.target.value ? parseInt(e.target.value) : null })}
               required
             >
-              <option value="0">Selecione</option>
+              <option value="">Selecione</option>
               {planos.map((p) => (
                 <option key={p.Plano} value={p.Plano}>
                   {p.nomeExibicao || `Plano ${p.Plano}`} - Titular: R$ {p.ValorTitular || '0,00'} / Dep: R$ {p.ValorDependente || '0,00'}

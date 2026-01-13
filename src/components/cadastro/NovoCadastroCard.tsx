@@ -67,7 +67,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         try {
           const { data, error } = await supabase
             .from('profiles')
-            .select('id, name, external_id')
+            .select('id, name, external_id, email')
             .eq('role', 'VENDEDOR')
             .eq('is_active', true)
             .not('external_id', 'is', null)
@@ -75,6 +75,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
 
           if (error) throw error;
 
+          console.log('Vendedores carregados:', data);
           setVendedores(data || []);
         } catch (err) {
           console.error('Error fetching vendedores:', err);
@@ -360,6 +361,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         ...(needsVendedor && vendedorSelecionado && {
           vendedor_id: vendedorSelecionado.id,
           vendedor_codigo: vendedorSelecionado.external_id,
+          vendedor_nome: vendedorSelecionado.name,
         }),
       });
 
@@ -452,6 +454,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         ...(needsVendedor && vendedorSelecionado && {
           vendedor_id: vendedorSelecionado.id,
           vendedor_codigo: vendedorSelecionado.external_id,
+          vendedor_nome: vendedorSelecionado.name,
         }),
       });
 
@@ -494,7 +497,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
                 <option value="">Selecione um vendedor</option>
                 {vendedores.map((vendedor) => (
                   <option key={vendedor.id} value={vendedor.id}>
-                    {vendedor.name} - Código: {vendedor.external_id}
+                    {vendedor.name || vendedor.email || 'Vendedor sem nome'} - Código: {vendedor.external_id}
                   </option>
                 ))}
               </Select>

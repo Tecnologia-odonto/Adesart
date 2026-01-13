@@ -4,6 +4,9 @@ import { Cadastro } from '../../hooks/useCadastros';
 import { formatCPF, formatDate } from '../../lib/cpf';
 import { Input } from '../Input';
 import { Select } from '../Select';
+import { useAuth } from '../../contexts/AuthContext';
+import { CadastrosSupervisorView } from './CadastrosSupervisorView';
+import { CadastrosGerenteView } from './CadastrosGerenteView';
 
 interface CadastrosCompletosListProps {
   cadastros: Cadastro[];
@@ -17,12 +20,21 @@ interface EmpresaGroup {
 }
 
 export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProps) {
+  const { profile } = useAuth();
   const [expandedEmpresas, setExpandedEmpresas] = useState<Set<string>>(new Set());
   const [viewDetails, setViewDetails] = useState<Cadastro | null>(null);
   const [filtroEmpresa, setFiltroEmpresa] = useState<string>('');
   const [filtroBusca, setFiltroBusca] = useState<string>('');
 
   const completos = cadastros.filter((c) => c.status === 'enviado');
+
+  if (profile?.role === 'SUPERVISOR') {
+    return <CadastrosSupervisorView cadastros={cadastros} statusFilter="enviado" />;
+  }
+
+  if (profile?.role === 'GERENTE') {
+    return <CadastrosGerenteView cadastros={cadastros} statusFilter="enviado" />;
+  }
 
   const empresasUnicas = useMemo(() => {
     const empresasSet = new Map<string, { id: number | null; nome: string }>();

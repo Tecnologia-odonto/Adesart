@@ -4,37 +4,44 @@ import { supabase } from '../lib/supabase';
 import { Layout } from '../components/Layout';
 import { Card } from '../components/Card';
 import { formatCPF } from '../lib/cpf';
-import { Activity, CheckCircle2, XCircle, TrendingUp, Calendar } from 'lucide-react';
+import { Activity, CheckCircle2, XCircle, TrendingUp, Calendar, Clock } from 'lucide-react';
 
-interface LemmitConsulta {
+interface ApiLog {
   id: string;
-  cpf: string;
-  success: boolean;
+  user_id: string | null;
+  user_email: string | null;
+  endpoint: string;
+  method: string;
+  request_body: any;
+  response_body: any;
+  status_code: number | null;
+  success: boolean | null;
   error_message: string | null;
+  duration_ms: number | null;
   created_at: string;
-  user_id: string;
 }
 
 interface UserProfile {
   lemmit_limite_consultas: number | null;
   lemmit_consultas_mes_atual: number;
   email?: string;
-  full_name?: string;
+  name?: string;
 }
 
-interface ConsultaComUsuario extends LemmitConsulta {
+interface LogComUsuario extends ApiLog {
   profiles?: UserProfile;
 }
 
 export function LemmitUsage() {
-  const { user, isAdmin } = useAuth();
-  const [consultas, setConsultas] = useState<ConsultaComUsuario[]>([]);
+  const { user, isAdmin, profile } = useAuth();
+  const [logs, setLogs] = useState<LogComUsuario[]>([]);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [stats, setStats] = useState({
     total: 0,
     success: 0,
     failed: 0,
     thisMonth: 0,
+    avgDuration: 0,
   });
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
@@ -52,28 +59,29 @@ export function LemmitUsage() {
     try {
       setLoading(true);
 
-      const { data: profile } = await supabase
+      const { data: profileData } = await supabase
         .from('profiles')
         .select('lemmit_limite_consultas, lemmit_consultas_mes_atual')
         .eq('id', user.id)
         .maybeSingle();
 
-      setUserProfile(profile);
+      setUserProfile(profileData);
 
       const startOfMonth = new Date(selectedMonth + '-01');
       const endOfMonth = new Date(startOfMonth.getFullYear(), startOfMonth.getMonth() + 1, 0, 23, 59, 59);
 
       let query = supabase
-        .from('lemmit_consultas')
+        .from('api_logs')
         .select(`
           *,
           profiles:user_id (
             email,
-            full_name,
+            name,
             lemmit_limite_consultas,
             lemmit_consultas_mes_atual
           )
         `)
+        .eq('endpoint', '/lemit-consulta-pessoa')
         .gte('created_at', startOfMonth.toISOString())
         .lte('created_at', endOfMonth.toISOString())
         .order('created_at', { ascending: false });
@@ -82,15 +90,18 @@ export function LemmitUsage() {
         query = query.eq('user_id', user.id);
       }
 
-      const { data: consultasData, error } = await query;
+      const { data: logsData, error } = await query;
 
       if (error) throw error;
 
-      setConsultas(consultasData || []);
+      setLogs(logsData || []);
 
-      const total = consultasData?.length || 0;
-      const success = consultasData?.filter((c) => c.success).length || 0;
+      const total = logsData?.length || 0;
+      const success = logsData?.filter((l) => l.success).length || 0;
       const failed = total - success;
+
+      const durations = logsData?.filter((l) => l.duration_ms !== null).map((l) => l.duration_ms!) || [];
+      const avgDuration = durations.length > 0 ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : 0;
 
       const now = new Date();
       const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -100,7 +111,8 @@ export function LemmitUsage() {
         total,
         success,
         failed,
-        thisMonth: isCurrentMonth ? (profile?.lemmit_consultas_mes_atual || 0) : total,
+        avgDuration,
+        thisMonth: isCurrentMonth ? (profileData?.lemmit_consultas_mes_atual || 0) : total,
       });
     } catch (error) {
       console.error('Error loading Lemmit data:', error);
@@ -122,7 +134,7 @@ export function LemmitUsage() {
           <p className="text-gray-600 mt-1">Acompanhe o uso da API Lemmit</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
           <Card className="p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -155,6 +167,18 @@ export function LemmitUsage() {
               </div>
               <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
                 <XCircle className="w-6 h-6 text-red-600" />
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Tempo Médio</p>
+                <p className="text-2xl font-semibold text-gray-900 mt-1">{stats.avgDuration}ms</p>
+              </div>
+              <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                <Clock className="w-6 h-6 text-orange-600" />
               </div>
             </div>
           </Card>
@@ -216,7 +240,7 @@ export function LemmitUsage() {
           <div className="overflow-x-auto">
             {loading ? (
               <div className="p-8 text-center text-gray-500">Carregando...</div>
-            ) : consultas.length === 0 ? (
+            ) : logs.length === 0 ? (
               <div className="p-8 text-center text-gray-500">
                 Nenhuma consulta encontrada neste período
               </div>
@@ -239,42 +263,51 @@ export function LemmitUsage() {
                       Status
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Duração
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Mensagem
                     </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {consultas.map((consulta) => (
-                    <tr key={consulta.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {new Date(consulta.created_at).toLocaleString('pt-BR')}
-                      </td>
-                      {isAdmin && (
+                  {logs.map((log) => {
+                    const cpf = log.request_body?.cpf || '-';
+                    return (
+                      <tr key={log.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {(consulta.profiles as any)?.full_name || (consulta.profiles as any)?.email || '-'}
+                          {new Date(log.created_at).toLocaleString('pt-BR')}
                         </td>
-                      )}
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {formatCPF(consulta.cpf)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {consulta.success ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            <CheckCircle2 className="w-3 h-3" />
-                            Sucesso
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                            <XCircle className="w-3 h-3" />
-                            Erro
-                          </span>
+                        {isAdmin && (
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {(log.profiles as any)?.name || log.user_email || '-'}
+                          </td>
                         )}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {consulta.error_message || '-'}
-                      </td>
-                    </tr>
-                  ))}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {cpf !== '-' ? formatCPF(cpf) : '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {log.success ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Sucesso
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                              <XCircle className="w-3 h-3" />
+                              Erro
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {log.duration_ms ? `${log.duration_ms}ms` : '-'}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-500">
+                          {log.error_message || (log.status_code ? `Status ${log.status_code}` : '-')}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}

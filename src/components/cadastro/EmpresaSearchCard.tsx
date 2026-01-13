@@ -22,7 +22,7 @@ interface EmpresaSearchCardProps {
 
 export function EmpresaSearchCard({ onEmpresaSelected, selectedEmpresa }: EmpresaSearchCardProps) {
   const [searchValue, setSearchValue] = useState('');
-  const [searchType, setSearchType] = useState<'cnpj' | 'nome' | 'id'>('cnpj');
+  const [searchType, setSearchType] = useState<'cnpj' | 'nome' | 'id'>('id');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [empresas, setEmpresas] = useState<Empresa[]>([]);

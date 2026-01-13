@@ -5,6 +5,9 @@ import { formatCPF, formatDate } from '../../lib/cpf';
 import { AlreadyExistsModal } from './AlreadyExistsModal';
 import { Input } from '../Input';
 import { Select } from '../Select';
+import { useAuth } from '../../contexts/AuthContext';
+import { CadastrosSupervisorView } from './CadastrosSupervisorView';
+import { CadastrosGerenteView } from './CadastrosGerenteView';
 
 interface CadastrosIncompletosListProps {
   cadastros: Cadastro[];
@@ -19,12 +22,21 @@ interface EmpresaGroup {
 }
 
 export function CadastrosIncompletosList({ cadastros, onSelect }: CadastrosIncompletosListProps) {
+  const { profile } = useAuth();
   const [viewERPData, setViewERPData] = useState<Cadastro | null>(null);
   const [expandedEmpresas, setExpandedEmpresas] = useState<Set<string>>(new Set());
   const [filtroEmpresa, setFiltroEmpresa] = useState<string>('');
   const [filtroBusca, setFiltroBusca] = useState<string>('');
 
   const incompletos = cadastros.filter((c) => c.status === 'incompleto');
+
+  if (profile?.role === 'SUPERVISOR') {
+    return <CadastrosSupervisorView cadastros={cadastros} onSelect={onSelect} statusFilter="incompleto" />;
+  }
+
+  if (profile?.role === 'GERENTE') {
+    return <CadastrosGerenteView cadastros={cadastros} onSelect={onSelect} statusFilter="incompleto" />;
+  }
 
   const empresasUnicas = useMemo(() => {
     const empresasSet = new Map<string, { id: number | null; nome: string }>();
