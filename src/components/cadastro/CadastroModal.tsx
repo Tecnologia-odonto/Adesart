@@ -331,7 +331,14 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         dependentes: dependentes,
       };
 
-      const payload = buildERPPayload(cadastroCompleto, cadastro.empresa_id, cadastro.vendedor_codigo, funcionarioCadastroId);
+      const payload = buildERPPayload(
+        cadastroCompleto,
+        cadastro.empresa_id,
+        cadastro.vendedor_codigo,
+        funcionarioCadastroId,
+        profile?.role,
+        profile?.external_id
+      );
 
       const result = await enviarParaERP(cadastro.id, payload);
 

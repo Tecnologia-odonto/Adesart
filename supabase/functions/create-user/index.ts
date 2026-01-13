@@ -10,7 +10,7 @@ interface CreateUserRequest {
   name: string;
   email: string;
   password: string;
-  role: 'ADMINISTRADOR' | 'GERENTE' | 'SUPERVISOR' | 'VENDEDOR' | 'ADESIONISTA';
+  role: 'ADMINISTRADOR' | 'GERENTE' | 'CADASTRO' | 'SUPERVISOR' | 'VENDEDOR' | 'ADESIONISTA';
   external_id?: string;
   team_id?: string;
 }
@@ -57,12 +57,12 @@ Deno.serve(async (req: Request) => {
       throw new Error('Missing required fields: name, email, password, role');
     }
 
-    const validRoles = ['ADMINISTRADOR', 'GERENTE', 'SUPERVISOR', 'VENDEDOR', 'ADESIONISTA'];
+    const validRoles = ['ADMINISTRADOR', 'GERENTE', 'CADASTRO', 'SUPERVISOR', 'VENDEDOR', 'ADESIONISTA'];
     if (!validRoles.includes(role)) {
       throw new Error('Invalid role');
     }
 
-    if (['VENDEDOR', 'ADESIONISTA', 'SUPERVISOR'].includes(role)) {
+    if (['CADASTRO', 'VENDEDOR', 'ADESIONISTA', 'SUPERVISOR'].includes(role)) {
       if (!external_id || !team_id) {
         throw new Error(`${role} requires external_id and team_id`);
       }

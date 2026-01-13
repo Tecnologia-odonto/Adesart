@@ -149,12 +149,28 @@ export function mapLemitToCadastro(lemitData: LemitResponse, cpf: string): Parti
   };
 }
 
-export function buildERPPayload(cadastro: CadastroFormData, empresaId: number, vendedorCodigo?: string | null, funcionarioCadastroId?: number | null): Record<string, unknown> {
+export function buildERPPayload(
+  cadastro: CadastroFormData,
+  empresaId: number,
+  vendedorCodigo?: string | null,
+  funcionarioCadastroId?: number | null,
+  userRole?: string | null,
+  userExternalId?: string | null
+): Record<string, unknown> {
   const sexoDescricao = cadastro.sexoCodigo === 1 ? 'Masculino' : 'Feminino';
 
-  const codigoParceiro = vendedorCodigo
-    ? parseInt(vendedorCodigo)
-    : (funcionarioCadastroId || 0);
+  const isCadastroOrAdesionista = userRole === 'CADASTRO' || userRole === 'ADESIONISTA';
+
+  let codigoParceiro: number;
+  let funcionarioCadastroCode: number;
+
+  if (isCadastroOrAdesionista) {
+    codigoParceiro = vendedorCodigo ? parseInt(vendedorCodigo) : (funcionarioCadastroId || 0);
+    funcionarioCadastroCode = userExternalId ? parseInt(userExternalId) : (funcionarioCadastroId || 0);
+  } else {
+    codigoParceiro = vendedorCodigo ? parseInt(vendedorCodigo) : (funcionarioCadastroId || 0);
+    funcionarioCadastroCode = codigoParceiro;
+  }
 
   const contatosRespFin = cadastro.contatos.map(contato => {
     let tipo: number;
@@ -227,7 +243,7 @@ export function buildERPPayload(cadastro: CadastroFormData, empresaId: number, v
           planoValor: dep.planoValor,
           nomeMae: dep.nomeMae,
           carenciaAtendimento: dep.carenciaAtendimento,
-          funcionarioCadastro: codigoParceiro,
+          funcionarioCadastro: funcionarioCadastroCode,
         })),
       ],
     },

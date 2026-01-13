@@ -136,39 +136,15 @@ Deno.serve(async (req: Request) => {
     const responseData = await erpResponse.json();
     statusCode = erpResponse.status;
 
-    if (!erpResponse.ok) {
-      errorMessage = responseData.message || "Erro ao enviar cadastro para o ERP";
-      responseBody = {
-        error: errorMessage,
-        details: responseData,
-        status: statusCode,
-      };
+    const hasDadosCodigo = responseData?.dados?.codigo || responseData?.data?.dados?.codigo;
 
-      await saveLog(supabase, {
-        user_id: userId,
-        user_email: userEmail,
-        endpoint: "erp-novo-usuario2",
-        method: "POST",
-        request_body: requestBody,
-        response_body: responseBody,
-        status_code: statusCode,
-        success: false,
-        error_message: errorMessage,
-        duration_ms: Date.now() - startTime,
-      });
+    if (!hasDadosCodigo) {
+      if (!erpResponse.ok) {
+        errorMessage = responseData.message || responseData?.mensagem || "Erro ao enviar cadastro para o ERP";
+      } else {
+        errorMessage = responseData?.data?.mensagem || responseData?.mensagem || "Erro no cadastro: dados inválidos retornados pelo ERP";
+      }
 
-      return new Response(
-        JSON.stringify(responseBody),
-        {
-          status: statusCode,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    if (responseData?.data?.dados === null || !responseData?.data?.dados?.dependentes) {
-      statusCode = 400;
-      errorMessage = responseData?.data?.mensagem || "Erro no cadastro: dados inválidos retornados pelo ERP";
       responseBody = {
         error: errorMessage,
         details: responseData,

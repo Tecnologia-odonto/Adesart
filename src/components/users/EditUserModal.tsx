@@ -66,7 +66,7 @@ export function EditUserModal({ user, onClose, onSuccess, canEditRole }: EditUse
         updateData.role = formData.role;
       }
 
-      if (['SUPERVISOR', 'VENDEDOR', 'ADESIONISTA'].includes(formData.role)) {
+      if (['CADASTRO', 'SUPERVISOR', 'VENDEDOR', 'ADESIONISTA'].includes(formData.role)) {
         updateData.external_id = formData.external_id;
         updateData.team_id = formData.team_id || null;
       } else {
@@ -91,7 +91,7 @@ export function EditUserModal({ user, onClose, onSuccess, canEditRole }: EditUse
     }
   };
 
-  const requiresTeamAndExternal = ['SUPERVISOR', 'VENDEDOR', 'ADESIONISTA'].includes(formData.role);
+  const requiresTeamAndExternal = ['CADASTRO', 'SUPERVISOR', 'VENDEDOR', 'ADESIONISTA'].includes(formData.role);
 
   const roleLabels: Record<Profile['role'], string> = {
     ADMINISTRADOR: 'Administrador',

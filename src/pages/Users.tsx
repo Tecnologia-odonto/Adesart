@@ -101,7 +101,7 @@ export function Users() {
         role: formData.role,
       };
 
-      if (['SUPERVISOR', 'VENDEDOR', 'ADESIONISTA'].includes(formData.role)) {
+      if (['CADASTRO', 'SUPERVISOR', 'VENDEDOR', 'ADESIONISTA'].includes(formData.role)) {
         payload.external_id = formData.external_id;
         payload.team_id = formData.team_id;
       }
@@ -157,7 +157,7 @@ export function Users() {
     ADESIONISTA: 'bg-amber-100 text-amber-700 border-amber-200',
   };
 
-  const requiresTeamAndExternal = ['SUPERVISOR', 'VENDEDOR', 'ADESIONISTA'].includes(formData.role);
+  const requiresTeamAndExternal = ['CADASTRO', 'SUPERVISOR', 'VENDEDOR', 'ADESIONISTA'].includes(formData.role);
 
   return (
     <Layout>
@@ -340,6 +340,7 @@ export function Users() {
               >
                 <option value="VENDEDOR">Vendedor</option>
                 <option value="ADESIONISTA">Adesionista</option>
+                <option value="CADASTRO">Cadastro</option>
                 <option value="SUPERVISOR">Supervisor</option>
                 {profile?.role === 'ADMINISTRADOR' && (
                   <>
