@@ -46,16 +46,16 @@ export function DependentesSection({
     nome: string;
     dataNascimento: string;
     cpf: string;
-    sexo: number | null;
-    plano: number | null;
+    sexo: string;
+    plano: string;
     nomeMae: string;
   }>({
     tipo: 0,
     nome: '',
     dataNascimento: '',
     cpf: '',
-    sexo: null,
-    plano: null,
+    sexo: '',
+    plano: '',
     nomeMae: '',
   });
 
@@ -65,8 +65,8 @@ export function DependentesSection({
       nome: '',
       dataNascimento: '',
       cpf: '',
-      sexo: null,
-      plano: null,
+      sexo: '',
+      plano: '',
       nomeMae: '',
     });
   };
@@ -87,7 +87,7 @@ export function DependentesSection({
       return;
     }
 
-    if (formData.sexo === null || formData.sexo === undefined) {
+    if (!formData.sexo) {
       alert('Campo obrigatório: Sexo');
       return;
     }
@@ -97,7 +97,7 @@ export function DependentesSection({
       return;
     }
 
-    if (!formData.plano || formData.plano === 0) {
+    if (!formData.plano) {
       alert('Campo obrigatório: Plano');
       return;
     }
@@ -115,24 +115,26 @@ export function DependentesSection({
       }
     }
 
-    const planoSelecionado = planos.find((p) => p.Plano === formData.plano);
+    const planoId = parseInt(formData.plano);
+    const planoSelecionado = planos.find((p) => p.Plano === planoId);
     if (!planoSelecionado) {
       console.error('[DependentesSection] Plano não encontrado. Planos disponíveis:', planos);
-      console.error('[DependentesSection] Plano buscado:', formData.plano);
+      console.error('[DependentesSection] Plano buscado:', planoId);
       alert('Plano não encontrado');
       return;
     }
 
     const dataNascimentoFormatada = formatDate(formData.dataNascimento);
+    const sexoNum = parseInt(formData.sexo);
 
     const novoDependente: Dependente = {
       tipo: formData.tipo,
       nome: formData.nome,
       dataNascimento: dataNascimentoFormatada,
       cpf: formData.cpf.replace(/\D/g, ''),
-      sexo: formData.sexo ?? 0,
-      sexoDescricao: formData.sexo === 1 ? 'Masculino' : (formData.sexo === 0 ? 'Feminino' : ''),
-      plano: formData.plano,
+      sexo: sexoNum,
+      sexoDescricao: sexoNum === 1 ? 'Masculino' : (sexoNum === 0 ? 'Feminino' : ''),
+      plano: planoId,
       planoValor: planoSelecionado.ValorTitular?.toString() || '0,00',
       nomeMae: formData.nomeMae,
       carenciaAtendimento: 0,
@@ -159,8 +161,8 @@ export function DependentesSection({
       nome: dep.nome ?? '',
       dataNascimento: dep.dataNascimento ?? '',
       cpf: dep.cpf ?? '',
-      sexo: dep.sexo ?? 0,
-      plano: dep.plano ?? null,
+      sexo: dep.sexo !== undefined ? dep.sexo.toString() : '',
+      plano: (dep.plano && dep.plano !== 0) ? dep.plano.toString() : '',
       nomeMae: dep.nomeMae ?? '',
     });
     setEditingIndex(index);
@@ -253,8 +255,8 @@ export function DependentesSection({
 
             <Select
               label="Sexo"
-              value={formData.sexo === null ? '' : formData.sexo.toString()}
-              onChange={(e) => setFormData({ ...formData, sexo: e.target.value === '' ? null : parseInt(e.target.value) })}
+              value={formData.sexo}
+              onChange={(e) => setFormData({ ...formData, sexo: e.target.value })}
               required
             >
               <option value="">Selecione</option>
@@ -264,8 +266,8 @@ export function DependentesSection({
 
             <Select
               label="Plano"
-              value={formData.plano !== null ? formData.plano.toString() : ''}
-              onChange={(e) => setFormData({ ...formData, plano: e.target.value ? parseInt(e.target.value) : null })}
+              value={formData.plano}
+              onChange={(e) => setFormData({ ...formData, plano: e.target.value })}
               required
             >
               <option value="">Selecione</option>
@@ -303,6 +305,7 @@ export function DependentesSection({
         {dependentes.map((dep, index) => {
           const parentesco = parentescos.find((p) => p.parentesco_id === dep.tipo);
           const plano = planos.find((p) => p.Plano === dep.plano);
+          const temPlanoValido = dep.plano && dep.plano !== 0;
 
           return (
             <div
@@ -319,8 +322,16 @@ export function DependentesSection({
                 <div className="text-sm text-slate-600 space-y-0.5">
                   <p>CPF: {formatCPF(dep.cpf)} • {dep.sexoDescricao}</p>
                   <p>
-                    Data Nascimento: {formatDate(dep.dataNascimento)} • Plano:{' '}
-                    {plano?.nomeExibicao || `Plano ${dep.plano}`} (R$ {dep.planoValor})
+                    Data Nascimento: {formatDate(dep.dataNascimento)}
+                    {temPlanoValido && (
+                      <>
+                        {' • Plano: '}
+                        {plano?.nomeExibicao || `Plano ${dep.plano}`} (R$ {dep.planoValor})
+                      </>
+                    )}
+                    {!temPlanoValido && (
+                      <span className="text-amber-600 font-medium"> • Plano não selecionado</span>
+                    )}
                   </p>
                 </div>
               </div>

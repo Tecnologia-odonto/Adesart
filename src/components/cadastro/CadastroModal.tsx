@@ -139,7 +139,6 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
     if (dependentes.length === 0 && cadastro.cpf && planosEmpresa.length > 0) {
       console.log('[CadastroModal] Criando titular automaticamente (não há dependentes salvos)');
-      const primeiroPlano = planosEmpresa[0];
       const sexoDescricao = (formData.sexo === 1) ? 'Masculino' : (formData.sexo === 0) ? 'Feminino' : '';
 
       const responsavelComoDependente: Dependente = {
@@ -149,8 +148,8 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         cpf: cadastro.cpf,
         sexo: formData.sexo || 0,
         sexoDescricao: sexoDescricao,
-        plano: primeiroPlano.Plano,
-        planoValor: primeiroPlano.ValorTitular?.toString() || '0,00',
+        plano: 0,
+        planoValor: '0,00',
         nomeMae: formData.nomeMae || '',
         carenciaAtendimento: 0,
         funcionarioCadastro: funcionarioCadastroId || 0,
@@ -313,6 +312,12 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
     if (titulares.length > 1) {
       setError('Só pode haver 1 titular nos dependentes');
+      return;
+    }
+
+    const dependentesSemPlano = dependentes.filter(d => !d.plano || d.plano === 0);
+    if (dependentesSemPlano.length > 0) {
+      setError('Todos os dependentes devem ter um plano selecionado');
       return;
     }
 
