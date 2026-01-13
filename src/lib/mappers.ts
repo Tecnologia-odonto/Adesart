@@ -73,7 +73,6 @@ export interface CadastroFormData {
   nomeMae?: string;
   dependentes?: Dependente[];
   numeroMatricula?: string;
-  codigoContrato?: string;
 }
 
 export function mapLemitToCadastro(lemitData: LemitResponse, cpf: string): Partial<CadastroFormData> {
@@ -178,7 +177,6 @@ export function buildERPPayload(cadastro: CadastroFormData, empresaId: number, v
   });
 
   const responsavelFinanceiro: Record<string, any> = {
-    codigoContrato: cadastro.codigoContrato || empresaId,
     nome: cadastro.nome,
     dataNascimento: formatDate(cadastro.dataNascimento),
     cpf: formatCPF(cadastro.cpf),

@@ -61,7 +61,6 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     },
     nomeMae: cadastro.nome_mae || '',
     numeroMatricula: cadastro.numero_matricula || '',
-    codigoContrato: cadastro.codigo_contrato || '',
   });
 
   useEffect(() => {
@@ -194,7 +193,6 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         sexo_codigo: formData.sexo,
         nome_mae: formData.nomeMae,
         numero_matricula: formData.numeroMatricula,
-        codigo_contrato: formData.codigoContrato,
         contatos: formData.contatos,
         endereco: formData.endereco,
         dependentes: dependentes,
@@ -330,7 +328,6 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         endereco: formData.endereco,
         nomeMae: formData.nomeMae,
         numeroMatricula: formData.numeroMatricula,
-        codigoContrato: formData.codigoContrato,
         dependentes: dependentes,
       };
 
@@ -555,18 +552,6 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
                 </p>
               </div>
             )}
-
-            <div className="md:col-span-2">
-              <Input
-                label="Código do Contrato"
-                value={formData.codigoContrato}
-                onChange={(e) => setFormData({ ...formData, codigoContrato: e.target.value })}
-                placeholder="Opcional"
-              />
-              <p className="text-xs text-slate-500 mt-1">
-                Código do contrato do responsável financeiro
-              </p>
-            </div>
           </div>
 
           <div className="border-t border-slate-200 pt-6">

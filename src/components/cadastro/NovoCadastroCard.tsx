@@ -11,6 +11,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { ClientExistsModal } from './ClientExistsModal';
 import { EmpresaSearchCard } from './EmpresaSearchCard';
+import { LemmitErrorModal } from './LemmitErrorModal';
 
 interface NovoCadastroCardProps {
   onSuccess: (cadastro: any, isBlocked?: boolean) => void;
@@ -20,6 +21,14 @@ interface ClientExistsData {
   cpf: string;
   nome: string;
   erpData: any;
+}
+
+interface LemmitError {
+  message: string;
+  details?: any;
+  cpf: string;
+  cadastroData: any;
+  vendedorSelecionado: any;
 }
 
 interface Empresa {
@@ -47,6 +56,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
   const [selectedEmpresa, setSelectedEmpresa] = useState<Empresa | null>(null);
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [selectedVendedor, setSelectedVendedor] = useState<string>('');
+  const [lemmitError, setLemmitError] = useState<LemmitError | null>(null);
   const { checkERPAssociado, consultarCPF, consultarEnderecoCEP, findClienteByCPF, createOrUpdateRascunho } = useCadastros();
   const { loadConfig } = useConfigCadastro();
   const { profile } = useAuth();
@@ -163,6 +173,11 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
 
                 try {
                   lemitData = await consultarCPF(cpfLimpo);
+
+                  if (!lemitData || Object.keys(lemitData).length === 0) {
+                    throw new Error('Lemmit retornou dados vazios');
+                  }
+
                   const lemitMapped = mapLemitToCadastro(lemitData, cpfLimpo);
 
                   await supabase.from('lemmit_consultas').insert({
@@ -190,12 +205,29 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
                 } catch (lemitError) {
                   console.error('❌ Erro ao consultar Lemmit:', lemitError);
 
+                  const errorMessage = lemitError instanceof Error ? lemitError.message : 'Erro desconhecido';
+
                   await supabase.from('lemmit_consultas').insert({
                     user_id: profile?.id,
                     cpf: cpfLimpo,
                     success: false,
-                    error_message: lemitError instanceof Error ? lemitError.message : 'Erro desconhecido',
+                    error_message: errorMessage,
                   });
+
+                  await supabase.rpc('increment_lemmit_counter', {
+                    p_user_id: profile?.id,
+                  });
+
+                  setLemmitError({
+                    message: errorMessage,
+                    details: lemitError,
+                    cpf: cpfLimpo,
+                    cadastroData,
+                    vendedorSelecionado: vendedores.find(v => v.id === selectedVendedor),
+                  });
+
+                  setLoading(false);
+                  return;
                 }
               } else {
                 console.log('❌ Limite de consultas Lemmit atingido');
@@ -224,6 +256,11 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
 
               try {
                 lemitData = await consultarCPF(cpfLimpo);
+
+                if (!lemitData || Object.keys(lemitData).length === 0) {
+                  throw new Error('Lemmit retornou dados vazios');
+                }
+
                 cadastroData = mapLemitToCadastro(lemitData, cpfLimpo);
 
                 await supabase.from('lemmit_consultas').insert({
@@ -239,12 +276,29 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
               } catch (lemitError) {
                 console.error('❌ Erro ao consultar Lemmit:', lemitError);
 
+                const errorMessage = lemitError instanceof Error ? lemitError.message : 'Erro desconhecido';
+
                 await supabase.from('lemmit_consultas').insert({
                   user_id: profile?.id,
                   cpf: cpfLimpo,
                   success: false,
-                  error_message: lemitError instanceof Error ? lemitError.message : 'Erro desconhecido',
+                  error_message: errorMessage,
                 });
+
+                await supabase.rpc('increment_lemmit_counter', {
+                  p_user_id: profile?.id,
+                });
+
+                setLemmitError({
+                  message: errorMessage,
+                  details: lemitError,
+                  cpf: cpfLimpo,
+                  cadastroData,
+                  vendedorSelecionado: vendedores.find(v => v.id === selectedVendedor),
+                });
+
+                setLoading(false);
+                return;
               }
             } else {
               console.log('❌ Limite de consultas Lemmit atingido');
@@ -348,6 +402,75 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
     }
   };
 
+  const handleLemmitErrorContinue = async () => {
+    if (!lemmitError) return;
+
+    try {
+      const { cadastroData, cpf, vendedorSelecionado } = lemmitError;
+
+      if (cadastroData.endereco?.cep) {
+        try {
+          const enderecoERP = await consultarEnderecoCEP(cadastroData.endereco.cep);
+          if (enderecoERP.ok && enderecoERP.dados) {
+            const dados = enderecoERP.dados;
+            cadastroData.endereco = {
+              ...cadastroData.endereco,
+              ...(dados.IdTipoLogradouro && { idTipoLogradouro: dados.IdTipoLogradouro }),
+              ...(dados.TipoLogradouro && { tipoLogradouro: dados.TipoLogradouro }),
+              ...(dados.Logradouro && { logradouro: dados.Logradouro }),
+              ...(dados.IdBairro && { idBairro: dados.IdBairro }),
+              ...(dados.Bairro && { bairro: dados.Bairro }),
+              ...(dados.IdMunicipio && { idMunicipio: dados.IdMunicipio }),
+              ...(dados.Municipio && { cidade: dados.Municipio }),
+              ...(dados.IdUf && { idUf: dados.IdUf }),
+              ...(dados.Uf && { uf: dados.Uf }),
+              ...(dados.UfSigla && { ufSigla: dados.UfSigla }),
+            };
+          }
+        } catch (cepError) {
+          console.warn('Error fetching CEP from ERP:', cepError);
+        }
+      }
+
+      const rascunho = await createOrUpdateRascunho({
+        cpf,
+        nome: cadastroData.nome,
+        nome_mae: cadastroData.nomeMae,
+        data_nascimento: cadastroData.dataNascimento,
+        sexo: cadastroData.sexo,
+        sexo_codigo: cadastroData.sexoCodigo,
+        contatos: cadastroData.contatos,
+        endereco: cadastroData.endereco,
+        lemit_raw: null,
+        cliente_sera_usuario: true,
+        empresa_id: selectedEmpresa?.id,
+        empresa_nome: selectedEmpresa?.nomeFantasia,
+        empresa_cnpj: selectedEmpresa?.cnpj,
+        empresa_raw: selectedEmpresa?.raw,
+        empresa_exige_matricula: selectedEmpresa?.exigeMatricula || 0,
+        planos_raw: selectedEmpresa?.precoPlano,
+        ...(needsVendedor && vendedorSelecionado && {
+          vendedor_id: vendedorSelecionado.id,
+          vendedor_codigo: vendedorSelecionado.external_id,
+        }),
+      });
+
+      setLemmitError(null);
+      setCpf('');
+      onSuccess(rascunho);
+    } catch (err) {
+      console.error('Error continuing after Lemmit error:', err);
+      setError(err instanceof Error ? err.message : 'Erro ao continuar cadastro');
+      setLemmitError(null);
+    }
+  };
+
+  const handleLemmitErrorCancel = () => {
+    setLemmitError(null);
+    setCpf('');
+    setLoading(false);
+  };
+
   return (
     <>
     <div className="space-y-6">
@@ -421,6 +544,15 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         cpf={clientExists.cpf}
         nome={clientExists.nome}
         onClose={handleCloseClientExistsModal}
+      />
+    )}
+
+    {lemmitError && (
+      <LemmitErrorModal
+        error={lemmitError.message}
+        details={lemmitError.details}
+        onContinue={handleLemmitErrorContinue}
+        onCancel={handleLemmitErrorCancel}
       />
     )}
     </>
