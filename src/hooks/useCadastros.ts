@@ -363,6 +363,17 @@ export function useCadastros() {
       const result = await response.json();
 
       if (!response.ok || result.error) {
+        if (result.details?.codigo === 3 && result.details?.mensagem?.includes('já cadastrado e ativo no contrato')) {
+          const dependentesAtivos = await checkDependentesAtivos(payload);
+
+          if (dependentesAtivos.length > 0) {
+            const error: any = new Error('Dependente(s) já cadastrado(s)');
+            error.dependentesAtivos = dependentesAtivos;
+            error.codigo = 3;
+            throw error;
+          }
+        }
+
         let mensagemErro = result.error || 'Erro ao enviar para o ERP';
 
         if (result.details?.mensagem) {
@@ -403,6 +414,68 @@ export function useCadastros() {
       console.error('Error sending to ERP:', error);
       throw error;
     }
+  };
+
+  const checkDependentesAtivos = async (payload: Record<string, unknown>): Promise<Array<{
+    nome: string;
+    cpf: string;
+    empresa: string;
+    situacao: string;
+  }>> => {
+    const dependentesAtivos: Array<{
+      nome: string;
+      cpf: string;
+      empresa: string;
+      situacao: string;
+    }> = [];
+
+    const dados = payload.dados as any;
+    const dependentes = dados?.dependente || [];
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const checkApiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-check-associado`;
+
+    const situacoesAtivas = [1, 4, 6];
+
+    for (const dep of dependentes) {
+      try {
+        const cpfLimpo = dep.cpf.replace(/\D/g, '');
+
+        const response = await fetch(checkApiUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ cpf: cpfLimpo }),
+        });
+
+        const result = await response.json();
+
+        if (result.exists && result.dados && result.dados.length > 0) {
+          for (const associado of result.dados) {
+            if (associado.dependentes && associado.dependentes.length > 0) {
+              for (const dependente of associado.dependentes) {
+                if (situacoesAtivas.includes(dependente.codigoSituacao)) {
+                  dependentesAtivos.push({
+                    nome: dep.nome,
+                    cpf: dep.cpf,
+                    empresa: associado.nomeFantasiaDaEmpresa || 'Não informado',
+                    situacao: dependente.nomeSituacao || `Código ${dependente.codigoSituacao}`,
+                  });
+                  break;
+                }
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao verificar dependente:', dep.cpf, error);
+      }
+    }
+
+    return dependentesAtivos;
   };
 
   const deleteCadastro = async (id: string) => {

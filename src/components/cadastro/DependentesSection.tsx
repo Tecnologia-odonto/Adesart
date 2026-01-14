@@ -71,6 +71,18 @@ export function DependentesSection({
     });
   };
 
+  const calcularIdade = (dataNascimento: string): number => {
+    if (!dataNascimento) return 0;
+    const hoje = new Date();
+    const nascimento = new Date(dataNascimento);
+    let idade = hoje.getFullYear() - nascimento.getFullYear();
+    const mes = hoje.getMonth() - nascimento.getMonth();
+    if (mes < 0 || (mes === 0 && hoje.getDate() < nascimento.getDate())) {
+      idade--;
+    }
+    return idade;
+  };
+
   const handleAdd = () => {
     if (!formData.nome) {
       alert('Campo obrigatório: Nome');
@@ -82,8 +94,10 @@ export function DependentesSection({
       return;
     }
 
-    if (!formData.cpf) {
-      alert('Campo obrigatório: CPF');
+    const idade = calcularIdade(formData.dataNascimento);
+
+    if (idade >= 18 && !formData.cpf) {
+      alert('Campo obrigatório: CPF (obrigatório para maiores de 18 anos)');
       return;
     }
 
@@ -126,12 +140,13 @@ export function DependentesSection({
 
     const dataNascimentoFormatada = formatDate(formData.dataNascimento);
     const sexoNum = parseInt(formData.sexo);
+    const cpfValue = formData.cpf.replace(/\D/g, '');
 
     const novoDependente: Dependente = {
       tipo: formData.tipo,
       nome: formData.nome,
       dataNascimento: dataNascimentoFormatada,
-      cpf: formData.cpf.replace(/\D/g, ''),
+      cpf: cpfValue || '0',
       sexo: sexoNum,
       sexoDescricao: sexoNum === 1 ? 'Masculino' : (sexoNum === 0 ? 'Feminino' : ''),
       plano: planoId,
@@ -192,7 +207,7 @@ export function DependentesSection({
           <Button
             variant="secondary"
             onClick={() => setIsAdding(true)}
-            className="text-sm"
+            className="text-sm bg-orange-500 hover:bg-orange-600 text-white border-orange-500 hover:border-orange-600"
           >
             <Plus className="w-4 h-4 mr-2" />
             Adicionar Dependente
@@ -246,11 +261,11 @@ export function DependentesSection({
             />
 
             <Input
-              label="CPF"
+              label={`CPF${formData.dataNascimento && calcularIdade(formData.dataNascimento) < 18 ? ' (opcional para menores de 18 anos)' : ''}`}
               value={formatCPF(formData.cpf)}
               onChange={(e) => setFormData({ ...formData, cpf: e.target.value })}
               maxLength={14}
-              required
+              required={!formData.dataNascimento || calcularIdade(formData.dataNascimento) >= 18}
             />
 
             <Select

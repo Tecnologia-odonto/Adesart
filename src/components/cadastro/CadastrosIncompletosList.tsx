@@ -265,7 +265,7 @@ export function CadastrosIncompletosList({ cadastros, onSelect }: CadastrosIncom
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-3 mb-2 flex-wrap">
                               <h4 className="font-medium text-slate-800 truncate">
-                                {cadastro.nome || 'Nome não informado'}
+                                {cadastro.nome || formatCPF(cadastro.cpf)}
                               </h4>
                               {isBlocked && (
                                 <span className="inline-flex items-center px-2 py-1 rounded-lg text-xs font-medium bg-red-50 text-red-600">

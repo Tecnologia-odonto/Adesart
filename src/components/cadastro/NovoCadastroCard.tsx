@@ -373,7 +373,9 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
       }
 
       const vendedorSelecionado = vendedores.find(v => v.id === selectedVendedor);
-      const adesionistaSelecionado = adesionistas.find(a => a.id === selectedAdesionista);
+      const adesionistaSelecionado = profile?.role === 'ADESIONISTA'
+        ? { id: profile.id, external_id: profile.external_id || '', name: profile.name || '' }
+        : adesionistas.find(a => a.id === selectedAdesionista);
 
       const rascunho = await createOrUpdateRascunho({
         cpf: cpfLimpo,
@@ -473,7 +475,9 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         }
       }
 
-      const adesionistaSelecionado = adesionistas.find(a => a.id === selectedAdesionista);
+      const adesionistaSelecionado = profile?.role === 'ADESIONISTA'
+        ? { id: profile.id, external_id: profile.external_id || '', name: profile.name || '' }
+        : adesionistas.find(a => a.id === selectedAdesionista);
 
       const rascunho = await createOrUpdateRascunho({
         cpf,
@@ -549,7 +553,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
               </Select>
             )}
 
-            {adesionistas.length > 0 && (
+            {adesionistas.length > 0 && profile?.role !== 'ADESIONISTA' && (
               <Select
                 label="Adesionista (Opcional)"
                 value={selectedAdesionista}

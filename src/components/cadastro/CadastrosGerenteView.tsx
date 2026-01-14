@@ -298,7 +298,7 @@ export function CadastrosGerenteView({ cadastros, onSelect, statusFilter }: Prop
                                               <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2 mb-1 flex-wrap">
                                                   <h6 className="font-medium text-slate-800 text-xs truncate">
-                                                    {cadastro.nome || 'Nome não informado'}
+                                                    {cadastro.nome || formatCPF(cadastro.cpf)}
                                                   </h6>
                                                   {isBlocked && (
                                                     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-50 text-red-600">

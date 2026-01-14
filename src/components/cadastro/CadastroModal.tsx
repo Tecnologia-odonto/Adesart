@@ -10,6 +10,7 @@ import { CadastroFormData, buildERPPayload } from '../../lib/mappers';
 import { DependentesSection, Dependente } from './DependentesSection';
 import { useAuth } from '../../contexts/AuthContext';
 import { useConfigCadastro } from '../../contexts/ConfigCadastroContext';
+import { DependenteAtivoModal } from './DependenteAtivoModal';
 
 interface CadastroModalProps {
   cadastro: Cadastro;
@@ -28,6 +29,13 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   const [dependentes, setDependentes] = useState<Dependente[]>([]);
   const [planosEmpresa, setPlanosEmpresa] = useState<any[]>([]);
   const [dependentesInicializados, setDependentesInicializados] = useState(false);
+  const [dependentesAtivos, setDependentesAtivos] = useState<Array<{
+    nome: string;
+    cpf: string;
+    empresa: string;
+    situacao: string;
+  }>>([]);
+  const [showDependentesAtivosModal, setShowDependentesAtivosModal] = useState(false);
 
   const funcionarioCadastroId = profile?.external_id ? parseInt(profile.external_id) : null;
 
@@ -187,12 +195,12 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       console.log('[CadastroModal] Salvando dependentes:', dependentes);
       console.log('[CadastroModal] Número de dependentes:', dependentes.length);
 
-      const updateData = {
-        nome: formData.nome,
-        data_nascimento: formData.dataNascimento,
-        sexo_codigo: formData.sexo,
-        nome_mae: formData.nomeMae,
-        numero_matricula: formData.numeroMatricula,
+      const updateData: any = {
+        nome: formData.nome || null,
+        data_nascimento: formData.dataNascimento && formData.dataNascimento.trim() !== '' ? formData.dataNascimento : null,
+        sexo_codigo: formData.sexo !== '' && formData.sexo !== null && formData.sexo !== undefined ? formData.sexo : null,
+        nome_mae: formData.nomeMae || null,
+        numero_matricula: formData.numeroMatricula || null,
         contatos: formData.contatos,
         endereco: formData.endereco,
         dependentes: dependentes,
@@ -206,9 +214,31 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       setTimeout(() => {
         onSuccess();
       }, 1500);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving cadastro:', err);
-      setError(err instanceof Error ? err.message : 'Erro ao salvar cadastro');
+
+      let errorMessage = 'Erro ao salvar cadastro';
+
+      if (err?.code === '22007') {
+        errorMessage = 'Erro: Data de nascimento inválida. Por favor, preencha a data corretamente ou deixe em branco.';
+      } else if (err instanceof Error) {
+        errorMessage = err.message;
+      } else if (err?.message) {
+        errorMessage = err.message;
+      }
+
+      if (err?.code === '22007') {
+        console.error('[CadastroModal] Erro de data inválida:', err);
+      } else {
+        if (err?.details) {
+          console.error('[CadastroModal] Detalhes do erro:', err.details);
+        }
+        if (err?.hint) {
+          console.error('[CadastroModal] Dica:', err.hint);
+        }
+      }
+
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -354,9 +384,15 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         onSuccess();
         onClose();
       }, 2000);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error sending to ERP:', err);
-      setError(err instanceof Error ? err.message : 'Erro ao enviar cadastro para o ERP');
+
+      if (err.codigo === 3 && err.dependentesAtivos && err.dependentesAtivos.length > 0) {
+        setDependentesAtivos(err.dependentesAtivos);
+        setShowDependentesAtivosModal(true);
+      } else {
+        setError(err instanceof Error ? err.message : 'Erro ao enviar cadastro para o ERP');
+      }
     } finally {
       setLoading(false);
     }
@@ -652,13 +688,19 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
             <h3 className="font-semibold text-slate-800 mb-4">Endereço</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="relative">
-                <Input
-                  label="CEP"
-                  value={formatCEP(formData.endereco.cep)}
-                  onChange={(e) => handleCEPChange(e.target.value)}
-                  maxLength={9}
-                  disabled={loadingCEP}
-                />
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    CEP <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    value={formatCEP(formData.endereco.cep)}
+                    onChange={(e) => handleCEPChange(e.target.value)}
+                    maxLength={9}
+                    disabled={loadingCEP}
+                  />
+                </div>
                 {loadingCEP && (
                   <div className="absolute right-3 top-9">
                     <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
@@ -666,21 +708,31 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
                 )}
               </div>
 
-              <Input
-                label="UF"
-                value={formData.endereco.uf}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    endereco: { ...formData.endereco, uf: e.target.value.toUpperCase() },
-                  })
-                }
-                maxLength={2}
-              />
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  UF <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  value={formData.endereco.uf}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      endereco: { ...formData.endereco, uf: e.target.value.toUpperCase() },
+                    })
+                  }
+                  maxLength={2}
+                />
+              </div>
 
               <div className="md:col-span-2">
-                <Input
-                  label="Logradouro"
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Logradouro <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                   value={formData.endereco.logradouro}
                   onChange={(e) =>
                     setFormData({
@@ -691,16 +743,22 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
                 />
               </div>
 
-              <Input
-                label="Número"
-                value={formData.endereco.numero}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    endereco: { ...formData.endereco, numero: e.target.value },
-                  })
-                }
-              />
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Número <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  value={formData.endereco.numero}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      endereco: { ...formData.endereco, numero: e.target.value },
+                    })
+                  }
+                />
+              </div>
 
               <Input
                 label="Complemento"
@@ -713,27 +771,39 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
                 }
               />
 
-              <Input
-                label="Bairro"
-                value={formData.endereco.bairro}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    endereco: { ...formData.endereco, bairro: e.target.value },
-                  })
-                }
-              />
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Bairro <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  value={formData.endereco.bairro}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      endereco: { ...formData.endereco, bairro: e.target.value },
+                    })
+                  }
+                />
+              </div>
 
-              <Input
-                label="Cidade"
-                value={formData.endereco.cidade}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    endereco: { ...formData.endereco, cidade: e.target.value },
-                  })
-                }
-              />
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Cidade <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  value={formData.endereco.cidade}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      endereco: { ...formData.endereco, cidade: e.target.value },
+                    })
+                  }
+                />
+              </div>
             </div>
           </div>
 
@@ -806,6 +876,12 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
           </div>
         </div>
       </div>
+
+      <DependenteAtivoModal
+        isOpen={showDependentesAtivosModal}
+        onClose={() => setShowDependentesAtivosModal(false)}
+        dependentesAtivos={dependentesAtivos}
+      />
     </div>
   );
 }
