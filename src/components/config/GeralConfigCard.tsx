@@ -7,8 +7,10 @@ export function GeralConfigCard() {
   const [updating, setUpdating] = useState(false);
   const [editingSituacoes, setEditingSituacoes] = useState(false);
   const [editingPlanos, setEditingPlanos] = useState(false);
+  const [editingPlanosOcultos, setEditingPlanosOcultos] = useState(false);
   const [tempSituacoes, setTempSituacoes] = useState('');
   const [tempPlanos, setTempPlanos] = useState('');
+  const [tempPlanosOcultos, setTempPlanosOcultos] = useState('');
 
   const handleToggleLemmit = async () => {
     if (!config) return;
@@ -77,6 +79,33 @@ export function GeralConfigCard() {
     } catch (error) {
       console.error('Error updating planos:', error);
       alert('Erro ao atualizar planos');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleEditPlanosOcultos = () => {
+    if (config) {
+      setTempPlanosOcultos(config.planos_ocultos?.join(', ') || '');
+      setEditingPlanosOcultos(true);
+    }
+  };
+
+  const handleSavePlanosOcultos = async () => {
+    if (!config) return;
+
+    const valores = tempPlanosOcultos
+      .split(',')
+      .map(v => v.trim())
+      .filter(v => v !== '');
+
+    setUpdating(true);
+    try {
+      await updateConfig({ planos_ocultos: valores });
+      setEditingPlanosOcultos(false);
+    } catch (error) {
+      console.error('Error updating planos ocultos:', error);
+      alert('Erro ao atualizar planos ocultos');
     } finally {
       setUpdating(false);
     }
@@ -223,6 +252,59 @@ export function GeralConfigCard() {
               </p>
               <button
                 onClick={handleEditPlanos}
+                className="px-3 py-1.5 text-sm bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300"
+              >
+                Editar
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-800 mb-1">
+            Planos Ocultos na Seleção de Dependentes
+          </h3>
+          <p className="text-xs text-slate-600 mb-3">
+            Códigos de planos que não devem aparecer no dropdown de seleção de planos dos dependentes.
+          </p>
+
+          {editingPlanosOcultos ? (
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={tempPlanosOcultos}
+                onChange={(e) => setTempPlanosOcultos(e.target.value)}
+                placeholder="Ex: 110, 200, 300"
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSavePlanosOcultos}
+                  disabled={updating}
+                  className="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  Salvar
+                </button>
+                <button
+                  onClick={() => setEditingPlanosOcultos(false)}
+                  disabled={updating}
+                  className="px-3 py-1.5 text-sm bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-slate-700">
+                {config?.planos_ocultos && config.planos_ocultos.length > 0
+                  ? config.planos_ocultos.join(', ')
+                  : 'Nenhum plano oculto'}
+              </p>
+              <button
+                onClick={handleEditPlanosOcultos}
                 className="px-3 py-1.5 text-sm bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300"
               >
                 Editar

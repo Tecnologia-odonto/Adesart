@@ -34,12 +34,31 @@ export function DependentesSection({
   funcionarioCadastro,
   onChange,
 }: DependentesSectionProps) {
-  const { parentescos } = useConfigCadastro();
+  const { parentescos, config } = useConfigCadastro();
   const [isAdding, setIsAdding] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   console.log('[DependentesSection] Planos recebidos:', planos);
   console.log('[DependentesSection] Número de planos:', planos?.length || 0);
+
+  const planosOcultos = config?.planos_ocultos || [];
+
+  const planosFiltrados = planos.filter((p) => {
+    const planoId = p.Plano?.toString();
+    const isOculto = planosOcultos.includes(planoId);
+
+    if (editingIndex !== null && dependentes[editingIndex]) {
+      const planoDoDepEditando = dependentes[editingIndex].plano.toString();
+      if (planoId === planoDoDepEditando) {
+        return true;
+      }
+    }
+
+    return !isOculto;
+  });
+
+  console.log('[DependentesSection] Planos ocultos configurados:', planosOcultos);
+  console.log('[DependentesSection] Planos após filtro:', planosFiltrados);
 
   const [formData, setFormData] = useState<{
     tipo: number;
@@ -286,7 +305,7 @@ export function DependentesSection({
               required
             >
               <option value="">Selecione</option>
-              {planos.map((p) => (
+              {planosFiltrados.map((p) => (
                 <option key={p.Plano} value={p.Plano}>
                   {p.nomeExibicao || `Plano ${p.Plano}`} - Titular: R$ {p.ValorTitular || '0,00'} / Dep: R$ {p.ValorDependente || '0,00'}
                 </option>

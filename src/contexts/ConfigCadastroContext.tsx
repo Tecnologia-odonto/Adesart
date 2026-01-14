@@ -26,6 +26,7 @@ export interface CadastroConfig {
   ativar_lemmit: boolean;
   situacoes_que_barram: number[];
   planos_validos: number[];
+  planos_ocultos: string[];
   created_at: string;
   updated_at: string;
 }
