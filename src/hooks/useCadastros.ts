@@ -33,6 +33,9 @@ export interface Cadastro {
   vendedor_id: string | null;
   vendedor_codigo: string | null;
   vendedor_nome: string | null;
+  adesionista_id: string | null;
+  adesionista_codigo: string | null;
+  adesionista_nome: string | null;
   created_at: string;
   updated_at: string;
 }

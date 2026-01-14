@@ -48,6 +48,12 @@ interface Vendedor {
   external_id: string;
 }
 
+interface Adesionista {
+  id: string;
+  name: string;
+  external_id: string;
+}
+
 export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
   const [cpf, setCpf] = useState('');
   const [loading, setLoading] = useState(false);
@@ -56,6 +62,8 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
   const [selectedEmpresa, setSelectedEmpresa] = useState<Empresa | null>(null);
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [selectedVendedor, setSelectedVendedor] = useState<string>('');
+  const [adesionistas, setAdesionistas] = useState<Adesionista[]>([]);
+  const [selectedAdesionista, setSelectedAdesionista] = useState<string>('');
   const [lemmitError, setLemmitError] = useState<LemmitError | null>(null);
   const { checkERPAssociado, consultarCPF, consultarEnderecoCEP, findClienteByCPF, createOrUpdateRascunho } = useCadastros();
   const { loadConfig } = useConfigCadastro();
@@ -84,6 +92,31 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
     };
 
     fetchVendedores();
+  }, [profile]);
+
+  useEffect(() => {
+    const fetchAdesionistas = async () => {
+      if (profile && ['GESTOR', 'SUPERVISOR', 'VENDEDOR', 'CADASTRO'].includes(profile.role || '')) {
+        try {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('id, name, external_id, email')
+            .eq('role', 'ADESIONISTA')
+            .eq('is_active', true)
+            .not('external_id', 'is', null)
+            .order('name');
+
+          if (error) throw error;
+
+          console.log('Adesionistas carregados:', data);
+          setAdesionistas(data || []);
+        } catch (err) {
+          console.error('Error fetching adesionistas:', err);
+        }
+      }
+    };
+
+    fetchAdesionistas();
   }, [profile]);
 
   const needsVendedor = profile && (profile.role === 'CADASTRO' || profile.role === 'ADESIONISTA');
@@ -340,6 +373,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
       }
 
       const vendedorSelecionado = vendedores.find(v => v.id === selectedVendedor);
+      const adesionistaSelecionado = adesionistas.find(a => a.id === selectedAdesionista);
 
       const rascunho = await createOrUpdateRascunho({
         cpf: cpfLimpo,
@@ -362,6 +396,11 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
           vendedor_id: vendedorSelecionado.id,
           vendedor_codigo: vendedorSelecionado.external_id,
           vendedor_nome: vendedorSelecionado.name,
+        }),
+        ...(adesionistaSelecionado && {
+          adesionista_id: adesionistaSelecionado.id,
+          adesionista_codigo: adesionistaSelecionado.external_id,
+          adesionista_nome: adesionistaSelecionado.name,
         }),
       });
 
@@ -434,6 +473,8 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         }
       }
 
+      const adesionistaSelecionado = adesionistas.find(a => a.id === selectedAdesionista);
+
       const rascunho = await createOrUpdateRascunho({
         cpf,
         nome: cadastroData.nome,
@@ -455,6 +496,11 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
           vendedor_id: vendedorSelecionado.id,
           vendedor_codigo: vendedorSelecionado.external_id,
           vendedor_nome: vendedorSelecionado.name,
+        }),
+        ...(adesionistaSelecionado && {
+          adesionista_id: adesionistaSelecionado.id,
+          adesionista_codigo: adesionistaSelecionado.external_id,
+          adesionista_nome: adesionistaSelecionado.name,
         }),
       });
 
@@ -498,6 +544,22 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
                 {vendedores.map((vendedor) => (
                   <option key={vendedor.id} value={vendedor.id}>
                     {vendedor.name || vendedor.email || 'Vendedor sem nome'} - Código: {vendedor.external_id}
+                  </option>
+                ))}
+              </Select>
+            )}
+
+            {adesionistas.length > 0 && (
+              <Select
+                label="Adesionista (Opcional)"
+                value={selectedAdesionista}
+                onChange={(e) => setSelectedAdesionista(e.target.value)}
+                disabled={loading}
+              >
+                <option value="">Selecione um adesionista (opcional)</option>
+                {adesionistas.map((adesionista) => (
+                  <option key={adesionista.id} value={adesionista.id}>
+                    {adesionista.name || adesionista.email || 'Adesionista sem nome'} - Código: {adesionista.external_id}
                   </option>
                 ))}
               </Select>

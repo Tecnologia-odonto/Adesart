@@ -155,7 +155,8 @@ export function buildERPPayload(
   vendedorCodigo?: string | null,
   funcionarioCadastroId?: number | null,
   userRole?: string | null,
-  userExternalId?: string | null
+  userExternalId?: string | null,
+  adesionistaCodigo?: string | null
 ): Record<string, unknown> {
   const sexoDescricao = cadastro.sexoCodigo === 1 ? 'Masculino' : 'Feminino';
 
@@ -223,12 +224,18 @@ export function buildERPPayload(
 
   responsavelFinanceiro.dataApresentacao = new Date().toISOString();
 
+  const parceiroObj: Record<string, any> = {
+    codigo: codigoParceiro,
+    tipoCobranca: 1,
+  };
+
+  if (adesionistaCodigo && adesionistaCodigo.trim() !== '') {
+    parceiroObj.adesionista = parseInt(adesionistaCodigo);
+  }
+
   const payload = {
     dados: {
-      parceiro: {
-        codigo: codigoParceiro,
-        tipoCobranca: 1,
-      },
+      parceiro: parceiroObj,
       parcelaRetidaComissao: '0',
       responsavelFinanceiro: responsavelFinanceiro,
       dependente: [
