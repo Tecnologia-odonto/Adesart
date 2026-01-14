@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, Loader2, Building2, CheckCircle } from 'lucide-react';
 import { Input } from '../Input';
 import { Button } from '../Button';
 import { useCadastros } from '../../hooks/useCadastros';
+import { ObservacoesEmpresaModal } from './ObservacoesEmpresaModal';
 
 interface Empresa {
   id: number;
@@ -12,6 +13,7 @@ interface Empresa {
   enderecoEmpresa: any;
   precoPlano: any[];
   exigeMatricula?: number;
+  observacoes?: string;
   raw: any;
 }
 
@@ -26,7 +28,15 @@ export function EmpresaSearchCard({ onEmpresaSelected, selectedEmpresa }: Empres
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
+  const [showObservacoesModal, setShowObservacoesModal] = useState(false);
+  const [observacoesVistas, setObservacoesVistas] = useState(false);
   const { searchEmpresa } = useCadastros();
+
+  useEffect(() => {
+    if (selectedEmpresa && selectedEmpresa.observacoes && selectedEmpresa.observacoes.trim() !== '' && !observacoesVistas) {
+      setShowObservacoesModal(true);
+    }
+  }, [selectedEmpresa, observacoesVistas]);
 
   const formatCNPJ = (value: string | undefined | null) => {
     if (!value) return '';
@@ -97,6 +107,7 @@ export function EmpresaSearchCard({ onEmpresaSelected, selectedEmpresa }: Empres
       setEmpresas(result.empresas);
 
       if (result.empresas.length === 1) {
+        setObservacoesVistas(false);
         onEmpresaSelected(result.empresas[0]);
       }
     } catch (err) {
@@ -107,63 +118,97 @@ export function EmpresaSearchCard({ onEmpresaSelected, selectedEmpresa }: Empres
     }
   };
 
+  const handleCloseObservacoesModal = () => {
+    setShowObservacoesModal(false);
+    setObservacoesVistas(true);
+  };
+
+  const handleSelectEmpresa = (empresa: Empresa) => {
+    setObservacoesVistas(false);
+    onEmpresaSelected(empresa);
+  };
+
+  const handleAlterarEmpresa = () => {
+    onEmpresaSelected(null as any);
+    setEmpresas([]);
+    setSearchValue('');
+    setObservacoesVistas(false);
+    setShowObservacoesModal(false);
+  };
+
   if (selectedEmpresa) {
     return (
-      <div className="bg-white rounded-lg sm:rounded-xl shadow-sm border border-slate-200 p-4 sm:p-6">
-        <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-4">
-          <div className="flex-1 w-full">
-            <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-              <div className="p-2 sm:p-3 bg-emerald-50 rounded-lg">
-                <Building2 className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-600" />
-              </div>
-              <div>
-                <h3 className="text-base sm:text-lg font-semibold text-slate-800">Empresa Selecionada</h3>
-                <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5 sm:mt-1">
-                  <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600" />
-                  <span className="text-xs sm:text-sm text-emerald-600 font-medium">Confirmado</span>
+      <>
+        {showObservacoesModal && selectedEmpresa.observacoes && (
+          <ObservacoesEmpresaModal
+            observacoes={selectedEmpresa.observacoes}
+            nomeEmpresa={selectedEmpresa.nomeFantasia}
+            onClose={handleCloseObservacoesModal}
+          />
+        )}
+        <div className="bg-white rounded-lg sm:rounded-xl shadow-sm border border-slate-200 p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-4">
+            <div className="flex-1 w-full">
+              <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+                <div className="p-2 sm:p-3 bg-emerald-50 rounded-lg">
+                  <Building2 className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-600" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-semibold text-slate-800">Empresa Selecionada</h3>
+                  <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5 sm:mt-1">
+                    <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600" />
+                    <span className="text-xs sm:text-sm text-emerald-600 font-medium">Confirmado</span>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
-              <div className="flex flex-col sm:flex-row">
-                <span className="font-medium text-slate-700 sm:w-32 mb-0.5 sm:mb-0">Razão Social:</span>
-                <span className="text-slate-600">{selectedEmpresa.razaoSocial}</span>
-              </div>
-              <div className="flex flex-col sm:flex-row">
-                <span className="font-medium text-slate-700 sm:w-32 mb-0.5 sm:mb-0">Nome Fantasia:</span>
-                <span className="text-slate-600">{selectedEmpresa.nomeFantasia}</span>
-              </div>
-              <div className="flex flex-col sm:flex-row">
-                <span className="font-medium text-slate-700 sm:w-32 mb-0.5 sm:mb-0">CNPJ:</span>
-                <span className="text-slate-600">{formatCNPJ(selectedEmpresa.cnpj)}</span>
-              </div>
-              <div className="flex flex-col sm:flex-row">
-                <span className="font-medium text-slate-700 sm:w-32 mb-0.5 sm:mb-0">Planos:</span>
-                <span className="text-slate-600">{selectedEmpresa.precoPlano.length} disponíveis</span>
-              </div>
-              {selectedEmpresa.exigeMatricula === 1 && (
+              <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
                 <div className="flex flex-col sm:flex-row">
-                  <span className="font-medium text-red-700 sm:w-32 mb-0.5 sm:mb-0">Matrícula:</span>
-                  <span className="text-red-600 font-semibold">OBRIGATÓRIA</span>
+                  <span className="font-medium text-slate-700 sm:w-32 mb-0.5 sm:mb-0">Razão Social:</span>
+                  <span className="text-slate-600">{selectedEmpresa.razaoSocial}</span>
                 </div>
-              )}
-            </div>
-          </div>
+                <div className="flex flex-col sm:flex-row">
+                  <span className="font-medium text-slate-700 sm:w-32 mb-0.5 sm:mb-0">Nome Fantasia:</span>
+                  <span className="text-slate-600">{selectedEmpresa.nomeFantasia}</span>
+                </div>
+                <div className="flex flex-col sm:flex-row">
+                  <span className="font-medium text-slate-700 sm:w-32 mb-0.5 sm:mb-0">CNPJ:</span>
+                  <span className="text-slate-600">{formatCNPJ(selectedEmpresa.cnpj)}</span>
+                </div>
+                <div className="flex flex-col sm:flex-row">
+                  <span className="font-medium text-slate-700 sm:w-32 mb-0.5 sm:mb-0">Planos:</span>
+                  <span className="text-slate-600">{selectedEmpresa.precoPlano.length} disponíveis</span>
+                </div>
+                {selectedEmpresa.exigeMatricula === 1 && (
+                  <div className="flex flex-col sm:flex-row">
+                    <span className="font-medium text-red-700 sm:w-32 mb-0.5 sm:mb-0">Matrícula:</span>
+                    <span className="text-red-600 font-semibold">OBRIGATÓRIA</span>
+                  </div>
+                )}
+              </div>
 
-          <Button
-            variant="secondary"
-            onClick={() => {
-              onEmpresaSelected(null as any);
-              setEmpresas([]);
-              setSearchValue('');
-            }}
-            className="w-full sm:w-auto sm:ml-4"
-          >
-            Alterar
-          </Button>
+              <div className="mt-4 pt-4 border-t border-slate-200">
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <p className="text-sm font-semibold text-red-700 mb-1">Observações:</p>
+                  {selectedEmpresa.observacoes && selectedEmpresa.observacoes.trim() !== '' ? (
+                    <p className="text-sm text-red-700 whitespace-pre-wrap">{selectedEmpresa.observacoes}</p>
+                  ) : (
+                    <p className="text-sm text-red-700">Empresa sem observações</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <Button
+              variant="secondary"
+              onClick={handleAlterarEmpresa}
+              className="w-full sm:w-auto sm:ml-4"
+            >
+              Alterar
+            </Button>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
@@ -243,7 +288,7 @@ export function EmpresaSearchCard({ onEmpresaSelected, selectedEmpresa }: Empres
             {empresas.map((empresa) => (
               <button
                 key={empresa.id}
-                onClick={() => onEmpresaSelected(empresa)}
+                onClick={() => handleSelectEmpresa(empresa)}
                 className="w-full text-left p-3 sm:p-4 bg-slate-50 hover:bg-slate-100 active:bg-slate-200 rounded-lg border border-slate-200 transition-colors"
               >
                 <div className="font-medium text-slate-800 text-sm sm:text-base">{empresa.nomeFantasia}</div>

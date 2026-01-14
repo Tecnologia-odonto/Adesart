@@ -28,6 +28,7 @@ interface ERPEmpresa {
   Complemento: string;
   CentroCusto: string;
   ExigeMatricula?: number;
+  ObservacaoComercial?: string;
   PrecoPlano: Array<{
     Id: number;
     Plano: number;
@@ -307,6 +308,7 @@ Deno.serve(async (req: Request) => {
         centroCusto: empresa.CentroCusto,
       },
       exigeMatricula: empresa.ExigeMatricula || 0,
+      observacoes: empresa.ObservacaoComercial || '',
       precoPlano: empresa.PrecoPlano || [],
       raw: empresa,
     }));
