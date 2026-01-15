@@ -7,7 +7,7 @@ Este documento descreve todas as regras, validações e integrações implementa
 1. [Edge Functions](#edge-functions)
 2. [Estrutura de Dados](#estrutura-de-dados)
 3. [Regras de Validação](#regras-de-validação)
-4. [Mapeamento de Dados](#mapeamento-de-dados-e-fluxo)
+4. [Mapeamento de Dados](#mapeamento-de-dados)
 5. [Controle de Uso da API Lemmit](#controle-de-uso-da-api-lemmit)
 
 ---
