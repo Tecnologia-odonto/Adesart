@@ -39,6 +39,8 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   const [showDependentesAtivosModal, setShowDependentesAtivosModal] = useState(false);
   const [arquivoBase64, setArquivoBase64] = useState<string>('');
   const [arquivoNome, setArquivoNome] = useState<string>('');
+  const [arquivoPath, setArquivoPath] = useState<string>(cadastro.arquivo_path || '');
+  const [uploadingFile, setUploadingFile] = useState(false);
 
   const funcionarioCadastroId = profile?.external_id ? parseInt(profile.external_id) : null;
 
@@ -86,6 +88,32 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     } else {
       console.log('[CadastroModal] Nenhum dependente salvo no banco');
       setDependentesInicializados(true);
+    }
+
+    if (cadastro.arquivo_path) {
+      const fileName = cadastro.arquivo_path.split('/').pop() || 'arquivo';
+      setArquivoNome(fileName);
+      setArquivoPath(cadastro.arquivo_path);
+
+      supabase.storage
+        .from('cadastros-temp-files')
+        .download(cadastro.arquivo_path)
+        .then(({ data, error }) => {
+          if (error) {
+            console.error('Erro ao baixar arquivo do bucket:', error);
+            return;
+          }
+
+          if (data) {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const base64 = reader.result as string;
+              const base64Puro = base64.split(',')[1];
+              setArquivoBase64(base64Puro);
+            };
+            reader.readAsDataURL(data);
+          }
+        });
     }
   }, [cadastro.id]);
 
@@ -207,6 +235,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         contatos: formData.contatos,
         endereco: formData.endereco,
         dependentes: dependentes,
+        arquivo_path: arquivoPath || null,
       };
 
       console.log('[CadastroModal] Dados para atualizar:', updateData);
@@ -252,22 +281,48 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     if (!file) {
       setArquivoBase64('');
       setArquivoNome('');
+      setArquivoPath('');
       return;
     }
 
+    setUploadingFile(true);
+    setError('');
+
     try {
+      const fileExtension = file.name.split('.').pop();
+      const fileName = `${formData.nome || 'arquivo'}_${removeCPFMask(cadastro.cpf)}_${Date.now()}.${fileExtension}`;
+      const filePath = `cadastros/${cadastro.id}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('cadastros-temp-files')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true
+        });
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
       const reader = new FileReader();
       reader.onload = () => {
         const base64 = reader.result as string;
         const base64Puro = base64.split(',')[1];
         setArquivoBase64(base64Puro);
-        const nomeArquivo = `${formData.nome}_${removeCPFMask(cadastro.cpf)}.${file.name.split('.').pop()}`;
-        setArquivoNome(nomeArquivo);
+        setArquivoNome(fileName);
+        setArquivoPath(filePath);
+        setSuccess('Arquivo carregado com sucesso! Clique em "Salvar" para manter.');
+        setTimeout(() => setSuccess(''), 3000);
       };
       reader.readAsDataURL(file);
     } catch (err) {
-      console.error('Erro ao ler arquivo:', err);
-      setError('Erro ao processar arquivo');
+      console.error('Erro ao fazer upload do arquivo:', err);
+      setError('Erro ao fazer upload do arquivo');
+      setArquivoBase64('');
+      setArquivoNome('');
+      setArquivoPath('');
+    } finally {
+      setUploadingFile(false);
     }
   };
 
@@ -451,6 +506,24 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
           setError(`Cadastro criado, mas erro ao enviar arquivo: ${uploadErr.message}`);
           setLoading(false);
           return;
+        }
+      }
+
+      if (arquivoPath) {
+        try {
+          const { error: deleteError } = await supabase.storage
+            .from('cadastros-temp-files')
+            .remove([arquivoPath]);
+
+          if (deleteError) {
+            console.error('Erro ao deletar arquivo do bucket:', deleteError);
+          } else {
+            console.log('Arquivo deletado do bucket com sucesso:', arquivoPath);
+          }
+
+          await updateCadastro(cadastro.id, { arquivo_path: null });
+        } catch (deleteErr) {
+          console.error('Erro ao limpar arquivo:', deleteErr);
         }
       }
 
@@ -893,15 +966,46 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
                   type="file"
                   accept=".pdf,.jpg,.jpeg,.png"
                   onChange={handleArquivoChange}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm"
+                  disabled={uploadingFile}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <p className="text-xs text-slate-500 mt-1">
-                  Formatos aceitos: PDF, JPG, PNG. O arquivo será enviado automaticamente após o cadastro no ERP.
+                  Formatos aceitos: PDF, JPG, PNG. O arquivo será salvo temporariamente no servidor.
                 </p>
-                {arquivoNome && (
-                  <p className="text-xs text-emerald-600 mt-1 font-medium">
-                    Arquivo selecionado: {arquivoNome}
-                  </p>
+                {uploadingFile && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
+                    <p className="text-xs text-emerald-600 font-medium">
+                      Fazendo upload do arquivo...
+                    </p>
+                  </div>
+                )}
+                {arquivoNome && !uploadingFile && (
+                  <div className="flex items-center justify-between mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+                    <p className="text-xs text-emerald-700 font-medium">
+                      Arquivo carregado: {arquivoNome}
+                    </p>
+                    <button
+                      onClick={async () => {
+                        if (arquivoPath) {
+                          try {
+                            await supabase.storage
+                              .from('cadastros-temp-files')
+                              .remove([arquivoPath]);
+                          } catch (err) {
+                            console.error('Erro ao remover arquivo:', err);
+                          }
+                        }
+                        setArquivoBase64('');
+                        setArquivoNome('');
+                        setArquivoPath('');
+                      }}
+                      className="p-1 text-red-600 hover:bg-red-100 rounded transition-colors"
+                      title="Remover arquivo"
+                    >
+                      <Trash className="w-4 h-4" />
+                    </button>
+                  </div>
                 )}
               </div>
             </div>

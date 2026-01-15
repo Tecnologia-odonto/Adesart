@@ -36,6 +36,7 @@ export interface Cadastro {
   adesionista_id: string | null;
   adesionista_codigo: string | null;
   adesionista_nome: string | null;
+  arquivo_path: string | null;
   created_at: string;
   updated_at: string;
 }

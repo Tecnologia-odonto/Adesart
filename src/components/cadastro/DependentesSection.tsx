@@ -223,14 +223,22 @@ export function DependentesSection({
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-semibold text-slate-800">Dependentes</h3>
         {!isAdding && (
-          <Button
-            variant="secondary"
+          <button
             onClick={() => setIsAdding(true)}
-            className="text-sm bg-orange-500 hover:bg-orange-600 text-white border-orange-500 hover:border-orange-600"
+            className="inline-flex items-center px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors"
+            style={{
+              backgroundColor: '#eb881e',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#d47a1a';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = '#eb881e';
+            }}
           >
             <Plus className="w-4 h-4 mr-2" />
             Adicionar Dependente
-          </Button>
+          </button>
         )}
       </div>
 

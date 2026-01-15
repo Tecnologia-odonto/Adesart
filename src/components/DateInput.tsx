@@ -5,8 +5,60 @@ interface DateInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   error?: string;
 }
 
+const formatDateMask = (value: string): string => {
+  const numbers = value.replace(/\D/g, '');
+
+  if (numbers.length <= 2) {
+    return numbers;
+  }
+  if (numbers.length <= 4) {
+    return `${numbers.slice(0, 2)}/${numbers.slice(2)}`;
+  }
+  return `${numbers.slice(0, 2)}/${numbers.slice(2, 4)}/${numbers.slice(4, 8)}`;
+};
+
+const convertToISODate = (ddmmyyyy: string): string => {
+  if (!ddmmyyyy || ddmmyyyy.length !== 10) return ddmmyyyy;
+
+  const [day, month, year] = ddmmyyyy.split('/');
+  if (!day || !month || !year) return ddmmyyyy;
+
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+};
+
+const convertFromISODate = (isoDate: string): string => {
+  if (!isoDate) return '';
+
+  if (isoDate.includes('/')) {
+    return isoDate;
+  }
+
+  const [year, month, day] = isoDate.split('-');
+  if (!year || !month || !day) return isoDate;
+
+  return `${day}/${month}/${year}`;
+};
+
 export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
-  ({ label, error, className = '', ...props }, ref) => {
+  ({ label, error, className = '', value, onChange, ...props }, ref) => {
+    const displayValue = convertFromISODate(value as string || '');
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const formatted = formatDateMask(e.target.value);
+
+      const maskedEvent = {
+        ...e,
+        target: {
+          ...e.target,
+          value: formatted.length === 10 ? convertToISODate(formatted) : formatted,
+        },
+      };
+
+      if (onChange) {
+        onChange(maskedEvent as React.ChangeEvent<HTMLInputElement>);
+      }
+    };
+
     return (
       <div className="w-full">
         {label && (
@@ -17,7 +69,11 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
         )}
         <input
           ref={ref}
-          type="date"
+          type="text"
+          placeholder="DD/MM/AAAA"
+          maxLength={10}
+          value={displayValue}
+          onChange={handleChange}
           className={`
             w-full px-3 py-2 border border-slate-300 rounded-lg
             focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500
