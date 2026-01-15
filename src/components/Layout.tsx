@@ -29,7 +29,7 @@ export function Layout({ children }: LayoutProps) {
 
   const canViewUsers = profile?.role && ['ADMINISTRADOR', 'GERENTE', 'SUPERVISOR'].includes(profile.role);
   const canViewTeams = profile?.role && ['ADMINISTRADOR', 'GERENTE', 'CADASTRO', 'SUPERVISOR', 'VENDEDOR', 'ADESIONISTA'].includes(profile.role);
-  const canViewConfig = profile?.role && ['ADMINISTRADOR', 'GERENTE', 'CADASTRO', 'ADESIONISTA'].includes(profile.role);
+  const canViewConfig = profile?.role === 'ADMINISTRADOR';
 
   const menuItems = [
     { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, show: true },

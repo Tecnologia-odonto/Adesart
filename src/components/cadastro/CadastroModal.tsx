@@ -37,9 +37,11 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     situacao: string;
   }>>([]);
   const [showDependentesAtivosModal, setShowDependentesAtivosModal] = useState(false);
-  const [arquivoBase64, setArquivoBase64] = useState<string>('');
-  const [arquivoNome, setArquivoNome] = useState<string>('');
-  const [arquivoPath, setArquivoPath] = useState<string>(cadastro.arquivo_path || '');
+  const [arquivos, setArquivos] = useState<Array<{
+    base64: string;
+    nome: string;
+    path: string;
+  }>>([]);
   const [uploadingFile, setUploadingFile] = useState(false);
 
   const funcionarioCadastroId = profile?.external_id ? parseInt(profile.external_id) : null;
@@ -92,8 +94,6 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
     if (cadastro.arquivo_path) {
       const fileName = cadastro.arquivo_path.split('/').pop() || 'arquivo';
-      setArquivoNome(fileName);
-      setArquivoPath(cadastro.arquivo_path);
 
       supabase.storage
         .from('cadastros-temp-files')
@@ -109,7 +109,11 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
             reader.onload = () => {
               const base64 = reader.result as string;
               const base64Puro = base64.split(',')[1];
-              setArquivoBase64(base64Puro);
+              setArquivos([{
+                base64: base64Puro,
+                nome: fileName,
+                path: cadastro.arquivo_path
+              }]);
             };
             reader.readAsDataURL(data);
           }
@@ -235,7 +239,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         contatos: formData.contatos,
         endereco: formData.endereco,
         dependentes: dependentes,
-        arquivo_path: arquivoPath || null,
+        arquivo_path: arquivos.length > 0 ? arquivos[0].path : null,
       };
 
       console.log('[CadastroModal] Dados para atualizar:', updateData);
@@ -277,11 +281,8 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   };
 
   const handleArquivoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) {
-      setArquivoBase64('');
-      setArquivoNome('');
-      setArquivoPath('');
+    const files = e.target.files;
+    if (!files || files.length === 0) {
       return;
     }
 
@@ -289,40 +290,51 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     setError('');
 
     try {
-      const fileExtension = file.name.split('.').pop();
-      const fileName = `${formData.nome || 'arquivo'}_${removeCPFMask(cadastro.cpf)}_${Date.now()}.${fileExtension}`;
-      const filePath = `cadastros/${cadastro.id}/${fileName}`;
+      const newArquivos: Array<{ base64: string; nome: string; path: string }> = [];
 
-      const { error: uploadError } = await supabase.storage
-        .from('cadastros-temp-files')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: true
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const fileExtension = file.name.split('.').pop();
+        const fileName = `${formData.nome || 'arquivo'}_${removeCPFMask(cadastro.cpf)}_${Date.now()}_${i}.${fileExtension}`;
+        const filePath = `cadastros/${cadastro.id}/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('cadastros-temp-files')
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: true
+          });
+
+        if (uploadError) {
+          throw uploadError;
+        }
+
+        const base64 = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const base64String = reader.result as string;
+            const base64Puro = base64String.split(',')[1];
+            resolve(base64Puro);
+          };
+          reader.readAsDataURL(file);
         });
 
-      if (uploadError) {
-        throw uploadError;
+        newArquivos.push({
+          base64,
+          nome: fileName,
+          path: filePath
+        });
       }
 
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64 = reader.result as string;
-        const base64Puro = base64.split(',')[1];
-        setArquivoBase64(base64Puro);
-        setArquivoNome(fileName);
-        setArquivoPath(filePath);
-        setSuccess('Arquivo carregado com sucesso! Clique em "Salvar" para manter.');
-        setTimeout(() => setSuccess(''), 3000);
-      };
-      reader.readAsDataURL(file);
+      setArquivos([...arquivos, ...newArquivos]);
+      setSuccess(`${newArquivos.length} arquivo(s) carregado(s) com sucesso!`);
+      setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
-      console.error('Erro ao fazer upload do arquivo:', err);
-      setError('Erro ao fazer upload do arquivo');
-      setArquivoBase64('');
-      setArquivoNome('');
-      setArquivoPath('');
+      console.error('Erro ao fazer upload dos arquivos:', err);
+      setError('Erro ao fazer upload dos arquivos');
     } finally {
       setUploadingFile(false);
+      e.target.value = '';
     }
   };
 
@@ -355,7 +367,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       return;
     }
 
-    if (config?.exigir_arquivo && !arquivoBase64) {
+    if (config?.exigir_arquivo && arquivos.length === 0) {
       setError('Campo obrigatório: Arquivo (documento)');
       return;
     }
@@ -466,7 +478,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
       const result = await enviarParaERP(cadastro.id, payload);
 
-      if (arquivoBase64 && result?.data?.dados?.dependentes && result.data.dados.dependentes.length > 0) {
+      if (arquivos.length > 0 && result?.data?.dados?.dependentes && result.data.dados.dependentes.length > 0) {
         try {
           const primeiroDepCodigo = result.data.dados.dependentes[0].codigo;
 
@@ -475,29 +487,31 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
             throw new Error('Sessão não encontrada');
           }
 
-          const uploadPayload = {
-            idFuncionario: funcionarioCadastroId,
-            idDependente: parseInt(primeiroDepCodigo),
-            arquivo: arquivoBase64,
-            arquivoNome: arquivoNome,
-          };
+          for (const arquivo of arquivos) {
+            const uploadPayload = {
+              idFuncionario: funcionarioCadastroId,
+              idDependente: parseInt(primeiroDepCodigo),
+              arquivo: arquivo.base64,
+              arquivoNome: arquivo.nome,
+            };
 
-          const uploadResponse = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-upload-documento`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${session.access_token}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(uploadPayload),
+            const uploadResponse = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-upload-documento`,
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${session.access_token}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(uploadPayload),
+              }
+            );
+
+            const uploadResult = await uploadResponse.json();
+
+            if (!uploadResponse.ok || !uploadResult.success) {
+              throw new Error(uploadResult.error || 'Erro ao enviar arquivo');
             }
-          );
-
-          const uploadResult = await uploadResponse.json();
-
-          if (!uploadResponse.ok || !uploadResult.success) {
-            throw new Error(uploadResult.error || 'Erro ao enviar arquivo');
           }
 
           console.log('Arquivo enviado com sucesso:', uploadResult);
@@ -687,7 +701,9 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
             </h2>
             <p className="text-sm text-slate-600 mt-1">CPF: {formatCPF(cadastro.cpf)}</p>
             {cadastro.vendedor_codigo && (
-              <p className="text-sm text-emerald-600 mt-0.5">Vendedor: Código {cadastro.vendedor_codigo}</p>
+              <p className="text-sm text-emerald-600 mt-0.5">
+                Vendedor: {cadastro.vendedor_nome || 'Nome não disponível'} (Código {cadastro.vendedor_codigo})
+              </p>
             )}
           </div>
           <button
@@ -967,44 +983,45 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
                   accept=".pdf,.jpg,.jpeg,.png"
                   onChange={handleArquivoChange}
                   disabled={uploadingFile}
+                  multiple
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <p className="text-xs text-slate-500 mt-1">
-                  Formatos aceitos: PDF, JPG, PNG. O arquivo será salvo temporariamente no servidor.
+                  Formatos aceitos: PDF, JPG, PNG. Você pode selecionar múltiplos arquivos.
                 </p>
                 {uploadingFile && (
                   <div className="flex items-center gap-2 mt-2">
                     <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
                     <p className="text-xs text-emerald-600 font-medium">
-                      Fazendo upload do arquivo...
+                      Fazendo upload dos arquivos...
                     </p>
                   </div>
                 )}
-                {arquivoNome && !uploadingFile && (
-                  <div className="flex items-center justify-between mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg">
-                    <p className="text-xs text-emerald-700 font-medium">
-                      Arquivo carregado: {arquivoNome}
-                    </p>
-                    <button
-                      onClick={async () => {
-                        if (arquivoPath) {
-                          try {
-                            await supabase.storage
-                              .from('cadastros-temp-files')
-                              .remove([arquivoPath]);
-                          } catch (err) {
-                            console.error('Erro ao remover arquivo:', err);
-                          }
-                        }
-                        setArquivoBase64('');
-                        setArquivoNome('');
-                        setArquivoPath('');
-                      }}
-                      className="p-1 text-red-600 hover:bg-red-100 rounded transition-colors"
-                      title="Remover arquivo"
-                    >
-                      <Trash className="w-4 h-4" />
-                    </button>
+                {arquivos.length > 0 && !uploadingFile && (
+                  <div className="mt-2 space-y-2">
+                    {arquivos.map((arquivo, index) => (
+                      <div key={index} className="flex items-center justify-between p-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+                        <p className="text-xs text-emerald-700 font-medium">
+                          {arquivo.nome}
+                        </p>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await supabase.storage
+                                .from('cadastros-temp-files')
+                                .remove([arquivo.path]);
+                            } catch (err) {
+                              console.error('Erro ao remover arquivo:', err);
+                            }
+                            setArquivos(arquivos.filter((_, i) => i !== index));
+                          }}
+                          className="p-1 text-red-600 hover:bg-red-100 rounded transition-colors"
+                          title="Remover arquivo"
+                        >
+                          <Trash className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
