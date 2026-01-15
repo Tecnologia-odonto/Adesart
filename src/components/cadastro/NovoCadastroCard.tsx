@@ -83,7 +83,6 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
 
           if (error) throw error;
 
-          console.log('Vendedores carregados:', data);
           setVendedores(data || []);
         } catch (err) {
           console.error('Error fetching vendedores:', err);
@@ -538,19 +537,27 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
 
           <div className="space-y-4">
             {needsVendedor && (
-              <Select
-                label="Vendedor"
-                value={selectedVendedor}
-                onChange={(e) => setSelectedVendedor(e.target.value)}
-                disabled={loading}
-              >
-                <option value="">Selecione um vendedor</option>
-                {vendedores.map((vendedor) => (
-                  <option key={vendedor.id} value={vendedor.id}>
-                    {vendedor.name || vendedor.email || 'Vendedor sem nome'} - Código: {vendedor.external_id}
-                  </option>
-                ))}
-              </Select>
+              <>
+                <Select
+                  label="Vendedor"
+                  value={selectedVendedor}
+                  onChange={(e) => setSelectedVendedor(e.target.value)}
+                  disabled={loading || vendedores.length === 0}
+                  required
+                >
+                  <option value="">Selecione um vendedor</option>
+                  {vendedores.map((vendedor) => (
+                    <option key={vendedor.id} value={vendedor.id}>
+                      {vendedor.name || vendedor.email || 'Vendedor sem nome'} - Código: {vendedor.external_id}
+                    </option>
+                  ))}
+                </Select>
+                {vendedores.length === 0 && (
+                  <div className="bg-amber-50 border border-amber-200 text-amber-700 px-4 py-3 rounded-lg text-sm">
+                    ⚠️ Nenhum vendedor disponível. Entre em contato com o administrador para cadastrar vendedores com código (ID Externo).
+                  </div>
+                )}
+              </>
             )}
 
             {adesionistas.length > 0 && profile?.role !== 'ADESIONISTA' && (
