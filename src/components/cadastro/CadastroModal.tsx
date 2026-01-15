@@ -11,6 +11,7 @@ import { DependentesSection, Dependente } from './DependentesSection';
 import { useAuth } from '../../contexts/AuthContext';
 import { useConfigCadastro } from '../../contexts/ConfigCadastroContext';
 import { DependenteAtivoModal } from './DependenteAtivoModal';
+import { supabase } from '../../lib/supabase';
 
 interface CadastroModalProps {
   cadastro: Cadastro;
@@ -21,7 +22,7 @@ interface CadastroModalProps {
 export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalProps) {
   const { updateCadastro, enviarParaERP, deleteCadastro, canDelete, consultarEnderecoCEP, searchEmpresa } = useCadastros();
   const { profile } = useAuth();
-  const { planos: planosMap } = useConfigCadastro();
+  const { planos: planosMap, config } = useConfigCadastro();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -36,6 +37,8 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     situacao: string;
   }>>([]);
   const [showDependentesAtivosModal, setShowDependentesAtivosModal] = useState(false);
+  const [arquivoBase64, setArquivoBase64] = useState<string>('');
+  const [arquivoNome, setArquivoNome] = useState<string>('');
 
   const funcionarioCadastroId = profile?.external_id ? parseInt(profile.external_id) : null;
 
@@ -244,6 +247,30 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     }
   };
 
+  const handleArquivoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setArquivoBase64('');
+      setArquivoNome('');
+      return;
+    }
+
+    try {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = reader.result as string;
+        const base64Puro = base64.split(',')[1];
+        setArquivoBase64(base64Puro);
+        const nomeArquivo = `${formData.nome}_${removeCPFMask(cadastro.cpf)}.${file.name.split('.').pop()}`;
+        setArquivoNome(nomeArquivo);
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error('Erro ao ler arquivo:', err);
+      setError('Erro ao processar arquivo');
+    }
+  };
+
   const handleEnviar = async () => {
     setError('');
     setSuccess('');
@@ -270,6 +297,11 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
     if (!funcionarioCadastroId) {
       setError('Código do usuário (External ID) não configurado. Configure seu código na página de Perfil antes de cadastrar.');
+      return;
+    }
+
+    if (config?.exigir_arquivo && !arquivoBase64) {
+      setError('Campo obrigatório: Arquivo (documento)');
       return;
     }
 
@@ -378,6 +410,49 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       );
 
       const result = await enviarParaERP(cadastro.id, payload);
+
+      if (arquivoBase64 && result?.data?.dados?.dependentes && result.data.dados.dependentes.length > 0) {
+        try {
+          const primeiroDepCodigo = result.data.dados.dependentes[0].codigo;
+
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) {
+            throw new Error('Sessão não encontrada');
+          }
+
+          const uploadPayload = {
+            idFuncionario: funcionarioCadastroId,
+            idDependente: parseInt(primeiroDepCodigo),
+            arquivo: arquivoBase64,
+            arquivoNome: arquivoNome,
+          };
+
+          const uploadResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-upload-documento`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(uploadPayload),
+            }
+          );
+
+          const uploadResult = await uploadResponse.json();
+
+          if (!uploadResponse.ok || !uploadResult.success) {
+            throw new Error(uploadResult.error || 'Erro ao enviar arquivo');
+          }
+
+          console.log('Arquivo enviado com sucesso:', uploadResult);
+        } catch (uploadErr: any) {
+          console.error('Erro ao enviar arquivo:', uploadErr);
+          setError(`Cadastro criado, mas erro ao enviar arquivo: ${uploadErr.message}`);
+          setLoading(false);
+          return;
+        }
+      }
 
       setSuccess('Cadastro enviado com sucesso para o ERP!');
       setTimeout(() => {
@@ -803,6 +878,31 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
                     })
                   }
                 />
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-slate-200 pt-6">
+            <h3 className="font-semibold text-slate-800 mb-4">Documento</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Arquivo {config?.exigir_arquivo && <span className="text-red-500">*</span>}
+                </label>
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={handleArquivoChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm"
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Formatos aceitos: PDF, JPG, PNG. O arquivo será enviado automaticamente após o cadastro no ERP.
+                </p>
+                {arquivoNome && (
+                  <p className="text-xs text-emerald-600 mt-1 font-medium">
+                    Arquivo selecionado: {arquivoNome}
+                  </p>
+                )}
               </div>
             </div>
           </div>

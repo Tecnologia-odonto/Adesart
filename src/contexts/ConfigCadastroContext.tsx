@@ -27,6 +27,7 @@ export interface CadastroConfig {
   situacoes_que_barram: number[];
   planos_validos: number[];
   planos_ocultos: string[];
+  exigir_arquivo: boolean;
   created_at: string;
   updated_at: string;
 }
