@@ -251,7 +251,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       cpf: '',
       sexo: 0,
       plano: 0,
-      planoValor: '0,00',
+      planoValor: '0.00',
       nomeMae: '',
       dataNascimento: '',
       carenciaAtendimento: 1,
@@ -951,28 +951,50 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
 
                           <Select
                             label="Plano"
-                            value={dep.plano.toString()}
+                            value={String(dep.plano)}
                             onChange={(e) => {
-                              const planoSelecionado = parseInt(e.target.value);
-                              handleAtualizarDependente(index, 'plano', planoSelecionado);
+                              const planoSelecionado = parseInt(e.target.value, 10);
+
+                              // garante comparação numérica (evita Plano vir string)
+                              const planoEmpresaSelecionado = planosEmpresa.find(
+                                (p) => Number(p.Plano) === planoSelecionado
+                              );
+
+                              const valorPlano = Number(planoEmpresaSelecionado?.Preco ?? 0);
+                              const valorFormatado = valorPlano.toFixed(2);
+
+                              // ✅ Atualiza os 2 campos de uma vez (não perde o select)
+                              setDependentes((prev) => {
+                                const next = [...prev];
+                                next[index] = {
+                                  ...next[index],
+                                  plano: planoSelecionado,
+                                  planoValor: valorFormatado,
+                                };
+                                return next;
+                              });
                             }}
                             required
                             disabled={dep.saved || loadingEmpresa}
                           >
                             <option value="0">
-                              {loadingEmpresa ? 'Carregando planos...' : 'Selecione um plano'}
+                              {loadingEmpresa ? "Carregando planos..." : "Selecione um plano"}
                             </option>
+
                             {planosEmpresa
-                              .filter(p => !config?.planos_ocultos?.includes(p.Plano?.toString()))
+                              .filter((p) => !config?.planos_ocultos?.includes(p.Plano?.toString()))
                               .map((planoEmpresa) => {
-                                const planoMap = planos.find(pm => pm.plano_id === planoEmpresa.Plano);
+                                const planoMap = planos.find((pm) => pm.plano_id === planoEmpresa.Plano);
                                 return (
                                   <option key={planoEmpresa.Plano} value={planoEmpresa.Plano}>
-                                    {planoMap?.nome_exibicao || planoEmpresa.NomeANS || `Plano ${planoEmpresa.Plano}`}
+                                    {planoMap?.nome_exibicao ||
+                                      planoEmpresa.NomeANS ||
+                                      `Plano ${planoEmpresa.Plano}`}
                                   </option>
                                 );
                               })}
                           </Select>
+
 
                           <div className="md:col-span-2">
                             <Input
