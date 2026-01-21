@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 export interface Cadastro {
   id: string;
   status: 'incompleto' | 'enviado' | 'erro_envio';
+  tipo_cadastro: 'cadastro' | 'inclusao_dependente';
   created_by: string;
   team_id: string | null;
   cpf: string;
@@ -24,6 +25,7 @@ export interface Cadastro {
   empresa_id: number | null;
   empresa_nome: string | null;
   empresa_cnpj: string | null;
+  empresa_codigo: number | null;
   empresa_raw: unknown;
   empresa_exige_matricula: number | null;
   numero_matricula: string | null;
@@ -37,6 +39,12 @@ export interface Cadastro {
   adesionista_codigo: string | null;
   adesionista_nome: string | null;
   arquivo_path: string | null;
+  responsavel_financeiro_codigo: number | null;
+  responsavel_financeiro_nome: string | null;
+  responsavel_financeiro_cpf: string | null;
+  parentesco: number | null;
+  plano_codigo: number | null;
+  plano_nome: string | null;
   created_at: string;
   updated_at: string;
 }

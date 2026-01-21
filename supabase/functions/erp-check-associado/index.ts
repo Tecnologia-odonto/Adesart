@@ -95,11 +95,11 @@ Deno.serve(async (req: Request) => {
     }
 
     requestBody = await req.json();
-    const { cpf } = requestBody;
+    const { cpf, codigoAssociado } = requestBody;
 
-    if (!cpf) {
+    if (!cpf && !codigoAssociado) {
       statusCode = 400;
-      errorMessage = "CPF é obrigatório";
+      errorMessage = "CPF ou Código do Associado é obrigatório";
       responseBody = { error: errorMessage };
 
       await saveLog(supabase, {
@@ -124,36 +124,44 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const cpfLimpo = cpf.replace(/\D/g, "");
+    let erpUrl = `${ERP_BASE_URL}/v2/api/associados?token=${ERP_TOKEN}`;
 
-    if (cpfLimpo.length !== 11) {
-      statusCode = 400;
-      errorMessage = "CPF deve conter 11 dígitos";
-      responseBody = { error: errorMessage };
+    if (codigoAssociado) {
+      erpUrl += `&codigoAssociado=${codigoAssociado}`;
+    } else if (cpf) {
+      const cpfLimpo = cpf.replace(/\D/g, "");
 
-      await saveLog(supabase, {
-        user_id: userId,
-        user_email: userEmail,
-        endpoint: "erp-check-associado",
-        method: "POST",
-        request_body: requestBody,
-        response_body: responseBody,
-        status_code: statusCode,
-        success: false,
-        error_message: errorMessage,
-        duration_ms: Date.now() - startTime,
-      });
+      if (cpfLimpo.length !== 11) {
+        statusCode = 400;
+        errorMessage = "CPF deve conter 11 dígitos";
+        responseBody = { error: errorMessage };
 
-      return new Response(
-        JSON.stringify(responseBody),
-        {
-          status: statusCode,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+        await saveLog(supabase, {
+          user_id: userId,
+          user_email: userEmail,
+          endpoint: "erp-check-associado",
+          method: "POST",
+          request_body: requestBody,
+          response_body: responseBody,
+          status_code: statusCode,
+          success: false,
+          error_message: errorMessage,
+          duration_ms: Date.now() - startTime,
+        });
+
+        return new Response(
+          JSON.stringify(responseBody),
+          {
+            status: statusCode,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      erpUrl += `&cpfAssociado=${cpfLimpo}`;
     }
 
-    const erpUrl = `${ERP_BASE_URL}/v2/api/associados?token=${ERP_TOKEN}&cpfDependente=${cpfLimpo}`;
+    erpUrl += `&incluirAns=true`;
 
     const erpResponse = await fetch(erpUrl, {
       method: "GET",

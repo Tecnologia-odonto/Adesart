@@ -27,6 +27,8 @@ export function CadastrosIncompletosList({ cadastros, onSelect }: CadastrosIncom
   const [expandedEmpresas, setExpandedEmpresas] = useState<Set<string>>(new Set());
   const [filtroEmpresa, setFiltroEmpresa] = useState<string>('');
   const [filtroBusca, setFiltroBusca] = useState<string>('');
+  const [dataInicio, setDataInicio] = useState<string>('');
+  const [dataFim, setDataFim] = useState<string>('');
 
   const incompletos = cadastros.filter((c) => c.status === 'incompleto');
 
@@ -66,9 +68,13 @@ export function CadastrosIncompletosList({ cadastros, onSelect }: CadastrosIncom
         cadastro.nome?.toLowerCase().includes(filtroBusca.toLowerCase()) ||
         cadastro.cpf.includes(filtroBusca.replace(/\D/g, ''));
 
-      return matchEmpresa && matchBusca;
+      const dataEnvio = cadastro.data_envio ? new Date(cadastro.data_envio) : null;
+      const matchDataInicio = !dataInicio || !dataEnvio || dataEnvio >= new Date(dataInicio);
+      const matchDataFim = !dataFim || !dataEnvio || dataEnvio <= new Date(dataFim + 'T23:59:59');
+
+      return matchEmpresa && matchBusca && matchDataInicio && matchDataFim;
     });
-  }, [incompletos, filtroEmpresa, filtroBusca]);
+  }, [incompletos, filtroEmpresa, filtroBusca, dataInicio, dataFim]);
 
   const empresasGrouped: EmpresaGroup[] = [];
   const cadastrosMap = new Map<string, Cadastro[]>();
@@ -147,9 +153,11 @@ export function CadastrosIncompletosList({ cadastros, onSelect }: CadastrosIncom
   const limparFiltros = () => {
     setFiltroEmpresa('');
     setFiltroBusca('');
+    setDataInicio('');
+    setDataFim('');
   };
 
-  const temFiltrosAtivos = filtroEmpresa || filtroBusca;
+  const temFiltrosAtivos = filtroEmpresa || filtroBusca || dataInicio || dataFim;
 
   return (
     <>
@@ -168,7 +176,7 @@ export function CadastrosIncompletosList({ cadastros, onSelect }: CadastrosIncom
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Select
             label="Empresa"
             value={filtroEmpresa}
@@ -201,6 +209,20 @@ export function CadastrosIncompletosList({ cadastros, onSelect }: CadastrosIncom
               </button>
             )}
           </div>
+
+          <Input
+            type="date"
+            label="Data Início (Envio)"
+            value={dataInicio}
+            onChange={(e) => setDataInicio(e.target.value)}
+          />
+
+          <Input
+            type="date"
+            label="Data Fim (Envio)"
+            value={dataFim}
+            onChange={(e) => setDataFim(e.target.value)}
+          />
         </div>
 
         {temFiltrosAtivos && (
@@ -267,6 +289,11 @@ export function CadastrosIncompletosList({ cadastros, onSelect }: CadastrosIncom
                               <h4 className="font-medium text-slate-800 truncate">
                                 {cadastro.nome || formatCPF(cadastro.cpf)}
                               </h4>
+                              {cadastro.tipo_cadastro === 'inclusao_dependente' && (
+                                <span className="inline-flex items-center px-2 py-1 rounded-lg text-xs font-medium bg-blue-50 text-blue-600">
+                                  Inclusão de Dependente
+                                </span>
+                              )}
                               {isBlocked && (
                                 <span className="inline-flex items-center px-2 py-1 rounded-lg text-xs font-medium bg-red-50 text-red-600">
                                   <Ban className="w-3 h-3 mr-1" />

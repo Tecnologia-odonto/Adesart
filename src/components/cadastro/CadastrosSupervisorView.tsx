@@ -200,6 +200,11 @@ export function CadastrosSupervisorView({ cadastros, onSelect, statusFilter }: P
                                         <h5 className="font-medium text-slate-800 text-sm truncate">
                                           {cadastro.nome || formatCPF(cadastro.cpf)}
                                         </h5>
+                                        {cadastro.tipo_cadastro === 'inclusao_dependente' && (
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600">
+                                            Inclusão de Dependente
+                                          </span>
+                                        )}
                                         {isBlocked && (
                                           <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-600">
                                             <Ban className="w-3 h-3 mr-1" />

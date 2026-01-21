@@ -25,6 +25,8 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
   const [viewDetails, setViewDetails] = useState<Cadastro | null>(null);
   const [filtroEmpresa, setFiltroEmpresa] = useState<string>('');
   const [filtroBusca, setFiltroBusca] = useState<string>('');
+  const [dataInicio, setDataInicio] = useState<string>('');
+  const [dataFim, setDataFim] = useState<string>('');
 
   const completos = cadastros.filter((c) => c.status === 'enviado');
 
@@ -64,9 +66,13 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
         cadastro.nome?.toLowerCase().includes(filtroBusca.toLowerCase()) ||
         cadastro.cpf.includes(filtroBusca.replace(/\D/g, ''));
 
-      return matchEmpresa && matchBusca;
+      const dataEnvio = cadastro.data_envio ? new Date(cadastro.data_envio) : null;
+      const matchDataInicio = !dataInicio || !dataEnvio || dataEnvio >= new Date(dataInicio);
+      const matchDataFim = !dataFim || !dataEnvio || dataEnvio <= new Date(dataFim + 'T23:59:59');
+
+      return matchEmpresa && matchBusca && matchDataInicio && matchDataFim;
     });
-  }, [completos, filtroEmpresa, filtroBusca]);
+  }, [completos, filtroEmpresa, filtroBusca, dataInicio, dataFim]);
 
   const empresasGrouped: EmpresaGroup[] = [];
   const cadastrosMap = new Map<string, Cadastro[]>();
@@ -119,9 +125,11 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
   const limparFiltros = () => {
     setFiltroEmpresa('');
     setFiltroBusca('');
+    setDataInicio('');
+    setDataFim('');
   };
 
-  const temFiltrosAtivos = filtroEmpresa || filtroBusca;
+  const temFiltrosAtivos = filtroEmpresa || filtroBusca || dataInicio || dataFim;
 
   return (
     <>
@@ -140,7 +148,7 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Select
             label="Empresa"
             value={filtroEmpresa}
@@ -173,6 +181,20 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
               </button>
             )}
           </div>
+
+          <Input
+            type="date"
+            label="Data Início (Envio)"
+            value={dataInicio}
+            onChange={(e) => setDataInicio(e.target.value)}
+          />
+
+          <Input
+            type="date"
+            label="Data Fim (Envio)"
+            value={dataFim}
+            onChange={(e) => setDataFim(e.target.value)}
+          />
         </div>
 
         {temFiltrosAtivos && (

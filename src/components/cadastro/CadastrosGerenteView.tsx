@@ -300,6 +300,11 @@ export function CadastrosGerenteView({ cadastros, onSelect, statusFilter }: Prop
                                                   <h6 className="font-medium text-slate-800 text-xs truncate">
                                                     {cadastro.nome || formatCPF(cadastro.cpf)}
                                                   </h6>
+                                                  {cadastro.tipo_cadastro === 'inclusao_dependente' && (
+                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600">
+                                                      Inclusão de Dependente
+                                                    </span>
+                                                  )}
                                                   {isBlocked && (
                                                     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-50 text-red-600">
                                                       <Ban className="w-3 h-3 mr-0.5" />

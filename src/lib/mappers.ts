@@ -155,23 +155,12 @@ export function buildERPPayload(
   vendedorCodigo?: string | null,
   funcionarioCadastroId?: number | null,
   userRole?: string | null,
-  userExternalId?: string | null,
-  adesionistaCodigo?: string | null
+  userExternalId?: string | null
 ): Record<string, unknown> {
   const sexoDescricao = cadastro.sexoCodigo === 1 ? 'Masculino' : 'Feminino';
 
-  const isCadastroOrAdesionista = userRole === 'CADASTRO' || userRole === 'ADESIONISTA';
-
-  let codigoParceiro: number;
-  let funcionarioCadastroCode: number;
-
-  if (isCadastroOrAdesionista) {
-    codigoParceiro = vendedorCodigo ? parseInt(vendedorCodigo) : (funcionarioCadastroId || 0);
-    funcionarioCadastroCode = userExternalId ? parseInt(userExternalId) : (funcionarioCadastroId || 0);
-  } else {
-    codigoParceiro = vendedorCodigo ? parseInt(vendedorCodigo) : (funcionarioCadastroId || 0);
-    funcionarioCadastroCode = codigoParceiro;
-  }
+  const codigoParceiro = userExternalId ? parseInt(userExternalId) : (funcionarioCadastroId || 0);
+  const funcionarioCadastroCode = codigoParceiro;
 
   const contatosRespFin = cadastro.contatos.map(contato => {
     let tipo: number;
@@ -228,10 +217,6 @@ export function buildERPPayload(
     codigo: codigoParceiro,
     tipoCobranca: 1,
   };
-
-  if (adesionistaCodigo && adesionistaCodigo.trim() !== '') {
-    parceiroObj.adesionista = parseInt(adesionistaCodigo);
-  }
 
   const payload = {
     dados: {

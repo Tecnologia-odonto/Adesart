@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { AlertCircle, CheckCircle, Clock, User } from 'lucide-react';
+import { AlertCircle, CheckCircle, Clock, User, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Input } from '../Input';
 
 interface ApiLog {
   id: string;
@@ -21,30 +22,58 @@ export function ApiLogsTable() {
   const [loading, setLoading] = useState(true);
   const [selectedLog, setSelectedLog] = useState<ApiLog | null>(null);
   const [filter, setFilter] = useState<'all' | 'success' | 'error'>('all');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [dataInicio, setDataInicio] = useState('');
+  const [dataFim, setDataFim] = useState('');
+  const pageSize = 100;
 
   useEffect(() => {
     fetchLogs();
-  }, [filter]);
+  }, [filter, page, dataInicio, dataFim]);
 
   const fetchLogs = async () => {
     try {
       setLoading(true);
+
+      let countQuery = supabase
+        .from('api_logs')
+        .select('*', { count: 'exact', head: true });
+
       let query = supabase
         .from('api_logs')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(100);
+        .range((page - 1) * pageSize, page * pageSize - 1);
 
       if (filter === 'success') {
         query = query.eq('success', true);
+        countQuery = countQuery.eq('success', true);
       } else if (filter === 'error') {
         query = query.eq('success', false);
+        countQuery = countQuery.eq('success', false);
+      }
+
+      if (dataInicio) {
+        const startDate = new Date(dataInicio);
+        startDate.setHours(0, 0, 0, 0);
+        query = query.gte('created_at', startDate.toISOString());
+        countQuery = countQuery.gte('created_at', startDate.toISOString());
+      }
+
+      if (dataFim) {
+        const endDate = new Date(dataFim);
+        endDate.setHours(23, 59, 59, 999);
+        query = query.lte('created_at', endDate.toISOString());
+        countQuery = countQuery.lte('created_at', endDate.toISOString());
       }
 
       const { data, error } = await query;
+      const { count } = await countQuery;
 
       if (error) throw error;
       setLogs(data || []);
+      setTotalPages(Math.ceil((count || 0) / pageSize));
     } catch (error) {
       console.error('Error fetching logs:', error);
     } finally {
@@ -65,37 +94,62 @@ export function ApiLogsTable() {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2">
-        <button
-          onClick={() => setFilter('all')}
-          className={`px-4 py-2 rounded-lg ${
-            filter === 'all'
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-          }`}
-        >
-          Todos
-        </button>
-        <button
-          onClick={() => setFilter('success')}
-          className={`px-4 py-2 rounded-lg ${
-            filter === 'success'
-              ? 'bg-green-600 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-          }`}
-        >
-          Sucesso
-        </button>
-        <button
-          onClick={() => setFilter('error')}
-          className={`px-4 py-2 rounded-lg ${
-            filter === 'error'
-              ? 'bg-red-600 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-          }`}
-        >
-          Erros
-        </button>
+      <div className="flex flex-col gap-4">
+        <div className="flex gap-2">
+          <button
+            onClick={() => { setFilter('all'); setPage(1); }}
+            className={`px-4 py-2 rounded-lg ${
+              filter === 'all'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            Todos
+          </button>
+          <button
+            onClick={() => { setFilter('success'); setPage(1); }}
+            className={`px-4 py-2 rounded-lg ${
+              filter === 'success'
+                ? 'bg-green-600 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            Sucesso
+          </button>
+          <button
+            onClick={() => { setFilter('error'); setPage(1); }}
+            className={`px-4 py-2 rounded-lg ${
+              filter === 'error'
+                ? 'bg-red-600 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            Erros
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <Input
+            type="date"
+            label="Data Início"
+            value={dataInicio}
+            onChange={(e) => { setDataInicio(e.target.value); setPage(1); }}
+          />
+          <Input
+            type="date"
+            label="Data Fim"
+            value={dataFim}
+            onChange={(e) => { setDataFim(e.target.value); setPage(1); }}
+          />
+          <div className="flex items-end">
+            <button
+              onClick={() => { setDataInicio(''); setDataFim(''); setPage(1); }}
+              className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+            >
+              Limpar Filtros
+            </button>
+          </div>
+        </div>
       </div>
 
       {loading ? (
@@ -163,6 +217,30 @@ export function ApiLogsTable() {
               ))}
             </tbody>
           </table>
+
+          <div className="flex items-center justify-between mt-4 px-4 py-3 bg-gray-50 rounded-lg">
+            <div className="text-sm text-gray-600">
+              Página {page} de {totalPages} ({logs.length} registros)
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-3 py-1 rounded bg-blue-600 text-white disabled:bg-gray-300 disabled:cursor-not-allowed hover:bg-blue-700 flex items-center gap-1"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Anterior
+              </button>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="px-3 py-1 rounded bg-blue-600 text-white disabled:bg-gray-300 disabled:cursor-not-allowed hover:bg-blue-700 flex items-center gap-1"
+              >
+                Próxima
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
