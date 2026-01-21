@@ -302,7 +302,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       setError(`Dependente ${index + 1}: Data de nascimento é obrigatória`);
       return;
     }
-    if (dep.sexo === null || dep.sexo === undefined || dep.sexo === 0) {
+    if (dep.sexo === null || dep.sexo === undefined) {
       setError(`Dependente ${index + 1}: Sexo é obrigatório`);
       return;
     }
@@ -957,9 +957,9 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                             required={!isMenorDeIdade(dep.dataNascimento)}
                             disabled={dep.saved}
                           >
-                            <option value="0">Selecione</option>
+                            <option value="">Selecione</option>
                             <option value="1">Masculino</option>
-                            <option value="2">Feminino</option>
+                            <option value="0">Feminino</option>
                           </Select>
 
                           <Select
