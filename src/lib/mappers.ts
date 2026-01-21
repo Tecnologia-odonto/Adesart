@@ -159,8 +159,13 @@ export function buildERPPayload(
 ): Record<string, unknown> {
   const sexoDescricao = cadastro.sexoCodigo === 1 ? 'Masculino' : 'Feminino';
 
-  const codigoParceiro = userExternalId ? parseInt(userExternalId) : (funcionarioCadastroId || 0);
-  const funcionarioCadastroCode = codigoParceiro;
+  // ✅ vendedor selecionado (vai para dados.parceiro.codigo)
+  const codigoParceiro = vendedorCodigo ? parseInt(vendedorCodigo) : 0;
+
+  // ✅ usuário logado (vai para dependente[].funcionarioCadastro)
+  const funcionarioCadastroCode = userExternalId
+    ? parseInt(userExternalId)
+    : (funcionarioCadastroId || 0);
 
   const contatosRespFin = cadastro.contatos.map(contato => {
     let tipo: number;
