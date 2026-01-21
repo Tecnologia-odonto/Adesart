@@ -985,15 +985,37 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                             onChange={(e) => {
                               const planoSelecionado = parseInt(e.target.value, 10);
 
-                              // garante comparação numérica (evita Plano vir string)
                               const planoEmpresaSelecionado = planosEmpresa.find(
                                 (p) => Number(p.Plano) === planoSelecionado
                               );
 
-                              const valorPlano = Number(planoEmpresaSelecionado?.Preco ?? 0);
-                              const valorFormatado = valorPlano.toFixed(2);
+                              const planoMap = planos.find((pm) => Number(pm.plano_id) === planoSelecionado);
 
-                              // ✅ Atualiza os 2 campos de uma vez (não perde o select)
+                              const nomePlano =
+                                planoMap?.nome_exibicao ||
+                                planoEmpresaSelecionado?.NomeANS ||
+                                `Plano ${planoSelecionado}`;
+
+                              // CORREÇÃO: usar SEMPRE ValorTitular
+                              const valorTitular = Number(planoEmpresaSelecionado?.ValorTitular ?? 0);
+                              const valorFormatado = valorTitular.toFixed(2);
+
+                              console.log("[Plano Select]", {
+                                planoSelecionado,
+                                nomePlano,
+                                planoEmpresaSelecionado,
+                                valorTitular,
+                                valorFormatado,
+                                totalPlanosEmpresa: planosEmpresa?.length ?? 0,
+                              });
+
+                              if (!planoEmpresaSelecionado && planoSelecionado !== 0) {
+                                console.warn("[Plano Select] Plano não encontrado em planosEmpresa", {
+                                  planoSelecionado,
+                                  samplePlanosEmpresa: (planosEmpresa || []).slice(0, 5),
+                                });
+                              }
+
                               setDependentes((prev) => {
                                 const next = [...prev];
                                 next[index] = {
@@ -1024,6 +1046,9 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                                 );
                               })}
                           </Select>
+
+
+
 
 
                           <div className="md:col-span-2">
