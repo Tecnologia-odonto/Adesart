@@ -64,6 +64,33 @@ interface DependenteForm {
   saved: boolean;
 }
 
+
+const getIdade = (dataNascimento?: string) => {
+  if (!dataNascimento) return null;
+
+  // Espera formato "YYYY-MM-DD"
+  const [yyyy, mm, dd] = dataNascimento.split('-').map(Number);
+  if (!yyyy || !mm || !dd) return null;
+
+  const hoje = new Date();
+  const nascimento = new Date(yyyy, mm - 1, dd);
+
+  let idade = hoje.getFullYear() - nascimento.getFullYear();
+
+  const jaFezAniversarioEsteAno =
+    hoje.getMonth() > nascimento.getMonth() ||
+    (hoje.getMonth() === nascimento.getMonth() && hoje.getDate() >= nascimento.getDate());
+
+  if (!jaFezAniversarioEsteAno) idade--;
+
+  return idade;
+};
+
+const isMenorDeIdade = (dataNascimento?: string) => {
+  const idade = getIdade(dataNascimento);
+  return idade !== null && idade < 18;
+};
+
 export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependenteModalProps) {
   const { profile } = useAuth();
   const { config, planos, parentescos } = useConfigCadastro();
@@ -267,7 +294,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       setError(`Dependente ${index + 1}: Nome é obrigatório`);
       return;
     }
-    if (!dep.cpf) {
+    if (!isMenorDeIdade(dep.dataNascimento) && !dep.cpf) {
       setError(`Dependente ${index + 1}: CPF é obrigatório`);
       return;
     }
@@ -318,12 +345,14 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
   };
 
   const handleAtualizarDependente = (index: number, campo: string, valor: any) => {
-    const novosDependentes = [...dependentes];
-    novosDependentes[index] = {
-      ...novosDependentes[index],
-      [campo]: valor,
-    };
-    setDependentes(novosDependentes);
+    setDependentes((prev) => {
+      const next = [...prev];
+      next[index] = {
+        ...next[index],
+        [campo]: valor,
+      };
+      return next;
+    });
   };
 
   const handleArquivoChange = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
@@ -358,7 +387,8 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
 
       const fileExtension = file.name.split('.').pop();
       const cpfLimpo = removeCPFMask(dependente.cpf);
-      const fileName = `dependente_${cpfLimpo}_${Date.now()}.${fileExtension}`;
+      const cpfArquivo = cpfLimpo && cpfLimpo.trim() ? cpfLimpo : '0';
+      const fileName = `dependente_${cpfArquivo}_${Date.now()}.${fileExtension}`;
       const filePath = `dependentes-temp/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
@@ -454,7 +484,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
           empresa_nome: responsavelSelecionado.empresa,
           empresa_codigo: responsavelSelecionado.codigoEmpresa,
           nome: dep.nome,
-          cpf: removeCPFMask(dep.cpf),
+          cpf: isMenorDeIdade(dep.dataNascimento) ? '0' : removeCPFMask(dep.cpf),
           data_nascimento: dep.dataNascimento,
           sexo: dep.sexo === 1 ? 'Masculino' : 'Feminino',
           parentesco: dep.tipo,
@@ -529,7 +559,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
         setError(`Dependente ${i + 1}: Nome é obrigatório`);
         return;
       }
-      if (!dep.cpf) {
+      if (!isMenorDeIdade(dep.dataNascimento) && !dep.cpf) {
         setError(`Dependente ${i + 1}: CPF é obrigatório`);
         return;
       }
@@ -571,7 +601,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       const dependentesPayload = dependentesSalvos.map(dep => ({
         tipo: dep.tipo,
         nome: dep.nome,
-        cpf: removeCPFMask(dep.cpf),
+        cpf: isMenorDeIdade(dep.dataNascimento) ? '0' : removeCPFMask(dep.cpf),
         sexo: dep.sexo,
         plano: dep.plano,
         planoValor: dep.planoValor,
@@ -908,7 +938,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                             label="CPF"
                             value={dep.cpf}
                             onChange={(e) => handleAtualizarDependente(index, 'cpf', e.target.value)}
-                            required
+                            required={!isMenorDeIdade(dep.dataNascimento)}
                             disabled={dep.saved}
                           />
 
@@ -916,7 +946,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                             label="Data de Nascimento"
                             value={dep.dataNascimento}
                             onChange={(e) => handleAtualizarDependente(index, 'dataNascimento', e.target.value)}
-                            required
+                            required={!isMenorDeIdade(dep.dataNascimento)}
                             disabled={dep.saved}
                           />
 
@@ -924,7 +954,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                             label="Sexo"
                             value={dep.sexo.toString()}
                             onChange={(e) => handleAtualizarDependente(index, 'sexo', parseInt(e.target.value))}
-                            required
+                            required={!isMenorDeIdade(dep.dataNascimento)}
                             disabled={dep.saved}
                           >
                             <option value="0">Selecione</option>
@@ -936,7 +966,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                             label="Parentesco"
                             value={dep.tipo.toString()}
                             onChange={(e) => handleAtualizarDependente(index, 'tipo', parseInt(e.target.value))}
-                            required
+                            required={!isMenorDeIdade(dep.dataNascimento)}
                             disabled={dep.saved}
                           >
                             <option value="0">Selecione</option>
