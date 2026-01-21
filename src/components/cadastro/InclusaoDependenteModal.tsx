@@ -588,7 +588,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
         numeroCarteira: "",
         observacaoUsuario: "",
         dataNascimento: dep.dataNascimento,
-        funcionarioCadastro: codigoParceiro,
+        funcionarioCadastro: funcionarioCadastroId,
         dataCadastroLoteContrato: "",
         estadoCivil: 0
       }));
