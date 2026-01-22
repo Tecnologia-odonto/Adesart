@@ -484,7 +484,14 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
           empresa_nome: responsavelSelecionado.empresa,
           empresa_codigo: responsavelSelecionado.codigoEmpresa,
           nome: dep.nome,
-          cpf: isMenorDeIdade(dep.dataNascimento) ? '0' : removeCPFMask(dep.cpf),
+          cpf: (() => {
+          const cpfLimpo = removeCPFMask(dep.cpf || '').trim();
+          if (isMenorDeIdade(dep.dataNascimento)) {
+            return cpfLimpo ? cpfLimpo : '';
+          }
+          // ✅ maior de idade: API não aceita vazio
+          return cpfLimpo ? cpfLimpo : '0';
+        })(),
           data_nascimento: dep.dataNascimento,
           sexo: dep.sexo === 1 ? 'Masculino' : 'Feminino',
           parentesco: dep.tipo,
@@ -601,7 +608,14 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       const dependentesPayload = dependentesSalvos.map(dep => ({
         tipo: dep.tipo,
         nome: dep.nome,
-        cpf: isMenorDeIdade(dep.dataNascimento) ? '0' : removeCPFMask(dep.cpf),
+        cpf: (() => {
+          const cpfLimpo = removeCPFMask(dep.cpf || '').trim();
+          if (isMenorDeIdade(dep.dataNascimento)) {
+            return cpfLimpo ? cpfLimpo : '';
+          }
+          // ✅ maior de idade: API não aceita vazio
+          return cpfLimpo ? cpfLimpo : '0';
+        })(),
         sexo: dep.sexo,
         plano: dep.plano,
         planoValor: dep.planoValor,
