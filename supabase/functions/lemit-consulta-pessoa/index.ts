@@ -7,6 +7,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+const LEMMIT_COST = 0.12;
+
 async function saveLog(
   supabase: any,
   logData: {
@@ -20,6 +22,7 @@ async function saveLog(
     success: boolean;
     error_message?: string;
     duration_ms: number;
+    cost?: number;
   }
 ) {
   try {
@@ -61,10 +64,10 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const LEMIT_TOKEN = Deno.env.get("LEMIT_TOKEN");
+    const LEMMIT_API_KEY = Deno.env.get("LEMMIT_API_KEY");
 
-    if (!LEMIT_TOKEN) {
-      throw new Error("LEMIT_TOKEN not configured");
+    if (!LEMMIT_API_KEY) {
+      throw new Error("LEMMIT_API_KEY not configured");
     }
 
     requestBody = await req.json();
@@ -86,6 +89,7 @@ Deno.serve(async (req: Request) => {
         success: false,
         error_message: errorMessage,
         duration_ms: Date.now() - startTime,
+        cost: 0,
       });
 
       return new Response(
@@ -115,6 +119,7 @@ Deno.serve(async (req: Request) => {
         success: false,
         error_message: errorMessage,
         duration_ms: Date.now() - startTime,
+        cost: 0,
       });
 
       return new Response(
@@ -126,26 +131,25 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const formBody = new URLSearchParams();
-    formBody.append("documento", cpfLimpo);
-
-    const lemitResponse = await fetch(
-      "https://api.lemit.com.br/api/v1/consulta/pessoa",
+    const lemmitResponse = await fetch(
+      "http://189.84.127.130:8080/webhook/5e534e38-6f87-400b-a441-821559c6c2e9",
       {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${LEMIT_TOKEN}`,
-          "Content-Type": "application/x-www-form-urlencoded",
+          "ApiKey": LEMMIT_API_KEY,
+          "Content-Type": "application/json",
         },
-        body: formBody.toString(),
+        body: JSON.stringify({
+          documento: cpfLimpo,
+        }),
       }
     );
 
-    const responseData = await lemitResponse.json();
-    statusCode = lemitResponse.status;
+    const responseData = await lemmitResponse.json();
+    statusCode = lemmitResponse.status;
 
-    if (!lemitResponse.ok) {
-      errorMessage = responseData.message || "Erro ao consultar CPF na Lemit";
+    if (!lemmitResponse.ok) {
+      errorMessage = responseData.message || "Erro ao consultar CPF na Lemmit";
       responseBody = {
         error: errorMessage,
         details: responseData,
@@ -162,6 +166,7 @@ Deno.serve(async (req: Request) => {
         success: false,
         error_message: errorMessage,
         duration_ms: Date.now() - startTime,
+        cost: LEMMIT_COST,
       });
 
       return new Response(
@@ -173,8 +178,45 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    if (!responseData.pessoa || Object.keys(responseData.pessoa).length === 0) {
+      errorMessage = "Dados não encontrados ou vazios na Lemmit";
+      responseBody = {
+        error: errorMessage,
+        empty: true,
+      };
+
+      await saveLog(supabase, {
+        user_id: userId,
+        user_email: userEmail,
+        endpoint: "lemit-consulta-pessoa",
+        method: "POST",
+        request_body: requestBody,
+        response_body: responseBody,
+        status_code: 404,
+        success: false,
+        error_message: errorMessage,
+        duration_ms: Date.now() - startTime,
+        cost: LEMMIT_COST,
+      });
+
+      return new Response(
+        JSON.stringify(responseBody),
+        {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     success = true;
     responseBody = responseData;
+
+    if (userId) {
+      await supabase.rpc('decrement_lemmit_balance', {
+        user_id: userId,
+        amount: LEMMIT_COST
+      });
+    }
 
     await saveLog(supabase, {
       user_id: userId,
@@ -186,6 +228,7 @@ Deno.serve(async (req: Request) => {
       status_code: 200,
       success: true,
       duration_ms: Date.now() - startTime,
+      cost: LEMMIT_COST,
     });
 
     return new Response(
@@ -214,6 +257,7 @@ Deno.serve(async (req: Request) => {
       success: false,
       error_message: errorMessage,
       duration_ms: Date.now() - startTime,
+      cost: 0,
     });
 
     return new Response(

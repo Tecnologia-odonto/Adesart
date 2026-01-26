@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Plus, Trash2, Edit2, X, Check } from 'lucide-react';
+import { Plus, Trash2, Edit2, X, Check, Loader2 } from 'lucide-react';
 import { Input } from '../Input';
 import { Select } from '../Select';
 import { Button } from '../Button';
 import { DateInput } from '../DateInput';
 import { formatCPF, formatDate } from '../../lib/cpf';
 import { useConfigCadastro } from '../../contexts/ConfigCadastroContext';
+import { supabase } from '../../lib/supabase';
 
 export interface Dependente {
   tipo: number;
@@ -37,6 +38,7 @@ export function DependentesSection({
   const { parentescos, config } = useConfigCadastro();
   const [isAdding, setIsAdding] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [consultandoLemmit, setConsultandoLemmit] = useState(false);
 
   console.log('[DependentesSection] Planos recebidos:', planos);
   console.log('[DependentesSection] Número de planos:', planos?.length || 0);
@@ -100,6 +102,85 @@ export function DependentesSection({
       idade--;
     }
     return idade;
+  };
+
+  const consultarLemmit = async (cpf: string) => {
+    if (!config?.lemmit_dependente) {
+      return;
+    }
+
+    const cpfLimpo = cpf.replace(/\D/g, '');
+    if (cpfLimpo.length !== 11) {
+      return;
+    }
+
+    setConsultandoLemmit(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        alert('Sessão expirada. Por favor, faça login novamente.');
+        return;
+      }
+
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/lemit-consulta-pessoa`;
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ cpf: cpfLimpo }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Erro ao consultar Lemmit');
+      }
+
+      const result = await response.json();
+
+      if (result.pessoa) {
+        const pessoa = result.pessoa;
+
+        const dataNascFormatada = pessoa.data_nascimento
+          ? pessoa.data_nascimento.split('T')[0]
+          : '';
+
+        const sexoValue = pessoa.sexo === 'M' ? '1' : (pessoa.sexo === 'F' ? '0' : '');
+
+        setFormData((prev) => ({
+          ...prev,
+          nome: pessoa.nome || prev.nome,
+          dataNascimento: dataNascFormatada || prev.dataNascimento,
+          sexo: sexoValue || prev.sexo,
+          nomeMae: pessoa.nome_mae || prev.nomeMae,
+        }));
+
+        console.log('[DependentesSection] Dados Lemmit aplicados:', {
+          nome: pessoa.nome,
+          dataNascimento: dataNascFormatada,
+          sexo: sexoValue,
+          nomeMae: pessoa.nome_mae,
+        });
+      } else {
+        console.log('[DependentesSection] Consulta Lemmit sem dados:', result);
+      }
+    } catch (error: any) {
+      console.error('[DependentesSection] Erro ao consultar Lemmit:', error);
+      alert(`Erro ao consultar Lemmit: ${error.message}`);
+    } finally {
+      setConsultandoLemmit(false);
+    }
+  };
+
+  const handleCpfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const novoCpf = e.target.value;
+    setFormData({ ...formData, cpf: novoCpf });
+
+    const cpfLimpo = novoCpf.replace(/\D/g, '');
+    if (cpfLimpo.length === 11 && config?.lemmit_dependente) {
+      consultarLemmit(cpfLimpo);
+    }
   };
 
   const handleAdd = () => {
@@ -287,13 +368,26 @@ export function DependentesSection({
               required
             />
 
-            <Input
-              label={`CPF${formData.dataNascimento && calcularIdade(formData.dataNascimento) < 18 ? ' (opcional para menores de 18 anos)' : ''}`}
-              value={formatCPF(formData.cpf)}
-              onChange={(e) => setFormData({ ...formData, cpf: e.target.value })}
-              maxLength={14}
-              required={!formData.dataNascimento || calcularIdade(formData.dataNascimento) >= 18}
-            />
+            <div className="relative">
+              <Input
+                label={`CPF${formData.dataNascimento && calcularIdade(formData.dataNascimento) < 18 ? ' (opcional para menores de 18 anos)' : ''}`}
+                value={formatCPF(formData.cpf)}
+                onChange={handleCpfChange}
+                maxLength={14}
+                required={!formData.dataNascimento || calcularIdade(formData.dataNascimento) >= 18}
+                disabled={consultandoLemmit}
+              />
+              {consultandoLemmit && (
+                <div className="absolute right-3 top-9">
+                  <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
+                </div>
+              )}
+              {config?.lemmit_dependente && (
+                <p className="text-xs text-slate-500 mt-1">
+                  Preenchimento automático ativado
+                </p>
+              )}
+            </div>
 
             <Select
               label="Sexo"

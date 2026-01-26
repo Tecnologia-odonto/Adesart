@@ -4,7 +4,9 @@ import { supabase } from '../lib/supabase';
 import { Layout } from '../components/Layout';
 import { Card } from '../components/Card';
 import { formatCPF } from '../lib/cpf';
-import { Activity, CheckCircle2, XCircle, TrendingUp, Calendar, Clock } from 'lucide-react';
+import { Activity, CheckCircle2, XCircle, Clock, DollarSign, Edit2, Save, X as XIcon, Filter } from 'lucide-react';
+import { Input } from '../components/Input';
+import { Select } from '../components/Select';
 
 interface ApiLog {
   id: string;
@@ -18,40 +20,153 @@ interface ApiLog {
   success: boolean | null;
   error_message: string | null;
   duration_ms: number | null;
+  cost: number | null;
   created_at: string;
 }
 
-interface UserProfile {
-  lemmit_limite_consultas: number | null;
-  lemmit_consultas_mes_atual: number;
-  email?: string;
-  name?: string;
-}
-
-interface LogComUsuario extends ApiLog {
-  profiles?: UserProfile;
+interface UserBalance {
+  id: string;
+  name: string;
+  email: string;
+  lemmit_balance: number;
+  total_consultas: number;
+  total_gasto: number;
 }
 
 export function LemmitUsage() {
   const { user, isAdmin, profile } = useAuth();
-  const [logs, setLogs] = useState<LogComUsuario[]>([]);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [logs, setLogs] = useState<ApiLog[]>([]);
+  const [filteredLogs, setFilteredLogs] = useState<ApiLog[]>([]);
+  const [userBalances, setUserBalances] = useState<UserBalance[]>([]);
+  const [userMap, setUserMap] = useState<Map<string, string>>(new Map());
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [editBalance, setEditBalance] = useState<string>('');
+  const [selectedUserId, setSelectedUserId] = useState<string>('todos');
   const [stats, setStats] = useState({
     total: 0,
     success: 0,
     failed: 0,
-    thisMonth: 0,
+    totalCost: 0,
     avgDuration: 0,
   });
   const [loading, setLoading] = useState(true);
-  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  });
+  const [myBalance, setMyBalance] = useState<number>(0);
+  const [totalBalance, setTotalBalance] = useState<number>(0);
 
   useEffect(() => {
     loadData();
-  }, [selectedMonth, isAdmin]);
+  }, [isAdmin, user]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const profileChannel = supabase
+      .channel('profile-lemmit-balance-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'profiles',
+          filter: `id=eq.${user.id}`,
+        },
+        (payload) => {
+          console.log('[Realtime] Profile atualizado:', payload);
+          if (payload.new && 'lemmit_balance' in payload.new) {
+            setMyBalance(payload.new.lemmit_balance);
+          }
+        }
+      )
+      .subscribe();
+
+    let allProfilesChannel: any = null;
+
+    if (isAdmin) {
+      allProfilesChannel = supabase
+        .channel('all-profiles-balance-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'profiles',
+          },
+          async (payload) => {
+            console.log('[Realtime] Algum profile atualizado (admin):', payload);
+            const { data: profilesData } = await supabase
+              .from('profiles')
+              .select('lemmit_balance');
+
+            const total = (profilesData || []).reduce((sum, p) => sum + (p.lemmit_balance || 0), 0);
+            console.log('[Realtime] Novo saldo geral:', total);
+            setTotalBalance(total);
+
+            setUserBalances((prev) =>
+              prev.map((u) =>
+                u.id === payload.new.id
+                  ? { ...u, lemmit_balance: payload.new.lemmit_balance }
+                  : u
+              )
+            );
+          }
+        )
+        .subscribe();
+    }
+
+    const logsChannel = supabase
+      .channel('api-logs-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'api_logs',
+        },
+        (payload) => {
+          console.log('[Realtime] Novo log inserido:', payload);
+          loadData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      profileChannel.unsubscribe();
+      if (allProfilesChannel) {
+        allProfilesChannel.unsubscribe();
+      }
+      logsChannel.unsubscribe();
+    };
+  }, [user, isAdmin]);
+
+  useEffect(() => {
+    filterLogs();
+  }, [selectedUserId, logs]);
+
+  function filterLogs() {
+    if (selectedUserId === 'todos') {
+      setFilteredLogs(logs);
+    } else {
+      setFilteredLogs(logs.filter(log => log.user_id === selectedUserId));
+    }
+  }
+
+  useEffect(() => {
+    const total = filteredLogs.length;
+    const success = filteredLogs.filter((l) => l.success).length;
+    const failed = total - success;
+    const totalCost = filteredLogs.reduce((sum, log) => sum + (log.cost || 0), 0);
+
+    const durations = filteredLogs.filter((l) => l.duration_ms !== null).map((l) => l.duration_ms!);
+    const avgDuration = durations.length > 0 ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : 0;
+
+    setStats({
+      total,
+      success,
+      failed,
+      totalCost,
+      avgDuration,
+    });
+  }, [filteredLogs]);
 
   async function loadData() {
     if (!user) return;
@@ -61,30 +176,18 @@ export function LemmitUsage() {
 
       const { data: profileData } = await supabase
         .from('profiles')
-        .select('lemmit_limite_consultas, lemmit_consultas_mes_atual')
+        .select('lemmit_balance')
         .eq('id', user.id)
         .maybeSingle();
 
-      setUserProfile(profileData);
-
-      const startOfMonth = new Date(selectedMonth + '-01');
-      const endOfMonth = new Date(startOfMonth.getFullYear(), startOfMonth.getMonth() + 1, 0, 23, 59, 59);
+      setMyBalance(profileData?.lemmit_balance || 0);
 
       let query = supabase
         .from('api_logs')
-        .select(`
-          *,
-          profiles:user_id (
-            email,
-            name,
-            lemmit_limite_consultas,
-            lemmit_consultas_mes_atual
-          )
-        `)
-        .eq('endpoint', '/lemit-consulta-pessoa')
-        .gte('created_at', startOfMonth.toISOString())
-        .lte('created_at', endOfMonth.toISOString())
-        .order('created_at', { ascending: false });
+        .select('*')
+        .eq('endpoint', 'lemit-consulta-pessoa')
+        .order('created_at', { ascending: false })
+        .limit(500);
 
       if (!isAdmin) {
         query = query.eq('user_id', user.id);
@@ -95,25 +198,53 @@ export function LemmitUsage() {
       if (error) throw error;
 
       setLogs(logsData || []);
+      setFilteredLogs(logsData || []);
 
-      const total = logsData?.length || 0;
-      const success = logsData?.filter((l) => l.success).length || 0;
-      const failed = total - success;
+      if (isAdmin) {
+        const { data: allLogs } = await supabase
+          .from('api_logs')
+          .select('user_id, user_email, success, cost')
+          .eq('endpoint', 'lemit-consulta-pessoa');
 
-      const durations = logsData?.filter((l) => l.duration_ms !== null).map((l) => l.duration_ms!) || [];
-      const avgDuration = durations.length > 0 ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : 0;
+        const userStats = new Map<string, { email: string; total: number; gasto: number }>();
 
-      const now = new Date();
-      const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      const isCurrentMonth = selectedMonth === currentMonth;
+        allLogs?.forEach((log) => {
+          if (log.user_id) {
+            const existing = userStats.get(log.user_id) || { email: log.user_email || '', total: 0, gasto: 0 };
+            existing.total += 1;
+            existing.gasto += log.cost || 0;
+            userStats.set(log.user_id, existing);
+          }
+        });
 
-      setStats({
-        total,
-        success,
-        failed,
-        avgDuration,
-        thisMonth: isCurrentMonth ? (profileData?.lemmit_consultas_mes_atual || 0) : total,
-      });
+        const { data: profilesData } = await supabase
+          .from('profiles')
+          .select('id, name, email, lemmit_balance')
+          .order('name');
+
+        const balances: UserBalance[] = (profilesData || []).map((p) => {
+          const stats = userStats.get(p.id) || { email: p.email, total: 0, gasto: 0 };
+          return {
+            id: p.id,
+            name: p.name || p.email,
+            email: p.email,
+            lemmit_balance: p.lemmit_balance || 0,
+            total_consultas: stats.total,
+            total_gasto: stats.gasto,
+          };
+        });
+
+        setUserBalances(balances);
+
+        const total = balances.reduce((sum, b) => sum + b.lemmit_balance, 0);
+        setTotalBalance(total);
+
+        const nameMap = new Map<string, string>();
+        profilesData?.forEach((p) => {
+          nameMap.set(p.id, p.name || p.email);
+        });
+        setUserMap(nameMap);
+      }
     } catch (error) {
       console.error('Error loading Lemmit data:', error);
     } finally {
@@ -121,24 +252,68 @@ export function LemmitUsage() {
     }
   }
 
-  const limite = userProfile?.lemmit_limite_consultas;
-  const usado = stats.thisMonth;
-  const percentualUsado = limite ? Math.round((usado / limite) * 100) : 0;
-  const temLimite = limite !== null && limite !== undefined;
+  const handleEditBalance = (userId: string, currentBalance: number) => {
+    setEditingUserId(userId);
+    setEditBalance(currentBalance.toFixed(2));
+  };
+
+  const handleSaveBalance = async (userId: string) => {
+    try {
+      const newBalance = parseFloat(editBalance);
+      if (isNaN(newBalance) || newBalance < 0) {
+        alert('Saldo inválido');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ lemmit_balance: newBalance })
+        .eq('id', userId);
+
+      if (error) throw error;
+
+      setEditingUserId(null);
+      await loadData();
+    } catch (error) {
+      console.error('Error updating balance:', error);
+      alert('Erro ao atualizar saldo');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingUserId(null);
+    setEditBalance('');
+  };
 
   return (
     <Layout>
       <div className="max-w-7xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-gray-900">Consultas Lemmit</h1>
-          <p className="text-gray-600 mt-1">Acompanhe o uso da API Lemmit</p>
+          <h1 className="text-2xl font-semibold text-gray-900">Uso Lemmit</h1>
+          <p className="text-gray-600 mt-1">Acompanhe consultas e saldo da API Lemmit (R$ 0,12 por consulta)</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
           <Card className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Total no Período</p>
+                <p className="text-sm text-gray-600">
+                  {isAdmin ? 'Saldo Geral' : 'Meu Saldo'}
+                </p>
+                <p className="text-2xl font-semibold text-gray-900 mt-1">
+                  R$ {isAdmin ? totalBalance.toFixed(2) : myBalance.toFixed(2)}
+                </p>
+              </div>
+              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                <DollarSign className="w-6 h-6 text-green-600" />
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Total Consultas</p>
                 <p className="text-2xl font-semibold text-gray-900 mt-1">{stats.total}</p>
               </div>
               <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -174,75 +349,145 @@ export function LemmitUsage() {
           <Card className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Tempo Médio</p>
-                <p className="text-2xl font-semibold text-gray-900 mt-1">{stats.avgDuration}ms</p>
+                <p className="text-sm text-gray-600">Custo Total</p>
+                <p className="text-2xl font-semibold text-gray-900 mt-1">R$ {stats.totalCost.toFixed(2)}</p>
               </div>
               <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
                 <Clock className="w-6 h-6 text-orange-600" />
               </div>
             </div>
           </Card>
-
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">
-                  {temLimite ? 'Uso do Limite' : 'Sem Limite'}
-                </p>
-                {temLimite ? (
-                  <p className="text-2xl font-semibold text-gray-900 mt-1">
-                    {usado} / {limite}
-                  </p>
-                ) : (
-                  <p className="text-2xl font-semibold text-gray-900 mt-1">∞</p>
-                )}
-              </div>
-              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                <TrendingUp className="w-6 h-6 text-purple-600" />
-              </div>
-            </div>
-            {temLimite && (
-              <div className="mt-3">
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className={`h-2 rounded-full transition-all ${
-                      percentualUsado >= 90
-                        ? 'bg-red-600'
-                        : percentualUsado >= 70
-                        ? 'bg-yellow-600'
-                        : 'bg-green-600'
-                    }`}
-                    style={{ width: `${Math.min(percentualUsado, 100)}%` }}
-                  />
-                </div>
-                <p className="text-xs text-gray-600 mt-1 text-right">{percentualUsado}%</p>
-              </div>
-            )}
-          </Card>
         </div>
+
+        {isAdmin && (
+          <Card className="mb-6">
+            <div className="p-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">Saldo dos Usuários</h2>
+            </div>
+            <div className="overflow-x-auto">
+              {loading ? (
+                <div className="p-8 text-center text-gray-500">Carregando...</div>
+              ) : (
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Usuário
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        E-mail
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Saldo Atual
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Total Consultas
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Total Gasto
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Ações
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {userBalances.map((user) => (
+                      <tr key={user.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {user.name}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {user.email}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {editingUserId === user.id ? (
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={editBalance}
+                                onChange={(e) => setEditBalance(e.target.value)}
+                                className="w-24"
+                              />
+                              <button
+                                onClick={() => handleSaveBalance(user.id)}
+                                className="p-1 text-green-600 hover:text-green-800"
+                              >
+                                <Save className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={handleCancelEdit}
+                                className="p-1 text-gray-600 hover:text-gray-800"
+                              >
+                                <XIcon className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className={user.lemmit_balance < 0.12 ? 'text-red-600 font-semibold' : ''}>
+                              R$ {user.lemmit_balance.toFixed(2)}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {user.total_consultas}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          R$ {user.total_gasto.toFixed(2)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {editingUserId !== user.id && (
+                            <button
+                              onClick={() => handleEditBalance(user.id, user.lemmit_balance)}
+                              className="text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                              Editar
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </Card>
+        )}
 
         <Card>
           <div className="p-4 border-b border-gray-200">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">Histórico de Consultas</h2>
-              <div className="flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-gray-400" />
-                <input
-                  type="month"
-                  value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
+              <h2 className="text-lg font-semibold text-gray-900">
+                Histórico de Consultas (Últimas 500)
+              </h2>
+              {isAdmin && (
+                <div className="flex items-center gap-2">
+                  <Filter className="w-5 h-5 text-gray-400" />
+                  <Select
+                    value={selectedUserId}
+                    onChange={(e) => setSelectedUserId(e.target.value)}
+                    className="min-w-[200px]"
+                  >
+                    <option value="todos">Todos os Usuários</option>
+                    {userBalances.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              )}
             </div>
           </div>
 
           <div className="overflow-x-auto">
             {loading ? (
               <div className="p-8 text-center text-gray-500">Carregando...</div>
-            ) : logs.length === 0 ? (
+            ) : filteredLogs.length === 0 ? (
               <div className="p-8 text-center text-gray-500">
-                Nenhuma consulta encontrada neste período
+                Nenhuma consulta encontrada
               </div>
             ) : (
               <table className="w-full">
@@ -266,13 +511,17 @@ export function LemmitUsage() {
                       Duração
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Custo
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Mensagem
                     </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {logs.map((log) => {
+                  {filteredLogs.map((log) => {
                     const cpf = log.request_body?.cpf || '-';
+                    const userName = log.user_id ? userMap.get(log.user_id) || log.user_email || '-' : '-';
                     return (
                       <tr key={log.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -280,7 +529,7 @@ export function LemmitUsage() {
                         </td>
                         {isAdmin && (
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {(log.profiles as any)?.name || log.user_email || '-'}
+                            {userName}
                           </td>
                         )}
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -302,7 +551,10 @@ export function LemmitUsage() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {log.duration_ms ? `${log.duration_ms}ms` : '-'}
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-500">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {log.cost ? `R$ ${log.cost.toFixed(2)}` : '-'}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
                           {log.error_message || (log.status_code ? `Status ${log.status_code}` : '-')}
                         </td>
                       </tr>

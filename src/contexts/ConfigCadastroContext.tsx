@@ -28,6 +28,7 @@ export interface CadastroConfig {
   planos_validos: number[];
   planos_ocultos: string[];
   exigir_arquivo: boolean;
+  lemmit_dependente: boolean;
   created_at: string;
   updated_at: string;
 }

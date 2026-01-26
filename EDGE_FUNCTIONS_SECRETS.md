@@ -49,15 +49,29 @@ Este documento lista todos os secrets que precisam ser configurados no Supabase 
 
 ---
 
+### 4. LEMMIT_API_KEY (OBRIGATÓRIO)
+**Usado em:**
+- `lemit-consulta-pessoa`
+
+**Nome:** `LEMMIT_API_KEY`
+**Valor:** `ChaveApi` (substituir pela chave API real da Lemmit)
+
+**Descrição:** Chave de autenticação para a API da Lemmit que realiza consultas de dados pessoais. Cada consulta custa R$ 0,12.
+
+**Endpoint usado:** `http://189.84.127.130:8080/webhook/5e534e38-6f87-400b-a441-821559c6c2e9`
+
+---
+
 ## Resumo para Configuração Rápida
 
-Configure apenas o secret abaixo inicialmente (o único obrigatório):
+Configure os secrets obrigatórios abaixo:
 
-| Nome          | Valor | Prioridade   |
-|---------------|-------|--------------|
-| `ERP_TOKEN`   | `0`   | OBRIGATÓRIA  |
-| `ERP_BASE_URL`| `0`   | Opcional     |
-| `ERP_URL`     | `0`   | Opcional     |
+| Nome              | Valor       | Prioridade   |
+|-------------------|-------------|--------------|
+| `ERP_TOKEN`       | `0`         | OBRIGATÓRIA  |
+| `LEMMIT_API_KEY`  | `ChaveApi`  | OBRIGATÓRIA  |
+| `ERP_BASE_URL`    | `0`         | Opcional     |
+| `ERP_URL`         | `0`         | Opcional     |
 
 **Nota:** Os valores com "0" são placeholders. Substitua pelo valor real quando disponível.
 

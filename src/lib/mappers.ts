@@ -1,23 +1,48 @@
 import { formatCPF, formatDate, removeCPFMask } from './cpf';
 
-export interface LemitResponse {
+export interface LemmitPessoa {
+  cpf?: string;
   nome?: string;
-  nome_mae?: string;
   data_nascimento?: string;
   sexo?: string;
-  celulares?: Array<{ numero: string }>;
-  telefones_fixos?: Array<{ numero: string }>;
-  emails?: Array<{ email: string }>;
+  nome_mae?: string;
+  celulares?: Array<{
+    ddd?: number;
+    numero?: string;
+    plus?: boolean;
+    ranking?: number;
+    whatsapp?: boolean;
+  }>;
+  fixos?: Array<{
+    ddd?: number;
+    numero?: string;
+    ranking?: number;
+  }>;
+  emails?: Array<{
+    email?: string;
+    ranking?: number;
+    possui_cookie?: boolean;
+  }>;
   enderecos?: Array<{
-    cep?: string;
+    endereco?: string;
     tipo_logradouro?: string;
+    titulo_logradouro?: string;
     logradouro?: string;
     numero?: string;
     complemento?: string;
     bairro?: string;
     cidade?: string;
     uf?: string;
+    cep?: string;
+    tipo?: string;
+    ranking?: number;
   }>;
+  [key: string]: unknown;
+}
+
+export interface LemitResponse {
+  data_consulta?: string;
+  pessoa?: LemmitPessoa;
   [key: string]: unknown;
 }
 
@@ -76,76 +101,112 @@ export interface CadastroFormData {
 }
 
 export function mapLemitToCadastro(lemitData: LemitResponse, cpf: string): Partial<CadastroFormData> {
+  const pessoa = lemitData.pessoa;
+
+  if (!pessoa) {
+    return {
+      cpf: removeCPFMask(cpf),
+      nome: '',
+      dataNascimento: '',
+      sexo: '',
+      sexoCodigo: 0,
+      contatos: [],
+    };
+  }
+
   const contatos: CadastroContato[] = [];
 
-  if (lemitData.celulares && Array.isArray(lemitData.celulares)) {
-    lemitData.celulares.forEach((cel, index) => {
+  if (pessoa.celulares && Array.isArray(pessoa.celulares)) {
+    const celularesComPlus = pessoa.celulares
+      .filter(cel => cel.plus === true)
+      .sort((a, b) => (a.ranking || 999) - (b.ranking || 999));
+
+    celularesComPlus.forEach((cel, index) => {
       if (cel.numero) {
+        const numero = `${cel.ddd || ''}${cel.numero}`;
         contatos.push({
-          tipo: 'celular',
-          valor: removeCPFMask(cel.numero),
+          tipo: cel.whatsapp ? 'whatsapp' : 'celular',
+          valor: removeCPFMask(numero),
           principal: index === 0,
         });
       }
     });
   }
 
-  if (lemitData.telefones_fixos && Array.isArray(lemitData.telefones_fixos)) {
-    lemitData.telefones_fixos.forEach((tel) => {
-      if (tel.numero) {
-        contatos.push({
-          tipo: 'fixo',
-          valor: removeCPFMask(tel.numero),
-          principal: false,
-        });
-      }
-    });
+  if (pessoa.fixos && Array.isArray(pessoa.fixos)) {
+    pessoa.fixos
+      .sort((a, b) => (a.ranking || 999) - (b.ranking || 999))
+      .forEach((tel) => {
+        if (tel.numero) {
+          const numero = `${tel.ddd || ''}${tel.numero}`;
+          contatos.push({
+            tipo: 'fixo',
+            valor: removeCPFMask(numero),
+            principal: false,
+          });
+        }
+      });
   }
 
-  if (lemitData.emails && Array.isArray(lemitData.emails)) {
-    lemitData.emails.forEach((emailObj, index) => {
-      if (emailObj.email) {
-        contatos.push({
-          tipo: 'email',
-          valor: emailObj.email,
-          principal: index === 0,
-        });
-      }
-    });
+  if (pessoa.emails && Array.isArray(pessoa.emails)) {
+    pessoa.emails
+      .sort((a, b) => (a.ranking || 999) - (b.ranking || 999))
+      .forEach((emailObj, index) => {
+        if (emailObj.email) {
+          contatos.push({
+            tipo: 'email',
+            valor: emailObj.email,
+            principal: index === 0,
+          });
+        }
+      });
   }
 
   let endereco: CadastroEndereco | undefined;
-  if (lemitData.enderecos && Array.isArray(lemitData.enderecos) && lemitData.enderecos.length > 0) {
-    const endLemit = lemitData.enderecos[0];
+  if (pessoa.enderecos && Array.isArray(pessoa.enderecos) && pessoa.enderecos.length > 0) {
+    const endLemmit = pessoa.enderecos
+      .filter(e => e.ranking === 1)
+      .sort((a, b) => (a.ranking || 999) - (b.ranking || 999))[0] || pessoa.enderecos[0];
+
     endereco = {
-      cep: removeCPFMask(endLemit.cep || ''),
-      tipoLogradouro: endLemit.tipo_logradouro || '',
-      logradouro: endLemit.logradouro || '',
-      numero: endLemit.numero || '',
-      complemento: endLemit.complemento || '',
-      bairro: endLemit.bairro || '',
-      cidade: endLemit.cidade || '',
-      uf: endLemit.uf || '',
+      cep: removeCPFMask(endLemmit.cep || ''),
+      tipoLogradouro: endLemmit.tipo_logradouro || '',
+      logradouro: endLemmit.logradouro || '',
+      numero: endLemmit.numero || '',
+      complemento: endLemmit.complemento || '',
+      bairro: endLemmit.bairro || '',
+      cidade: endLemmit.cidade || '',
+      uf: endLemmit.uf || '',
     };
   }
 
   let sexoCodigo = 0;
-  const sexoStr = (lemitData.sexo || '').toUpperCase();
+  const sexoStr = (pessoa.sexo || '').toUpperCase();
   if (sexoStr === 'M' || sexoStr === 'MASCULINO') {
     sexoCodigo = 1;
   } else if (sexoStr === 'F' || sexoStr === 'FEMININO') {
     sexoCodigo = 0;
   }
 
+  let dataNascimento = '';
+  if (pessoa.data_nascimento) {
+    try {
+      const date = new Date(pessoa.data_nascimento);
+      dataNascimento = date.toISOString().split('T')[0];
+    } catch (e) {
+      dataNascimento = pessoa.data_nascimento;
+    }
+  }
+
   return {
     cpf: removeCPFMask(cpf),
-    nome: lemitData.nome || '',
-    dataNascimento: lemitData.data_nascimento || '',
+    nome: pessoa.nome || '',
+    dataNascimento: dataNascimento,
     sexo: sexoStr,
     sexoCodigo,
     contatos,
     endereco,
-    nomeMae: lemitData.nome_mae,
+    nomeMae: pessoa.nome_mae,
   };
 }
 

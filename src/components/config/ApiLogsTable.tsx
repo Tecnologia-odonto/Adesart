@@ -14,6 +14,7 @@ interface ApiLog {
   success: boolean;
   error_message: string | null;
   duration_ms: number | null;
+  cost: number | null;
   created_at: string;
 }
 
@@ -166,6 +167,7 @@ export function ApiLogsTable() {
                 <th className="text-left p-3 font-medium text-gray-700">Endpoint</th>
                 <th className="text-left p-3 font-medium text-gray-700">Código</th>
                 <th className="text-left p-3 font-medium text-gray-700">Duração</th>
+                <th className="text-left p-3 font-medium text-gray-700">Custo</th>
                 <th className="text-left p-3 font-medium text-gray-700">Data/Hora</th>
                 <th className="text-left p-3 font-medium text-gray-700">Ações</th>
               </tr>
@@ -203,6 +205,15 @@ export function ApiLogsTable() {
                       <Clock className="w-4 h-4" />
                       {log.duration_ms ? `${log.duration_ms}ms` : '-'}
                     </div>
+                  </td>
+                  <td className="p-3">
+                    {log.cost && log.cost > 0 ? (
+                      <span className="text-sm font-medium text-gray-900">
+                        R$ {log.cost.toFixed(2)}
+                      </span>
+                    ) : (
+                      <span className="text-sm text-gray-400">-</span>
+                    )}
                   </td>
                   <td className="p-3 text-sm text-gray-600">{formatDate(log.created_at)}</td>
                   <td className="p-3">
@@ -311,6 +322,17 @@ export function ApiLogsTable() {
                   </label>
                   <p className="text-gray-900">
                     {selectedLog.duration_ms ? `${selectedLog.duration_ms}ms` : '-'}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Custo
+                  </label>
+                  <p className="text-gray-900">
+                    {selectedLog.cost && selectedLog.cost > 0
+                      ? `R$ ${selectedLog.cost.toFixed(2)}`
+                      : '-'}
                   </p>
                 </div>
 

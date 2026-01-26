@@ -152,8 +152,8 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         return;
       }
 
-      console.log('🔍 Buscando dados anteriores do cliente no banco...');
-      const clienteAnterior = await findClienteByCPF(cpfLimpo);
+      const configAtual = await loadConfig();
+      const lemitAtivo = configAtual?.ativar_lemmit ?? true;
 
       let cadastroData: any = {
         nome: '',
@@ -165,135 +165,20 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
       };
       let lemitData = null;
 
-      const configAtual = await loadConfig();
-      const lemitAtivo = configAtual?.ativar_lemmit ?? true;
+      if (lemitAtivo) {
+        try {
+          const { data: canUse } = await supabase.rpc('can_use_lemmit', {
+            p_user_id: profile?.id,
+          });
 
-      if (clienteAnterior) {
-        console.log('✅ Cliente encontrado no banco. Usando dados anteriores:', clienteAnterior);
+          if (canUse) {
+            console.log('✅ Lemmit ATIVO - Consultando API');
 
-        cadastroData = {
-          nome: clienteAnterior.nome || '',
-          nomeMae: clienteAnterior.nomeMae || null,
-          dataNascimento: clienteAnterior.dataNascimento || null,
-          sexo: clienteAnterior.sexo || null,
-          sexoCodigo: clienteAnterior.sexoCodigo || null,
-          contatos: clienteAnterior.contatos || null,
-          endereco: clienteAnterior.endereco || null,
-        };
-
-        const temCEP = !!(cadastroData.endereco?.cep);
-        const temTelefones = !!(cadastroData.contatos && cadastroData.contatos.length > 0);
-
-        console.log('📋 Dados do cadastro:', {
-          temNome: !!cadastroData.nome,
-          temNomeMae: !!cadastroData.nomeMae,
-          temCEP,
-          temTelefones,
-          totalContatos: cadastroData.contatos?.length || 0,
-        });
-
-        if (!temCEP || !temTelefones) {
-          console.log('⚠️ Falta CEP ou telefones. Consultando Lemmit para complementar dados...');
-
-          if (lemitAtivo) {
             try {
-              const { data: canUse } = await supabase.rpc('can_use_lemmit', {
-                p_user_id: profile?.id,
-              });
+              lemitData = await consultarCPF(cpfLimpo);
 
-              if (canUse) {
-                console.log('✅ Lemmit ATIVO - Consultando API para complementar dados');
-
-                try {
-                  lemitData = await consultarCPF(cpfLimpo);
-
-                  if (!lemitData || Object.keys(lemitData).length === 0) {
-                    throw new Error('Lemmit retornou dados vazios');
-                  }
-
-                  const lemitMapped = mapLemitToCadastro(lemitData, cpfLimpo);
-
-                  await supabase.from('lemmit_consultas').insert({
-                    user_id: profile?.id,
-                    cpf: cpfLimpo,
-                    success: true,
-                    response_data: lemitData,
-                  });
-
-                  await supabase.rpc('increment_lemmit_counter', {
-                    p_user_id: profile?.id,
-                  });
-
-                  if (!temCEP && lemitMapped.endereco) {
-                    cadastroData.endereco = lemitMapped.endereco;
-                  }
-                  if (!temTelefones && lemitMapped.contatos) {
-                    cadastroData.contatos = lemitMapped.contatos;
-                  }
-                  if (!cadastroData.nomeMae && lemitMapped.nomeMae) {
-                    cadastroData.nomeMae = lemitMapped.nomeMae;
-                  }
-
-                  console.log('✅ Dados complementados com sucesso');
-                } catch (lemitError) {
-                  console.error('❌ Erro ao consultar Lemmit:', lemitError);
-
-                  const errorMessage = lemitError instanceof Error ? lemitError.message : 'Erro desconhecido';
-
-                  await supabase.from('lemmit_consultas').insert({
-                    user_id: profile?.id,
-                    cpf: cpfLimpo,
-                    success: false,
-                    error_message: errorMessage,
-                  });
-
-                  await supabase.rpc('increment_lemmit_counter', {
-                    p_user_id: profile?.id,
-                  });
-
-                  setLemmitError({
-                    message: errorMessage,
-                    details: lemitError,
-                    cpf: cpfLimpo,
-                    cadastroData,
-                    vendedorSelecionado: vendedores.find(v => v.id === selectedVendedor),
-                  });
-
-                  setLoading(false);
-                  return;
-                }
-              } else {
-                console.log('❌ Limite de consultas Lemmit atingido');
-                setError('Limite de consultas Lemmit atingido para este mês');
-                setLoading(false);
-                return;
-              }
-            } catch (error) {
-              console.error('Erro ao verificar limite Lemmit:', error);
-            }
-          } else {
-            console.log('❌ Lemmit DESATIVADO - Dados podem estar incompletos');
-          }
-        }
-      } else {
-        console.log('❌ Cliente não encontrado no banco. Consultando APIs externas...');
-
-        if (lemitAtivo) {
-          try {
-            const { data: canUse } = await supabase.rpc('can_use_lemmit', {
-              p_user_id: profile?.id,
-            });
-
-            if (canUse) {
-              console.log('✅ Lemmit ATIVO - Consultando API');
-
-              try {
-                lemitData = await consultarCPF(cpfLimpo);
-
-                if (!lemitData || Object.keys(lemitData).length === 0) {
-                  throw new Error('Lemmit retornou dados vazios');
-                }
-
+              if (lemitData && lemitData.pessoa && Object.keys(lemitData.pessoa).length > 0) {
+                console.log('✅ Dados retornados da Lemmit com sucesso');
                 cadastroData = mapLemitToCadastro(lemitData, cpfLimpo);
 
                 await supabase.from('lemmit_consultas').insert({
@@ -303,47 +188,83 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
                   response_data: lemitData,
                 });
 
-                await supabase.rpc('increment_lemmit_counter', {
+                await supabase.rpc('debit_lemmit_balance', {
                   p_user_id: profile?.id,
+                  p_amount: 0.12,
                 });
-              } catch (lemitError) {
-                console.error('❌ Erro ao consultar Lemmit:', lemitError);
-
-                const errorMessage = lemitError instanceof Error ? lemitError.message : 'Erro desconhecido';
+              } else {
+                console.warn('⚠️ Lemmit retornou dados vazios - continuando com preenchimento manual');
 
                 await supabase.from('lemmit_consultas').insert({
                   user_id: profile?.id,
                   cpf: cpfLimpo,
                   success: false,
-                  error_message: errorMessage,
+                  error_message: 'Dados não encontrados ou vazios na Lemmit',
                 });
 
-                await supabase.rpc('increment_lemmit_counter', {
+                await supabase.rpc('debit_lemmit_balance', {
                   p_user_id: profile?.id,
+                  p_amount: 0.12,
                 });
-
-                setLemmitError({
-                  message: errorMessage,
-                  details: lemitError,
-                  cpf: cpfLimpo,
-                  cadastroData,
-                  vendedorSelecionado: vendedores.find(v => v.id === selectedVendedor),
-                });
-
-                setLoading(false);
-                return;
               }
-            } else {
-              console.log('❌ Limite de consultas Lemmit atingido');
-              setError('Limite de consultas Lemmit atingido para este mês');
-              setLoading(false);
-              return;
+            } catch (lemitError) {
+              console.error('❌ Erro ao consultar Lemmit:', lemitError);
+
+              const errorMessage = lemitError instanceof Error ? lemitError.message : 'Erro desconhecido';
+
+              await supabase.from('lemmit_consultas').insert({
+                user_id: profile?.id,
+                cpf: cpfLimpo,
+                success: false,
+                error_message: errorMessage,
+              });
+
+              await supabase.rpc('debit_lemmit_balance', {
+                p_user_id: profile?.id,
+                p_amount: 0.12,
+              });
+
+              console.warn('⚠️ Erro na Lemmit - continuando com preenchimento manual');
             }
-          } catch (error) {
-            console.error('Erro ao verificar limite Lemmit:', error);
+          } else {
+            console.log('❌ Saldo insuficiente para consulta Lemmit');
+            setError('Saldo insuficiente para consulta Lemmit. Cada consulta custa R$ 0,12.');
+            setLoading(false);
+            return;
           }
-        } else {
-          console.log('❌ Lemmit DESATIVADO - Pulando consulta');
+        } catch (error) {
+          console.error('Erro ao verificar limite Lemmit:', error);
+        }
+      } else {
+        console.log('❌ Lemmit DESATIVADO - Pulando consulta');
+      }
+
+      console.log('🔍 Buscando dados anteriores do cliente no banco...');
+      const clienteAnterior = await findClienteByCPF(cpfLimpo);
+
+      if (clienteAnterior) {
+        console.log('✅ Cliente encontrado no banco. Mesclando com dados da Lemmit...');
+
+        if (!cadastroData.nome && clienteAnterior.nome) {
+          cadastroData.nome = clienteAnterior.nome;
+        }
+        if (!cadastroData.nomeMae && clienteAnterior.nomeMae) {
+          cadastroData.nomeMae = clienteAnterior.nomeMae;
+        }
+        if (!cadastroData.dataNascimento && clienteAnterior.dataNascimento) {
+          cadastroData.dataNascimento = clienteAnterior.dataNascimento;
+        }
+        if (!cadastroData.sexo && clienteAnterior.sexo) {
+          cadastroData.sexo = clienteAnterior.sexo;
+        }
+        if (!cadastroData.sexoCodigo && clienteAnterior.sexoCodigo) {
+          cadastroData.sexoCodigo = clienteAnterior.sexoCodigo;
+        }
+        if ((!cadastroData.contatos || cadastroData.contatos.length === 0) && clienteAnterior.contatos) {
+          cadastroData.contatos = clienteAnterior.contatos;
+        }
+        if (!cadastroData.endereco && clienteAnterior.endereco) {
+          cadastroData.endereco = clienteAnterior.endereco;
         }
       }
 
