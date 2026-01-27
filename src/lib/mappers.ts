@@ -100,10 +100,10 @@ export interface CadastroFormData {
   numeroMatricula?: string;
 }
 
-export function mapLemitToCadastro(lemitData: LemitResponse, cpf: string): Partial<CadastroFormData> {
-  const pessoa = lemitData.pessoa;
+export function mapLemitToCadastro(lemitData: LemitResponse | null, cpf: string): Partial<CadastroFormData> {
+  const pessoa = lemitData?.pessoa;
 
-  if (!pessoa) {
+  if (!pessoa || !lemitData) {
     return {
       cpf: removeCPFMask(cpf),
       nome: '',

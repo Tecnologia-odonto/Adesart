@@ -30,6 +30,7 @@ export function Layout({ children }: LayoutProps) {
   const canViewUsers = profile?.role && ['ADMINISTRADOR', 'GERENTE', 'SUPERVISOR'].includes(profile.role);
   const canViewTeams = profile?.role && ['ADMINISTRADOR', 'GERENTE', 'CADASTRO', 'SUPERVISOR', 'VENDEDOR', 'ADESIONISTA'].includes(profile.role);
   const canViewConfig = profile?.role === 'ADMINISTRADOR';
+  const canViewAudit = profile?.role === 'ADMINISTRADOR';
 
   const menuItems = [
     { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, show: true },
@@ -37,7 +38,7 @@ export function Layout({ children }: LayoutProps) {
     { path: '/teams', label: 'Equipes', icon: Briefcase, show: canViewTeams },
     { path: '/cadastro', label: 'Cadastro', icon: FileText, show: true },
     { path: '/configuracoes', label: 'Configurações', icon: Settings, show: canViewConfig },
-    { path: '/lemmit-usage', label: 'Uso Lemmit', icon: Activity, show: true },
+    { path: '/auditoria-lemmit', label: 'Auditoria Lemmit', icon: Activity, show: canViewAudit },
     { path: '/profile', label: 'Meu Perfil', icon: UserIcon, show: true },
   ];
 

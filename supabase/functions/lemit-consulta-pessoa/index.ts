@@ -148,10 +148,123 @@ Deno.serve(async (req: Request) => {
     const responseData = await lemmitResponse.json();
     statusCode = lemmitResponse.status;
 
+    if (statusCode === 404) {
+      if (responseData.errors && Array.isArray(responseData.errors)) {
+        errorMessage = "CPF não encontrado na base de dados";
+        responseBody = {
+          error: errorMessage,
+          notFound: true,
+          canContinue: true,
+        };
+
+        await saveLog(supabase, {
+          user_id: userId,
+          user_email: userEmail,
+          endpoint: "lemit-consulta-pessoa",
+          method: "POST",
+          request_body: requestBody,
+          response_body: responseBody,
+          status_code: 404,
+          success: false,
+          error_message: errorMessage,
+          duration_ms: Date.now() - startTime,
+          cost: LEMMIT_COST,
+        });
+
+        if (userId) {
+          await supabase.rpc('decrement_lemmit_balance', {
+            user_id: userId,
+            amount: LEMMIT_COST
+          });
+        }
+
+        return new Response(
+          JSON.stringify(responseBody),
+          {
+            status: 404,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+    }
+
+    if (statusCode === 422) {
+      if (responseData.errors && responseData.errors.documento) {
+        errorMessage = responseData.errors.documento[0] || "CPF inválido";
+        responseBody = {
+          error: errorMessage,
+          invalidCPF: true,
+          canContinue: true,
+        };
+
+        await saveLog(supabase, {
+          user_id: userId,
+          user_email: userEmail,
+          endpoint: "lemit-consulta-pessoa",
+          method: "POST",
+          request_body: requestBody,
+          response_body: responseBody,
+          status_code: 422,
+          success: false,
+          error_message: errorMessage,
+          duration_ms: Date.now() - startTime,
+          cost: 0,
+        });
+
+        return new Response(
+          JSON.stringify(responseBody),
+          {
+            status: 422,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+    }
+
+    if (responseData.error === "Error in workflow") {
+      errorMessage = "Consulta Lemmit falhou temporariamente";
+      responseBody = {
+        error: errorMessage,
+        workflowError: true,
+        canContinue: true,
+        details: responseData.details,
+      };
+
+      await saveLog(supabase, {
+        user_id: userId,
+        user_email: userEmail,
+        endpoint: "lemit-consulta-pessoa",
+        method: "POST",
+        request_body: requestBody,
+        response_body: responseBody,
+        status_code: 500,
+        success: false,
+        error_message: errorMessage,
+        duration_ms: Date.now() - startTime,
+        cost: LEMMIT_COST,
+      });
+
+      if (userId) {
+        await supabase.rpc('decrement_lemmit_balance', {
+          user_id: userId,
+          amount: LEMMIT_COST
+        });
+      }
+
+      return new Response(
+        JSON.stringify(responseBody),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     if (!lemmitResponse.ok) {
       errorMessage = responseData.message || "Erro ao consultar CPF na Lemmit";
       responseBody = {
         error: errorMessage,
+        canContinue: true,
         details: responseData,
       };
 
@@ -169,6 +282,13 @@ Deno.serve(async (req: Request) => {
         cost: LEMMIT_COST,
       });
 
+      if (userId) {
+        await supabase.rpc('decrement_lemmit_balance', {
+          user_id: userId,
+          amount: LEMMIT_COST
+        });
+      }
+
       return new Response(
         JSON.stringify(responseBody),
         {
@@ -183,6 +303,7 @@ Deno.serve(async (req: Request) => {
       responseBody = {
         error: errorMessage,
         empty: true,
+        canContinue: true,
       };
 
       await saveLog(supabase, {
@@ -198,6 +319,13 @@ Deno.serve(async (req: Request) => {
         duration_ms: Date.now() - startTime,
         cost: LEMMIT_COST,
       });
+
+      if (userId) {
+        await supabase.rpc('decrement_lemmit_balance', {
+          user_id: userId,
+          amount: LEMMIT_COST
+        });
+      }
 
       return new Response(
         JSON.stringify(responseBody),

@@ -118,7 +118,7 @@ export function DependentesSection({
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        alert('Sessão expirada. Por favor, faça login novamente.');
+        console.warn('[DependentesSection] Sessão expirada - continuando sem Lemmit');
         return;
       }
 
@@ -132,12 +132,32 @@ export function DependentesSection({
         body: JSON.stringify({ cpf: cpfLimpo }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Erro ao consultar Lemmit');
-      }
-
       const result = await response.json();
+
+      if (!response.ok) {
+        if (result.notFound) {
+          console.log('[DependentesSection] CPF não encontrado na Lemmit - continuando preenchimento manual');
+          return;
+        }
+
+        if (result.invalidCPF) {
+          console.log('[DependentesSection] CPF inválido na Lemmit - continuando preenchimento manual');
+          return;
+        }
+
+        if (result.workflowError) {
+          console.log('[DependentesSection] Erro no workflow da Lemmit - continuando preenchimento manual');
+          return;
+        }
+
+        if (result.canContinue) {
+          console.log('[DependentesSection] Erro na Lemmit mas pode continuar - preenchimento manual');
+          return;
+        }
+
+        console.error('[DependentesSection] Erro ao consultar Lemmit:', result.error);
+        return;
+      }
 
       if (result.pessoa) {
         const pessoa = result.pessoa;
@@ -163,11 +183,11 @@ export function DependentesSection({
           nomeMae: pessoa.nome_mae,
         });
       } else {
-        console.log('[DependentesSection] Consulta Lemmit sem dados:', result);
+        console.log('[DependentesSection] Consulta Lemmit sem dados - continuando preenchimento manual');
       }
     } catch (error: any) {
       console.error('[DependentesSection] Erro ao consultar Lemmit:', error);
-      alert(`Erro ao consultar Lemmit: ${error.message}`);
+      console.log('[DependentesSection] Continuando com preenchimento manual');
     } finally {
       setConsultandoLemmit(false);
     }

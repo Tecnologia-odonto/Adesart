@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ConfigCadastroProvider } from './contexts/ConfigCadastroContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Users } from './pages/Users';
@@ -9,7 +10,7 @@ import { Teams } from './pages/Teams';
 import { Profile } from './pages/Profile';
 import { Cadastro } from './pages/Cadastro';
 import { ConfiguracoesCadastro } from './pages/ConfiguracoesCadastro';
-import { LemmitUsage } from './pages/LemmitUsage';
+import { AuditoriaLemmit } from './pages/AuditoriaLemmit';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -72,10 +73,10 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/lemmit-usage"
+        path="/auditoria-lemmit"
         element={
-          <ProtectedRoute>
-            <LemmitUsage />
+          <ProtectedRoute allowedRoles={['ADMINISTRADOR']}>
+            <AuditoriaLemmit />
           </ProtectedRoute>
         }
       />
@@ -95,13 +96,15 @@ function AppRoutes() {
 
 function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <ConfigCadastroProvider>
-          <AppRoutes />
-        </ConfigCadastroProvider>
-      </AuthProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AuthProvider>
+          <ConfigCadastroProvider>
+            <AppRoutes />
+          </ConfigCadastroProvider>
+        </AuthProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 
