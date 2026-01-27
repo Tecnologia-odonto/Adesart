@@ -1,41 +1,41 @@
 import { formatCPF, formatDate, removeCPFMask } from './cpf';
 
 export interface LemmitPessoa {
-  cpf?: string;
-  nome?: string;
-  data_nascimento?: string;
-  sexo?: string;
-  nome_mae?: string;
+  cpf?: string | null;
+  nome?: string | null;
+  data_nascimento?: string | null;
+  sexo?: string | null;
+  nome_mae?: string | null;
   celulares?: Array<{
-    ddd?: number;
-    numero?: string;
-    plus?: boolean;
-    ranking?: number;
-    whatsapp?: boolean;
+    ddd?: number | null;
+    numero?: string | null;
+    plus?: boolean | null;
+    ranking?: number | null;
+    whatsapp?: boolean | null;
   }>;
   fixos?: Array<{
-    ddd?: number;
-    numero?: string;
-    ranking?: number;
+    ddd?: number | null;
+    numero?: string | null;
+    ranking?: number | null;
   }>;
   emails?: Array<{
-    email?: string;
-    ranking?: number;
-    possui_cookie?: boolean;
+    email?: string | null;
+    ranking?: number | null;
+    possui_cookie?: boolean | null;
   }>;
   enderecos?: Array<{
-    endereco?: string;
-    tipo_logradouro?: string;
-    titulo_logradouro?: string;
-    logradouro?: string;
-    numero?: string;
-    complemento?: string;
-    bairro?: string;
-    cidade?: string;
-    uf?: string;
-    cep?: string;
-    tipo?: string;
-    ranking?: number;
+    endereco?: string | null;
+    tipo_logradouro?: string | null;
+    titulo_logradouro?: string | null;
+    logradouro?: string | null;
+    numero?: string | null;
+    complemento?: string | null;
+    bairro?: string | null;
+    cidade?: string | null;
+    uf?: string | null;
+    cep?: string | null;
+    tipo?: string | null;
+    ranking?: number | null;
   }>;
   [key: string]: unknown;
 }
@@ -123,7 +123,8 @@ export function mapLemitToCadastro(lemitData: LemitResponse | null, cpf: string)
 
     celularesComPlus.forEach((cel, index) => {
       if (cel.numero) {
-        const numero = `${cel.ddd || ''}${cel.numero}`;
+        const ddd = cel.ddd ? String(cel.ddd) : '';
+        const numero = `${ddd}${cel.numero}`;
         contatos.push({
           tipo: cel.whatsapp ? 'whatsapp' : 'celular',
           valor: removeCPFMask(numero),
@@ -138,7 +139,8 @@ export function mapLemitToCadastro(lemitData: LemitResponse | null, cpf: string)
       .sort((a, b) => (a.ranking || 999) - (b.ranking || 999))
       .forEach((tel) => {
         if (tel.numero) {
-          const numero = `${tel.ddd || ''}${tel.numero}`;
+          const ddd = tel.ddd ? String(tel.ddd) : '';
+          const numero = `${ddd}${tel.numero}`;
           contatos.push({
             tipo: 'fixo',
             valor: removeCPFMask(numero),
@@ -168,8 +170,10 @@ export function mapLemitToCadastro(lemitData: LemitResponse | null, cpf: string)
       .filter(e => e.ranking === 1)
       .sort((a, b) => (a.ranking || 999) - (b.ranking || 999))[0] || pessoa.enderecos[0];
 
+    const cepLimpo = endLemmit.cep ? removeCPFMask(endLemmit.cep) : '';
+
     endereco = {
-      cep: removeCPFMask(endLemmit.cep || ''),
+      cep: cepLimpo,
       tipoLogradouro: endLemmit.tipo_logradouro || '',
       logradouro: endLemmit.logradouro || '',
       numero: endLemmit.numero || '',
@@ -206,7 +210,7 @@ export function mapLemitToCadastro(lemitData: LemitResponse | null, cpf: string)
     sexoCodigo,
     contatos,
     endereco,
-    nomeMae: pessoa.nome_mae,
+    nomeMae: pessoa.nome_mae || undefined,
   };
 }
 

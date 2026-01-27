@@ -1,4 +1,5 @@
 export function formatCPF(value: string): string {
+  if (!value) return '';
   const numbers = value.replace(/\D/g, '');
 
   if (numbers.length <= 3) return numbers;
@@ -11,6 +12,7 @@ export function formatCPF(value: string): string {
 }
 
 export function removeCPFMask(cpf: string): string {
+  if (!cpf) return '';
   return cpf.replace(/\D/g, '');
 }
 
@@ -45,6 +47,7 @@ export function validateCPF(cpf: string): boolean {
 }
 
 export function formatPhone(phone: string): string {
+  if (!phone) return '';
   const numbers = phone.replace(/\D/g, '');
 
   if (numbers.length === 11) {
@@ -59,6 +62,7 @@ export function formatPhone(phone: string): string {
 }
 
 export function formatCEP(cep: string): string {
+  if (!cep) return '';
   const numbers = cep.replace(/\D/g, '');
 
   if (numbers.length <= 5) return numbers;

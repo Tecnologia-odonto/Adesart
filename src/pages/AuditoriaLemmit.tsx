@@ -223,7 +223,7 @@ export function AuditoriaLemmit() {
                   <div>
                     <p className="text-sm font-medium text-blue-700">Limite Total</p>
                     <p className="text-2xl font-bold text-blue-900 mt-1">
-                      R${data.cards.total_limite_ajustado.toLocaleString('pt-BR')}
+                      R$ {data.cards.total_limite_ajustado.toLocaleString('pt-BR')}
                     </p>
                   </div>
                   <TrendingUp className="w-8 h-8 text-blue-600 opacity-50" />
