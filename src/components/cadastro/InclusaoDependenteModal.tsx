@@ -7,8 +7,9 @@ import { DateInput } from '../DateInput';
 import { useAuth } from '../../contexts/AuthContext';
 import { useConfigCadastro } from '../../contexts/ConfigCadastroContext';
 import { useCadastros } from '../../hooks/useCadastros';
-import { formatCPF, removeCPFMask } from '../../lib/cpf';
+import { formatCPF, removeCPFMask, validateCPF } from '../../lib/cpf';
 import { supabase } from '../../lib/supabase';
+import { LemmitLimitModal } from './LemmitLimitModal';
 
 interface InclusaoDependenteModalProps {
   onClose: () => void;
@@ -113,6 +114,13 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
   const [selectedVendedor, setSelectedVendedor] = useState<string>('');
   const [adesionistas, setAdesionistas] = useState<Adesionista[]>([]);
   const [selectedAdesionista, setSelectedAdesionista] = useState<string>('');
+  const [lemmitLimitExceeded, setLemmitLimitExceeded] = useState<{
+    limiteFormatado?: string;
+    consumoFormatado?: string;
+    saldoFormatado?: string;
+    isUnlimited?: boolean;
+  } | null>(null);
+  const [consultingLemmitIndex, setConsultingLemmitIndex] = useState<number | null>(null);
 
   const funcionarioCadastroId = profile?.external_id ? parseInt(profile.external_id) : null;
 
@@ -344,7 +352,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
     setDependentes(dependentes.filter((_, i) => i !== index));
   };
 
-  const handleAtualizarDependente = (index: number, campo: string, valor: any) => {
+  const handleAtualizarDependente = async (index: number, campo: string, valor: any) => {
     setDependentes((prev) => {
       const next = [...prev];
       next[index] = {
@@ -353,6 +361,134 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       };
       return next;
     });
+
+    if (campo === 'cpf' && valor) {
+      const cpfFormatado = formatCPF(valor);
+      const cpfLimpo = removeCPFMask(cpfFormatado);
+
+      if (cpfLimpo.length === 11 && validateCPF(cpfFormatado)) {
+        await consultarLemmitDependente(index, cpfLimpo);
+      }
+    }
+  };
+
+  const consultarLemmitDependente = async (index: number, cpfLimpo: string) => {
+    if (!config?.lemmit_dependente) {
+      console.log('Lemmit para dependentes está desativado');
+      return;
+    }
+
+    setConsultingLemmitIndex(index);
+    setError('');
+
+    try {
+      const { data: canUse } = await supabase.rpc('can_use_lemmit', {
+        p_user_id: profile?.id,
+      });
+
+      if (!canUse) {
+        console.log('Limite mensal atingido para consulta de dependente');
+
+        const { data: limitInfo } = await supabase.rpc('get_lemmit_limit_info', {
+          p_user_id: profile?.id,
+        });
+
+        if (limitInfo && limitInfo.length > 0) {
+          const info = limitInfo[0];
+          if (info.limite_mensal !== null) {
+            const limiteFormatado = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(info.limite_mensal);
+            const consumoFormatado = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(info.consumo_mensal);
+            const saldoFormatado = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(info.saldo_disponivel);
+
+            setLemmitLimitExceeded({
+              limiteFormatado,
+              consumoFormatado,
+              saldoFormatado,
+            });
+          } else {
+            setLemmitLimitExceeded({
+              isUnlimited: true,
+            });
+          }
+        } else {
+          setLemmitLimitExceeded({});
+        }
+
+        setConsultingLemmitIndex(null);
+        return;
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Sessão não encontrada');
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/lemit-consulta-pessoa`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ cpf: cpfLimpo }),
+        }
+      );
+
+      if (!response.ok) {
+        console.warn('Erro na consulta Lemmit para dependente');
+        setConsultingLemmitIndex(null);
+        return;
+      }
+
+      const lemitData = await response.json();
+
+      if (lemitData?.pessoa && Object.keys(lemitData.pessoa).length > 0) {
+        console.log('Dados Lemmit recebidos para dependente:', lemitData.pessoa);
+
+        const novosDependentes = [...dependentes];
+        novosDependentes[index] = {
+          ...novosDependentes[index],
+          nome: lemitData.pessoa.nome || novosDependentes[index].nome,
+          nomeMae: lemitData.pessoa.nomeMae || novosDependentes[index].nomeMae,
+          dataNascimento: lemitData.pessoa.dataNascimento
+            ? lemitData.pessoa.dataNascimento.split('T')[0]
+            : novosDependentes[index].dataNascimento,
+          sexo: lemitData.pessoa.sexo === 'Masculino' ? 1 : lemitData.pessoa.sexo === 'Feminino' ? 2 : novosDependentes[index].sexo,
+        };
+        setDependentes(novosDependentes);
+
+        await supabase.from('lemmit_consultas').insert({
+          user_id: profile?.id,
+          cpf: cpfLimpo,
+          success: true,
+          response_data: lemitData,
+        });
+
+        await supabase.rpc('debit_lemmit_balance', {
+          p_user_id: profile?.id,
+          p_amount: 0.12,
+        });
+      } else {
+        console.warn('Lemmit não retornou dados para o dependente');
+
+        await supabase.from('lemmit_consultas').insert({
+          user_id: profile?.id,
+          cpf: cpfLimpo,
+          success: false,
+          error_message: 'Dados não encontrados',
+        });
+
+        await supabase.rpc('debit_lemmit_balance', {
+          p_user_id: profile?.id,
+          p_amount: 0.12,
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao consultar Lemmit para dependente:', error);
+    } finally {
+      setConsultingLemmitIndex(null);
+    }
   };
 
   const handleArquivoChange = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1206,6 +1342,16 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
           </div>
         </div>
       </div>
+
+      {lemmitLimitExceeded && (
+        <LemmitLimitModal
+          onClose={() => setLemmitLimitExceeded(null)}
+          limiteFormatado={lemmitLimitExceeded.limiteFormatado}
+          consumoFormatado={lemmitLimitExceeded.consumoFormatado}
+          saldoFormatado={lemmitLimitExceeded.saldoFormatado}
+          isUnlimited={lemmitLimitExceeded.isUnlimited}
+        />
+      )}
     </div>
   );
 }

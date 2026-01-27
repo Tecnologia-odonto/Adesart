@@ -59,7 +59,7 @@ export function EditUserModal({ user, onClose, onSuccess, canEditRole }: EditUse
         name: formData.name,
         email: formData.email,
         is_active: formData.is_active,
-        lemmit_limite_consultas: formData.lemmit_limite_consultas === '' ? null : parseInt(formData.lemmit_limite_consultas as string),
+        lemmit_limite_consultas: formData.lemmit_limite_consultas === '' ? null : parseFloat(formData.lemmit_limite_consultas as string),
       };
 
       if (canEditRole) {
@@ -177,15 +177,16 @@ export function EditUserModal({ user, onClose, onSuccess, canEditRole }: EditUse
 
           <div>
             <Input
-              label="Limite de Consultas Lemmit (Mensal)"
+              label="Limite de Consultas Lemmit (Mensal em R$)"
               type="number"
               value={formData.lemmit_limite_consultas}
               onChange={(e) => setFormData({ ...formData, lemmit_limite_consultas: e.target.value })}
-              placeholder="Deixe em branco para ilimitado"
+              placeholder="Ex: 10.00 para R$ 10,00 por mês"
               min="0"
+              step="0.01"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Deixe em branco para permitir consultas ilimitadas. Digite 0 para bloquear consultas.
+              Valor em reais (R$) que o usuário pode gastar por mês com consultas Lemmit. Cada consulta custa R$ 0,12. Deixe em branco para ilimitado ou digite 0 para bloquear consultas.
             </p>
           </div>
 

@@ -12,6 +12,7 @@ import { supabase } from '../../lib/supabase';
 import { ClientExistsModal } from './ClientExistsModal';
 import { EmpresaSearchCard } from './EmpresaSearchCard';
 import { LemmitErrorModal } from './LemmitErrorModal';
+import { LemmitLimitModal } from './LemmitLimitModal';
 
 interface NovoCadastroCardProps {
   onSuccess: (cadastro: any, isBlocked?: boolean) => void;
@@ -65,6 +66,13 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
   const [adesionistas, setAdesionistas] = useState<Adesionista[]>([]);
   const [selectedAdesionista, setSelectedAdesionista] = useState<string>('');
   const [lemmitError, setLemmitError] = useState<LemmitError | null>(null);
+  const [lemmitLimitExceeded, setLemmitLimitExceeded] = useState<{
+    limiteFormatado?: string;
+    consumoFormatado?: string;
+    saldoFormatado?: string;
+    isUnlimited?: boolean;
+    cadastroData?: any;
+  } | null>(null);
   const { checkERPAssociado, consultarCPF, consultarEnderecoCEP, findClienteByCPF, createOrUpdateRascunho } = useCadastros();
   const { loadConfig } = useConfigCadastro();
   const { profile } = useAuth();
@@ -227,9 +235,39 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
               console.warn('⚠️ Erro na Lemmit - continuando com preenchimento manual');
             }
           } else {
-            console.log('❌ Saldo insuficiente para consulta Lemmit');
-            setError('Saldo insuficiente para consulta Lemmit. Cada consulta custa R$ 0,12.');
+            console.log('❌ Limite mensal atingido - Preenchimento manual');
+
+            const { data: limitInfo } = await supabase.rpc('get_lemmit_limit_info', {
+              p_user_id: profile?.id,
+            });
+
+            if (limitInfo && limitInfo.length > 0) {
+              const info = limitInfo[0];
+              if (info.limite_mensal !== null) {
+                const limiteFormatado = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(info.limite_mensal);
+                const consumoFormatado = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(info.consumo_mensal);
+                const saldoFormatado = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(info.saldo_disponivel);
+
+                setLemmitLimitExceeded({
+                  limiteFormatado,
+                  consumoFormatado,
+                  saldoFormatado,
+                  cadastroData
+                });
+              } else {
+                setLemmitLimitExceeded({
+                  isUnlimited: true,
+                  cadastroData
+                });
+              }
+            } else {
+              setLemmitLimitExceeded({
+                cadastroData
+              });
+            }
+
             setLoading(false);
+            console.log('ℹ️ Aguardando confirmação do usuário para continuar com cadastro manual');
             return;
           }
         } catch (error) {
@@ -444,6 +482,81 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
     setLoading(false);
   };
 
+  const handleLemmitLimitContinue = async () => {
+    if (!lemmitLimitExceeded?.cadastroData) return;
+
+    try {
+      const cadastroData = lemmitLimitExceeded.cadastroData;
+      const cpfLimpo = removeCPFMask(cpf);
+
+      if (cadastroData.endereco?.cep) {
+        try {
+          const enderecoERP = await consultarEnderecoCEP(cadastroData.endereco.cep);
+          if (enderecoERP.ok && enderecoERP.dados) {
+            const dados = enderecoERP.dados;
+            cadastroData.endereco = {
+              ...cadastroData.endereco,
+              ...(dados.IdTipoLogradouro && { idTipoLogradouro: dados.IdTipoLogradouro }),
+              ...(dados.TipoLogradouro && { tipoLogradouro: dados.TipoLogradouro }),
+              ...(dados.Logradouro && { logradouro: dados.Logradouro }),
+              ...(dados.IdBairro && { idBairro: dados.IdBairro }),
+              ...(dados.Bairro && { bairro: dados.Bairro }),
+              ...(dados.IdMunicipio && { idMunicipio: dados.IdMunicipio }),
+              ...(dados.Municipio && { cidade: dados.Municipio }),
+              ...(dados.IdUf && { idUf: dados.IdUf }),
+              ...(dados.Uf && { uf: dados.Uf }),
+              ...(dados.UfSigla && { ufSigla: dados.UfSigla }),
+            };
+          }
+        } catch (cepError) {
+          console.warn('Error fetching CEP from ERP:', cepError);
+        }
+      }
+
+      const vendedorSelecionado = vendedores.find(v => v.id === selectedVendedor);
+      const adesionistaSelecionado = profile?.role === 'ADESIONISTA'
+        ? { id: profile.id, external_id: profile.external_id || '', name: profile.name || '' }
+        : adesionistas.find(a => a.id === selectedAdesionista);
+
+      const rascunho = await createOrUpdateRascunho({
+        cpf: cpfLimpo,
+        nome: cadastroData.nome,
+        nome_mae: cadastroData.nomeMae,
+        data_nascimento: cadastroData.dataNascimento,
+        sexo: cadastroData.sexo,
+        sexo_codigo: cadastroData.sexoCodigo,
+        contatos: cadastroData.contatos,
+        endereco: cadastroData.endereco,
+        lemit_raw: null,
+        cliente_sera_usuario: true,
+        empresa_id: selectedEmpresa?.id,
+        empresa_nome: selectedEmpresa?.nomeFantasia,
+        empresa_cnpj: selectedEmpresa?.cnpj,
+        empresa_raw: selectedEmpresa?.raw,
+        empresa_exige_matricula: selectedEmpresa?.exigeMatricula || 0,
+        planos_raw: selectedEmpresa?.precoPlano,
+        ...(needsVendedor && vendedorSelecionado && {
+          vendedor_id: vendedorSelecionado.id,
+          vendedor_codigo: vendedorSelecionado.external_id,
+          vendedor_nome: vendedorSelecionado.name,
+        }),
+        ...(adesionistaSelecionado && {
+          adesionista_id: adesionistaSelecionado.id,
+          adesionista_codigo: adesionistaSelecionado.external_id,
+          adesionista_nome: adesionistaSelecionado.name,
+        }),
+      });
+
+      setLemmitLimitExceeded(null);
+      setCpf('');
+      onSuccess(rascunho);
+    } catch (err) {
+      console.error('Error continuing after Lemmit limit:', err);
+      setError(err instanceof Error ? err.message : 'Erro ao continuar cadastro');
+      setLemmitLimitExceeded(null);
+    }
+  };
+
   return (
     <>
     <div className="space-y-6">
@@ -550,6 +663,16 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         details={lemmitError.details}
         onContinue={handleLemmitErrorContinue}
         onCancel={handleLemmitErrorCancel}
+      />
+    )}
+
+    {lemmitLimitExceeded && (
+      <LemmitLimitModal
+        onClose={handleLemmitLimitContinue}
+        limiteFormatado={lemmitLimitExceeded.limiteFormatado}
+        consumoFormatado={lemmitLimitExceeded.consumoFormatado}
+        saldoFormatado={lemmitLimitExceeded.saldoFormatado}
+        isUnlimited={lemmitLimitExceeded.isUnlimited}
       />
     )}
     </>

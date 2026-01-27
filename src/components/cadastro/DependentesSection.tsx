@@ -6,7 +6,9 @@ import { Button } from '../Button';
 import { DateInput } from '../DateInput';
 import { formatCPF, formatDate } from '../../lib/cpf';
 import { useConfigCadastro } from '../../contexts/ConfigCadastroContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { LemmitLimitModal } from './LemmitLimitModal';
 
 export interface Dependente {
   tipo: number;
@@ -36,9 +38,16 @@ export function DependentesSection({
   onChange,
 }: DependentesSectionProps) {
   const { parentescos, config } = useConfigCadastro();
+  const { profile } = useAuth();
   const [isAdding, setIsAdding] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [consultandoLemmit, setConsultandoLemmit] = useState(false);
+  const [lemmitLimitExceeded, setLemmitLimitExceeded] = useState<{
+    limiteFormatado?: string;
+    consumoFormatado?: string;
+    saldoFormatado?: string;
+    isUnlimited?: boolean;
+  } | null>(null);
 
   console.log('[DependentesSection] Planos recebidos:', planos);
   console.log('[DependentesSection] Número de planos:', planos?.length || 0);
@@ -116,6 +125,42 @@ export function DependentesSection({
 
     setConsultandoLemmit(true);
     try {
+      const { data: canUse } = await supabase.rpc('can_use_lemmit', {
+        p_user_id: profile?.id,
+      });
+
+      if (!canUse) {
+        console.log('[DependentesSection] Limite mensal atingido - preenchimento manual');
+
+        const { data: limitInfo } = await supabase.rpc('get_lemmit_limit_info', {
+          p_user_id: profile?.id,
+        });
+
+        if (limitInfo && limitInfo.length > 0) {
+          const info = limitInfo[0];
+          if (info.limite_mensal !== null) {
+            const limiteFormatado = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(info.limite_mensal);
+            const consumoFormatado = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(info.consumo_mensal);
+            const saldoFormatado = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(info.saldo_disponivel);
+
+            setLemmitLimitExceeded({
+              limiteFormatado,
+              consumoFormatado,
+              saldoFormatado,
+            });
+          } else {
+            setLemmitLimitExceeded({
+              isUnlimited: true,
+            });
+          }
+        } else {
+          setLemmitLimitExceeded({});
+        }
+
+        setConsultandoLemmit(false);
+        return;
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         console.warn('[DependentesSection] Sessão expirada - continuando sem Lemmit');
@@ -516,6 +561,16 @@ export function DependentesSection({
           </p>
         )}
       </div>
+
+      {lemmitLimitExceeded && (
+        <LemmitLimitModal
+          onClose={() => setLemmitLimitExceeded(null)}
+          limiteFormatado={lemmitLimitExceeded.limiteFormatado}
+          consumoFormatado={lemmitLimitExceeded.consumoFormatado}
+          saldoFormatado={lemmitLimitExceeded.saldoFormatado}
+          isUnlimited={lemmitLimitExceeded.isUnlimited}
+        />
+      )}
     </div>
   );
 }
