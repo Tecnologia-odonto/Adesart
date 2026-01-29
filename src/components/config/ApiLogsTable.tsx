@@ -8,8 +8,6 @@ interface ApiLog {
   user_email: string | null;
   endpoint: string;
   method: string;
-  request_body: any;
-  response_body: any;
   status_code: number | null;
   success: boolean;
   error_message: string | null;
@@ -18,10 +16,17 @@ interface ApiLog {
   created_at: string;
 }
 
+interface ApiLogDetail {
+  request_body: any;
+  response_body: any;
+}
+
 export function ApiLogsTable() {
   const [logs, setLogs] = useState<ApiLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedLog, setSelectedLog] = useState<ApiLog | null>(null);
+  const [selectedLogDetail, setSelectedLogDetail] = useState<ApiLogDetail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
   const [filter, setFilter] = useState<'all' | 'success' | 'error'>('all');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -39,11 +44,11 @@ export function ApiLogsTable() {
 
       let countQuery = supabase
         .from('api_logs')
-        .select('*', { count: 'exact', head: true });
+        .select('id', { count: 'exact', head: true });
 
       let query = supabase
         .from('api_logs')
-        .select('*')
+        .select('id, user_email, endpoint, method, status_code, success, error_message, duration_ms, cost, created_at')
         .order('created_at', { ascending: false })
         .range((page - 1) * pageSize, page * pageSize - 1);
 
@@ -80,6 +85,32 @@ export function ApiLogsTable() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchLogDetail = async (logId: string) => {
+    try {
+      setLoadingDetail(true);
+
+      const { data, error } = await supabase
+        .from('api_logs')
+        .select('request_body, response_body')
+        .eq('id', logId)
+        .single();
+
+      if (error) throw error;
+      setSelectedLogDetail(data);
+    } catch (error) {
+      console.error('Error fetching log detail:', error);
+      setSelectedLogDetail(null);
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
+  const handleViewDetails = async (log: ApiLog) => {
+    setSelectedLog(log);
+    setSelectedLogDetail(null);
+    await fetchLogDetail(log.id);
   };
 
   const formatDate = (dateString: string) => {
@@ -218,7 +249,7 @@ export function ApiLogsTable() {
                   <td className="p-3 text-sm text-gray-600">{formatDate(log.created_at)}</td>
                   <td className="p-3">
                     <button
-                      onClick={() => setSelectedLog(log)}
+                      onClick={() => handleViewDetails(log)}
                       className="text-blue-600 hover:text-blue-800 text-sm font-medium"
                     >
                       Ver Detalhes
@@ -347,23 +378,35 @@ export function ApiLogsTable() {
                   </div>
                 )}
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Request Body
-                  </label>
-                  <pre className="bg-gray-50 p-3 rounded text-xs overflow-auto max-h-40">
-                    {JSON.stringify(selectedLog.request_body, null, 2)}
-                  </pre>
-                </div>
+                {loadingDetail ? (
+                  <div className="text-center py-4 text-gray-600">
+                    Carregando detalhes...
+                  </div>
+                ) : selectedLogDetail ? (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Request Body
+                      </label>
+                      <pre className="bg-gray-50 p-3 rounded text-xs overflow-auto max-h-40">
+                        {JSON.stringify(selectedLogDetail.request_body, null, 2)}
+                      </pre>
+                    </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Response Body
-                  </label>
-                  <pre className="bg-gray-50 p-3 rounded text-xs overflow-auto max-h-40">
-                    {JSON.stringify(selectedLog.response_body, null, 2)}
-                  </pre>
-                </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Response Body
+                      </label>
+                      <pre className="bg-gray-50 p-3 rounded text-xs overflow-auto max-h-40">
+                        {JSON.stringify(selectedLogDetail.response_body, null, 2)}
+                      </pre>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center py-4 text-red-600">
+                    Erro ao carregar detalhes do log
+                  </div>
+                )}
               </div>
             </div>
           </div>
