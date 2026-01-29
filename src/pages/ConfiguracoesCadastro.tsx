@@ -5,9 +5,10 @@ import { GeralConfigCard } from '../components/config/GeralConfigCard';
 import { PlanosMapTable } from '../components/config/PlanosMapTable';
 import { ParentescoMapTable } from '../components/config/ParentescoMapTable';
 import { ApiLogsTable } from '../components/config/ApiLogsTable';
+import { StatusAdesoesTable } from '../components/config/StatusAdesoesTable';
 
 export function ConfiguracoesCadastro() {
-  const [activeTab, setActiveTab] = useState<'geral' | 'planos' | 'parentesco' | 'logs'>('geral');
+  const [activeTab, setActiveTab] = useState<'geral' | 'planos' | 'parentesco' | 'status' | 'logs'>('geral');
 
   return (
     <Layout>
@@ -56,6 +57,16 @@ export function ConfiguracoesCadastro() {
                 Parentesco
               </button>
               <button
+                onClick={() => setActiveTab('status')}
+                className={`flex-1 sm:flex-none px-4 sm:px-6 py-3 sm:py-4 font-medium text-xs sm:text-sm transition-colors whitespace-nowrap ${
+                  activeTab === 'status'
+                    ? 'text-emerald-600 border-b-2 border-emerald-600 bg-emerald-50'
+                    : 'text-slate-600 hover:text-slate-800 hover:bg-slate-50 active:bg-slate-100'
+                }`}
+              >
+                Status Adesões
+              </button>
+              <button
                 onClick={() => setActiveTab('logs')}
                 className={`flex-1 sm:flex-none px-4 sm:px-6 py-3 sm:py-4 font-medium text-xs sm:text-sm transition-colors whitespace-nowrap ${
                   activeTab === 'logs'
@@ -72,6 +83,7 @@ export function ConfiguracoesCadastro() {
             {activeTab === 'geral' && <GeralConfigCard />}
             {activeTab === 'planos' && <PlanosMapTable />}
             {activeTab === 'parentesco' && <ParentescoMapTable />}
+            {activeTab === 'status' && <StatusAdesoesTable />}
             {activeTab === 'logs' && <ApiLogsTable />}
           </div>
         </div>

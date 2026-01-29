@@ -66,6 +66,24 @@ export function GeralConfigCard() {
     }
   };
 
+  const handleToggleLemmitInclusaoDependente = async () => {
+    if (!config) return;
+
+    const novoValor = !config.lemmit_inclusao_dependente;
+    console.log('Toggling Lemmit Incluir Dep.:', { atual: config.lemmit_inclusao_dependente, novo: novoValor });
+
+    setUpdating(true);
+    try {
+      await updateConfig({ lemmit_inclusao_dependente: novoValor });
+      console.log('Config atualizada com sucesso');
+    } catch (error) {
+      console.error('Error updating config:', error);
+      alert('Erro ao atualizar configuração');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   const handleEditSituacoes = () => {
     if (config) {
       setTempSituacoes(config.situacoes_que_barram.join(', '));
@@ -240,8 +258,8 @@ export function GeralConfigCard() {
               Lemmit no Dependente
             </h3>
             <p className="text-xs text-slate-600">
-              Quando ativo, ao adicionar um dependente e preencher o CPF, o sistema consultará automaticamente
-              a API Lemmit e preencherá os campos do dependente com os dados retornados.
+              Quando ativo, ao adicionar um dependente no fluxo de Novo Cadastro e preencher o CPF, o sistema consultará
+              automaticamente a API Lemmit e preencherá os campos do dependente com os dados retornados.
             </p>
           </div>
 
@@ -265,6 +283,44 @@ export function GeralConfigCard() {
             <p className="text-xs text-slate-500">
               Status atual: <span className="font-medium text-slate-700">
                 {config.lemmit_dependente ? 'Ativado' : 'Desativado'}
+              </span>
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold text-slate-800 mb-1">
+              Lemmit Incluir Dep.
+            </h3>
+            <p className="text-xs text-slate-600">
+              Quando ativo, ao digitar CPF válido no fluxo de Inclusão de Dependente, o sistema consultará automaticamente
+              a API Lemmit e preencherá os campos com os dados retornados. Respeita regras de consumo e permite continuar manualmente se desejar.
+            </p>
+          </div>
+
+          <button
+            onClick={handleToggleLemmitInclusaoDependente}
+            disabled={updating || !config}
+            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+              config?.lemmit_inclusao_dependente ? 'bg-emerald-600' : 'bg-slate-300'
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                config?.lemmit_inclusao_dependente ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </button>
+        </div>
+
+        {config && (
+          <div className="mt-3 pt-3 border-t border-slate-200">
+            <p className="text-xs text-slate-500">
+              Status atual: <span className="font-medium text-slate-700">
+                {config.lemmit_inclusao_dependente ? 'Ativado' : 'Desativado'}
               </span>
             </p>
           </div>

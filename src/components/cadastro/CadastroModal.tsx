@@ -280,6 +280,34 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     }
   };
 
+  const handleCloseWithSave = async () => {
+    setError('');
+    setSuccess('');
+    setLoading(true);
+
+    try {
+      const updateData: any = {
+        nome: formData.nome || null,
+        data_nascimento: formData.dataNascimento && formData.dataNascimento.trim() !== '' ? formData.dataNascimento : null,
+        sexo_codigo: formData.sexo !== '' && formData.sexo !== null && formData.sexo !== undefined ? formData.sexo : null,
+        nome_mae: formData.nomeMae || null,
+        numero_matricula: formData.numeroMatricula || null,
+        contatos: formData.contatos,
+        endereco: formData.endereco,
+        dependentes: dependentes,
+        arquivo_path: arquivo ? arquivo.path : null,
+      };
+
+      await updateCadastro(cadastro.id, updateData);
+      onClose();
+    } catch (err: any) {
+      console.error('Error saving cadastro on close:', err);
+      onClose();
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleArquivoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) {
@@ -718,8 +746,9 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
             )}
           </div>
           <button
-            onClick={onClose}
+            onClick={handleCloseWithSave}
             className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+            disabled={loading}
           >
             <X className="w-5 h-5 text-slate-600" />
           </button>
@@ -1070,12 +1099,12 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
             <Button
               variant="secondary"
-              onClick={onClose}
+              onClick={handleCloseWithSave}
               disabled={loading}
               className="w-full sm:w-auto"
             >
               <X className="w-4 h-4 mr-2" />
-              Cancelar
+              Fechar
             </Button>
 
             <div className="flex-1" />

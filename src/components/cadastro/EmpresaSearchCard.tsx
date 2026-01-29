@@ -221,7 +221,7 @@ export function EmpresaSearchCard({ onEmpresaSelected, selectedEmpresa }: Empres
         <div>
           <h3 className="text-base sm:text-lg font-semibold text-slate-800">Buscar Empresa</h3>
           <p className="text-xs sm:text-sm text-slate-600 mt-0.5 sm:mt-1">
-            Busque por CNPJ, Nome ou ID da empresa
+            Busque por CNPJ, Nome ou Código da empresa
           </p>
         </div>
       </div>
@@ -240,14 +240,14 @@ export function EmpresaSearchCard({ onEmpresaSelected, selectedEmpresa }: Empres
             >
               <option value="cnpj">CNPJ</option>
               <option value="nome">Nome da Empresa</option>
-              <option value="id">ID da Empresa</option>
+              <option value="id">Código da Empresa</option>
             </select>
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
             <div className="flex-1">
               <Input
-                label={searchType === 'cnpj' ? 'CNPJ' : searchType === 'nome' ? 'Nome da Empresa' : 'ID da Empresa'}
+                label={searchType === 'cnpj' ? 'CNPJ' : searchType === 'nome' ? 'Nome da Empresa' : 'Código da Empresa'}
                 value={searchValue}
                 onChange={handleSearchValueChange}
                 placeholder={
@@ -255,7 +255,7 @@ export function EmpresaSearchCard({ onEmpresaSelected, selectedEmpresa }: Empres
                     ? '00.000.000/0000-00'
                     : searchType === 'nome'
                     ? 'Digite o nome da empresa'
-                    : 'Digite o ID'
+                    : 'Código da Empresa'
                 }
                 maxLength={searchType === 'cnpj' ? 18 : undefined}
                 disabled={loading}

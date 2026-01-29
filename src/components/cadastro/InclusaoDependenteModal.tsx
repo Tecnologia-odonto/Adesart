@@ -373,8 +373,8 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
   };
 
   const consultarLemmitDependente = async (index: number, cpfLimpo: string) => {
-    if (!config?.lemmit_dependente) {
-      console.log('Lemmit para dependentes está desativado');
+    if (!config?.lemmit_inclusao_dependente) {
+      console.log('Lemmit para inclusão de dependentes está desativado');
       return;
     }
 
@@ -436,56 +436,117 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       );
 
       if (!response.ok) {
-        console.warn('Erro na consulta Lemmit para dependente');
+        console.warn('Erro na consulta Lemmit para dependente:', response.status, response.statusText);
         setConsultingLemmitIndex(null);
         return;
       }
 
-      const lemitData = await response.json();
+      let lemitData;
+      try {
+        lemitData = await response.json();
+      } catch (parseError) {
+        console.error('Erro ao fazer parse da resposta Lemmit:', parseError);
+        setConsultingLemmitIndex(null);
+        return;
+      }
+
+      if (!lemitData) {
+        console.warn('Resposta Lemmit vazia');
+        setConsultingLemmitIndex(null);
+        return;
+      }
 
       if (lemitData?.pessoa && Object.keys(lemitData.pessoa).length > 0) {
         console.log('Dados Lemmit recebidos para dependente:', lemitData.pessoa);
 
-        const novosDependentes = [...dependentes];
-        novosDependentes[index] = {
-          ...novosDependentes[index],
-          nome: lemitData.pessoa.nome || novosDependentes[index].nome,
-          nomeMae: lemitData.pessoa.nomeMae || novosDependentes[index].nomeMae,
-          dataNascimento: lemitData.pessoa.dataNascimento
-            ? lemitData.pessoa.dataNascimento.split('T')[0]
-            : novosDependentes[index].dataNascimento,
-          sexo: lemitData.pessoa.sexo === 'Masculino' ? 1 : lemitData.pessoa.sexo === 'Feminino' ? 2 : novosDependentes[index].sexo,
-        };
-        setDependentes(novosDependentes);
+        setDependentes((prevDependentes) => {
+          const novosDependentes = [...prevDependentes];
+          const depAtual = novosDependentes[index];
 
-        await supabase.from('lemmit_consultas').insert({
-          user_id: profile?.id,
-          cpf: cpfLimpo,
-          success: true,
-          response_data: lemitData,
+          let dataNascimentoFormatada = depAtual.dataNascimento;
+          if (lemitData.pessoa.data_nascimento && typeof lemitData.pessoa.data_nascimento === 'string') {
+            try {
+              dataNascimentoFormatada = lemitData.pessoa.data_nascimento.split('T')[0];
+            } catch (e) {
+              console.warn('Erro ao formatar data de nascimento:', e);
+            }
+          }
+
+          let sexoValue = depAtual.sexo;
+          if (lemitData.pessoa.sexo) {
+            const sexoStr = String(lemitData.pessoa.sexo).toLowerCase();
+            if (sexoStr.includes('masculino') || sexoStr === 'm' || sexoStr === '1') {
+              sexoValue = 1;
+            } else if (sexoStr.includes('feminino') || sexoStr === 'f' || sexoStr === '2' || sexoStr === '0') {
+              sexoValue = 0;
+            }
+          }
+
+          novosDependentes[index] = {
+            ...depAtual,
+            nome: (lemitData.pessoa.nome && lemitData.pessoa.nome.trim()) ? lemitData.pessoa.nome.trim() : depAtual.nome,
+            nomeMae: (lemitData.pessoa.nome_mae && lemitData.pessoa.nome_mae.trim()) ? lemitData.pessoa.nome_mae.trim() : depAtual.nomeMae,
+            dataNascimento: dataNascimentoFormatada,
+            sexo: sexoValue,
+          };
+
+          console.log('Dependente atualizado com dados Lemmit:', {
+            index,
+            anterior: depAtual,
+            novo: novosDependentes[index],
+            dadosLemmit: lemitData.pessoa
+          });
+
+          return novosDependentes;
         });
 
-        await supabase.rpc('debit_lemmit_balance', {
-          p_user_id: profile?.id,
-          p_amount: 0.12,
-        });
+        try {
+          await supabase.from('lemmit_consultas').insert({
+            user_id: profile?.id,
+            cpf: cpfLimpo,
+            success: true,
+            response_data: lemitData,
+          });
+
+          await supabase.rpc('debit_lemmit_balance', {
+            p_user_id: profile?.id,
+            p_amount: 0.12,
+          });
+        } catch (logError) {
+          console.error('Erro ao registrar consulta Lemmit:', logError);
+        }
       } else {
         console.warn('Lemmit não retornou dados para o dependente');
 
+        try {
+          await supabase.from('lemmit_consultas').insert({
+            user_id: profile?.id,
+            cpf: cpfLimpo,
+            success: false,
+            error_message: 'Dados não encontrados',
+          });
+
+          await supabase.rpc('debit_lemmit_balance', {
+            p_user_id: profile?.id,
+            p_amount: 0.12,
+          });
+        } catch (logError) {
+          console.error('Erro ao registrar consulta Lemmit sem dados:', logError);
+        }
+      }
+    } catch (error: any) {
+      console.error('Erro ao consultar Lemmit para dependente:', error);
+
+      try {
         await supabase.from('lemmit_consultas').insert({
           user_id: profile?.id,
           cpf: cpfLimpo,
           success: false,
-          error_message: 'Dados não encontrados',
+          error_message: error?.message || 'Erro desconhecido',
         });
-
-        await supabase.rpc('debit_lemmit_balance', {
-          p_user_id: profile?.id,
-          p_amount: 0.12,
-        });
+      } catch (insertError) {
+        console.error('Erro ao registrar falha na consulta Lemmit:', insertError);
       }
-    } catch (error) {
-      console.error('Erro ao consultar Lemmit para dependente:', error);
     } finally {
       setConsultingLemmitIndex(null);
     }
@@ -1084,13 +1145,23 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                             />
                           </div>
 
-                          <Input
-                            label="CPF"
-                            value={dep.cpf}
-                            onChange={(e) => handleAtualizarDependente(index, 'cpf', e.target.value)}
-                            required={!isMenorDeIdade(dep.dataNascimento)}
-                            disabled={dep.saved}
-                          />
+                          <div className="relative">
+                            <Input
+                              label="CPF"
+                              value={dep.cpf}
+                              onChange={(e) => handleAtualizarDependente(index, 'cpf', e.target.value)}
+                              required={!isMenorDeIdade(dep.dataNascimento)}
+                              disabled={dep.saved}
+                            />
+                            {consultingLemmitIndex === index && (
+                              <div className="absolute right-3 top-9 flex items-center gap-2">
+                                <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
+                                <span className="text-xs text-emerald-600 font-medium">
+                                  Consultando...
+                                </span>
+                              </div>
+                            )}
+                          </div>
 
                           <DateInput
                             label="Data de Nascimento"

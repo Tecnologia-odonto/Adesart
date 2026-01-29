@@ -45,6 +45,8 @@ export interface Cadastro {
   parentesco: number | null;
   plano_codigo: number | null;
   plano_nome: string | null;
+  status_adesao_id: string | null;
+  data_envio: string | null;
   created_at: string;
   updated_at: string;
 }

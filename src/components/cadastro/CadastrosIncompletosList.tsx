@@ -1,36 +1,96 @@
-import { FileText, Clock, AlertCircle, CheckCircle2, Eye, Ban, ChevronDown, ChevronRight, Building2, Search, X } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { FileText, Clock, AlertCircle, CheckCircle2, Eye, Ban, User, Search, X, Filter, Tag } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
 import { Cadastro } from '../../hooks/useCadastros';
 import { formatCPF, formatDate } from '../../lib/cpf';
 import { AlreadyExistsModal } from './AlreadyExistsModal';
 import { Input } from '../Input';
 import { Select } from '../Select';
+import { Button } from '../Button';
 import { useAuth } from '../../contexts/AuthContext';
 import { CadastrosSupervisorView } from './CadastrosSupervisorView';
 import { CadastrosGerenteView } from './CadastrosGerenteView';
+import { supabase } from '../../lib/supabase';
 
 interface CadastrosIncompletosListProps {
   cadastros: Cadastro[];
   onSelect: (cadastro: Cadastro) => void;
 }
 
-interface EmpresaGroup {
-  empresaId: number | null;
-  empresaNome: string;
-  empresaCnpj: string | null;
+interface StatusAdesao {
+  id: string;
+  nome: string;
+  cor: string;
+}
+
+interface ClienteGroup {
+  cpf: string;
+  nome: string | null;
   cadastros: Cadastro[];
 }
 
 export function CadastrosIncompletosList({ cadastros, onSelect }: CadastrosIncompletosListProps) {
   const { profile } = useAuth();
   const [viewERPData, setViewERPData] = useState<Cadastro | null>(null);
-  const [expandedEmpresas, setExpandedEmpresas] = useState<Set<string>>(new Set());
-  const [filtroEmpresa, setFiltroEmpresa] = useState<string>('');
-  const [filtroBusca, setFiltroBusca] = useState<string>('');
-  const [dataInicio, setDataInicio] = useState<string>('');
-  const [dataFim, setDataFim] = useState<string>('');
+  const [statusList, setStatusList] = useState<StatusAdesao[]>([]);
+  const [busca, setBusca] = useState('');
+  const [buscaAplicada, setBuscaAplicada] = useState('');
+  const [dataInicio, setDataInicio] = useState('');
+  const [dataFim, setDataFim] = useState('');
+  const [dataInicioAplicada, setDataInicioAplicada] = useState('');
+  const [dataFimAplicada, setDataFimAplicada] = useState('');
+  const [tipoFiltro, setTipoFiltro] = useState<'todos' | 'cadastro' | 'inclusao_dependente'>('todos');
+  const [tipoFiltroAplicado, setTipoFiltroAplicado] = useState<'todos' | 'cadastro' | 'inclusao_dependente'>('todos');
 
   const incompletos = cadastros.filter((c) => c.status === 'incompleto');
+
+  useEffect(() => {
+    fetchStatus();
+    setDefaultDateFilter();
+  }, []);
+
+  const setDefaultDateFilter = () => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const firstDayStr = firstDay.toISOString().split('T')[0];
+    setDataInicio(firstDayStr);
+    setDataInicioAplicada(firstDayStr);
+  };
+
+  const fetchStatus = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('status_adesoes')
+        .select('*')
+        .order('ordem', { ascending: true });
+
+      if (error) throw error;
+      setStatusList(data || []);
+    } catch (error) {
+      console.error('Error fetching status:', error);
+    }
+  };
+
+  const handleAplicarFiltros = () => {
+    setBuscaAplicada(busca);
+    setDataInicioAplicada(dataInicio);
+    setDataFimAplicada(dataFim);
+    setTipoFiltroAplicado(tipoFiltro);
+  };
+
+  const handleChangeStatus = async (cadastroId: string, statusId: string) => {
+    try {
+      const { error } = await supabase
+        .from('cadastros')
+        .update({ status_adesao_id: statusId })
+        .eq('id', cadastroId);
+
+      if (error) throw error;
+      window.location.reload();
+    } catch (error) {
+      console.error('Error updating status:', error);
+      alert('Erro ao atualizar status');
+    }
+  };
 
   if (profile?.role === 'SUPERVISOR') {
     return <CadastrosSupervisorView cadastros={cadastros} onSelect={onSelect} statusFilter="incompleto" />;
@@ -40,104 +100,61 @@ export function CadastrosIncompletosList({ cadastros, onSelect }: CadastrosIncom
     return <CadastrosGerenteView cadastros={cadastros} onSelect={onSelect} statusFilter="incompleto" />;
   }
 
-  const empresasUnicas = useMemo(() => {
-    const empresasSet = new Map<string, { id: number | null; nome: string }>();
-    incompletos.forEach((cadastro) => {
-      const key = cadastro.empresa_id !== null ? `${cadastro.empresa_id}` : 'sem_empresa';
-      if (!empresasSet.has(key)) {
-        empresasSet.set(key, {
-          id: cadastro.empresa_id,
-          nome: cadastro.empresa_nome || 'Empresa não informada',
-        });
-      }
-    });
-    return Array.from(empresasSet.values()).sort((a, b) => {
-      if (a.id === null) return 1;
-      if (b.id === null) return -1;
-      return a.nome.localeCompare(b.nome);
-    });
-  }, [incompletos]);
-
   const cadastrosFiltrados = useMemo(() => {
     return incompletos.filter((cadastro) => {
-      const matchEmpresa = !filtroEmpresa ||
-        (filtroEmpresa === 'sem_empresa' && cadastro.empresa_id === null) ||
-        (cadastro.empresa_id !== null && cadastro.empresa_id.toString() === filtroEmpresa);
+      const buscaLower = buscaAplicada.toLowerCase().trim();
+      const buscaNumeros = buscaAplicada.replace(/\D/g, '');
 
-      const matchBusca = !filtroBusca ||
-        cadastro.nome?.toLowerCase().includes(filtroBusca.toLowerCase()) ||
-        cadastro.cpf.includes(filtroBusca.replace(/\D/g, ''));
+      let matchBusca = true;
+      if (buscaAplicada) {
+        matchBusca =
+          cadastro.nome?.toLowerCase().includes(buscaLower) ||
+          cadastro.cpf.includes(buscaNumeros) ||
+          cadastro.empresa_nome?.toLowerCase().includes(buscaLower) ||
+          cadastro.empresa_cnpj?.replace(/\D/g, '').includes(buscaNumeros) ||
+          (cadastro.empresa_codigo && cadastro.empresa_codigo.toString().includes(buscaNumeros)) ||
+          false;
+      }
 
-      const dataEnvio = cadastro.data_envio ? new Date(cadastro.data_envio) : null;
-      const matchDataInicio = !dataInicio || !dataEnvio || dataEnvio >= new Date(dataInicio);
-      const matchDataFim = !dataFim || !dataEnvio || dataEnvio <= new Date(dataFim + 'T23:59:59');
+      const dataCadastro = new Date(cadastro.created_at);
+      const matchDataInicio = !dataInicioAplicada || dataCadastro >= new Date(dataInicioAplicada);
+      const matchDataFim = !dataFimAplicada || dataCadastro <= new Date(dataFimAplicada + 'T23:59:59');
 
-      return matchEmpresa && matchBusca && matchDataInicio && matchDataFim;
+      let matchTipo = true;
+      if (tipoFiltroAplicado !== 'todos') {
+        matchTipo = cadastro.tipo_cadastro === tipoFiltroAplicado;
+      }
+
+      return matchBusca && matchDataInicio && matchDataFim && matchTipo;
     });
-  }, [incompletos, filtroEmpresa, filtroBusca, dataInicio, dataFim]);
+  }, [incompletos, buscaAplicada, dataInicioAplicada, dataFimAplicada, tipoFiltroAplicado]);
 
-  const empresasGrouped: EmpresaGroup[] = [];
-  const cadastrosMap = new Map<string, Cadastro[]>();
+  const clientesGrouped: ClienteGroup[] = useMemo(() => {
+    const clientesMap = new Map<string, Cadastro[]>();
 
-  cadastrosFiltrados.forEach((cadastro) => {
-    const key = cadastro.empresa_id !== null ? `empresa_${cadastro.empresa_id}` : 'sem_empresa';
-    if (!cadastrosMap.has(key)) {
-      cadastrosMap.set(key, []);
-    }
-    cadastrosMap.get(key)!.push(cadastro);
-  });
-
-  cadastrosMap.forEach((cads, key) => {
-    const firstCadastro = cads[0];
-    empresasGrouped.push({
-      empresaId: firstCadastro.empresa_id,
-      empresaNome: firstCadastro.empresa_nome || 'Empresa não informada',
-      empresaCnpj: firstCadastro.empresa_cnpj,
-      cadastros: cads,
+    cadastrosFiltrados.forEach((cadastro) => {
+      const cpf = cadastro.cpf;
+      if (!clientesMap.has(cpf)) {
+        clientesMap.set(cpf, []);
+      }
+      clientesMap.get(cpf)!.push(cadastro);
     });
-  });
 
-  empresasGrouped.sort((a, b) => {
-    if (a.empresaId === null) return 1;
-    if (b.empresaId === null) return -1;
-    return a.empresaNome.localeCompare(b.empresaNome);
-  });
+    const groups: ClienteGroup[] = [];
+    clientesMap.forEach((cads, cpf) => {
+      groups.push({
+        cpf,
+        nome: cads[0].nome,
+        cadastros: cads,
+      });
+    });
 
-  const toggleEmpresa = (empresaKey: string) => {
-    const newExpanded = new Set(expandedEmpresas);
-    if (newExpanded.has(empresaKey)) {
-      newExpanded.delete(empresaKey);
-    } else {
-      newExpanded.add(empresaKey);
-    }
-    setExpandedEmpresas(newExpanded);
-  };
-
-  const getStatusConfig = (status: Cadastro['status']) => {
-    switch (status) {
-      case 'incompleto':
-        return {
-          icon: Clock,
-          color: 'text-amber-600',
-          bg: 'bg-amber-50',
-          label: 'Incompleto',
-        };
-      case 'enviado':
-        return {
-          icon: CheckCircle2,
-          color: 'text-green-600',
-          bg: 'bg-green-50',
-          label: 'Enviado',
-        };
-      case 'erro_envio':
-        return {
-          icon: AlertCircle,
-          color: 'text-red-600',
-          bg: 'bg-red-50',
-          label: 'Erro no Envio',
-        };
-    }
-  };
+    return groups.sort((a, b) => {
+      const nomeA = a.nome || '';
+      const nomeB = b.nome || '';
+      return nomeA.localeCompare(nomeB);
+    });
+  }, [cadastrosFiltrados]);
 
   if (incompletos.length === 0) {
     return (
@@ -151,13 +168,18 @@ export function CadastrosIncompletosList({ cadastros, onSelect }: CadastrosIncom
   }
 
   const limparFiltros = () => {
-    setFiltroEmpresa('');
-    setFiltroBusca('');
+    setBusca('');
+    setBuscaAplicada('');
     setDataInicio('');
     setDataFim('');
+    setDataInicioAplicada('');
+    setDataFimAplicada('');
+    setTipoFiltro('todos');
+    setTipoFiltroAplicado('todos');
+    setDefaultDateFilter();
   };
 
-  const temFiltrosAtivos = filtroEmpresa || filtroBusca || dataInicio || dataFim;
+  const temFiltrosAtivos = buscaAplicada || dataInicioAplicada || dataFimAplicada || tipoFiltroAplicado !== 'todos';
 
   return (
     <>
@@ -177,32 +199,16 @@ export function CadastrosIncompletosList({ cadastros, onSelect }: CadastrosIncom
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Select
-            label="Empresa"
-            value={filtroEmpresa}
-            onChange={(e) => setFiltroEmpresa(e.target.value)}
-          >
-            <option value="">Todas as empresas</option>
-            {empresasUnicas.map((empresa) => (
-              <option
-                key={empresa.id !== null ? empresa.id : 'sem_empresa'}
-                value={empresa.id !== null ? empresa.id.toString() : 'sem_empresa'}
-              >
-                {empresa.nome}
-              </option>
-            ))}
-          </Select>
-
           <div className="relative">
             <Input
-              label="Buscar por CPF ou Nome"
-              value={filtroBusca}
-              onChange={(e) => setFiltroBusca(e.target.value)}
-              placeholder="Digite o CPF ou nome..."
+              label="Buscar"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="CPF, Nome, Empresa, CNPJ ou Código..."
             />
-            {filtroBusca && (
+            {busca && (
               <button
-                onClick={() => setFiltroBusca('')}
+                onClick={() => setBusca('')}
                 className="absolute right-2 top-9 text-slate-400 hover:text-slate-600"
               >
                 <X className="w-4 h-4" />
@@ -210,26 +216,43 @@ export function CadastrosIncompletosList({ cadastros, onSelect }: CadastrosIncom
             )}
           </div>
 
+          <Select
+            label="Tipo"
+            value={tipoFiltro}
+            onChange={(e) => setTipoFiltro(e.target.value as typeof tipoFiltro)}
+          >
+            <option value="todos">Todos</option>
+            <option value="cadastro">Cadastro</option>
+            <option value="inclusao_dependente">Inclusão</option>
+          </Select>
+
           <Input
             type="date"
-            label="Data Início (Envio)"
+            label="Data Início"
             value={dataInicio}
             onChange={(e) => setDataInicio(e.target.value)}
           />
 
           <Input
             type="date"
-            label="Data Fim (Envio)"
+            label="Data Fim"
             value={dataFim}
             onChange={(e) => setDataFim(e.target.value)}
           />
         </div>
 
-        {temFiltrosAtivos && (
-          <div className="mt-3 text-sm text-slate-600">
-            Mostrando {cadastrosFiltrados.length} de {incompletos.length} cadastros
-          </div>
-        )}
+        <div className="mt-4 flex items-center gap-3">
+          <Button onClick={handleAplicarFiltros} className="flex items-center gap-2">
+            <Filter className="w-4 h-4" />
+            Filtrar
+          </Button>
+
+          {temFiltrosAtivos && (
+            <div className="text-sm text-slate-600">
+              Mostrando {cadastrosFiltrados.length} de {incompletos.length} cadastros
+            </div>
+          )}
+        </div>
       </div>
 
       {cadastrosFiltrados.length === 0 ? (
@@ -241,119 +264,134 @@ export function CadastrosIncompletosList({ cadastros, onSelect }: CadastrosIncom
         </div>
       ) : (
         <div className="space-y-4">
-        {empresasGrouped.map((empresa) => {
-          const empresaKey = empresa.empresaId !== null ? `empresa_${empresa.empresaId}` : 'sem_empresa';
-          const isExpanded = expandedEmpresas.has(empresaKey);
-
-          return (
-            <div key={empresaKey} className="bg-white rounded-xl shadow-sm border border-slate-200">
-              <button
-                onClick={() => toggleEmpresa(empresaKey)}
-                className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <Building2 className="w-5 h-5 text-emerald-600" />
-                  <div className="text-left">
-                    <h3 className="font-semibold text-slate-800">{empresa.empresaNome}</h3>
-                    {empresa.empresaCnpj && (
-                      <p className="text-xs text-slate-500">CNPJ: {empresa.empresaCnpj}</p>
-                    )}
-                  </div>
-                  <span className="ml-2 px-2 py-1 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full">
-                    {empresa.cadastros.length}
-                  </span>
+        {clientesGrouped.map((cliente) => (
+          <div key={cliente.cpf} className="bg-white rounded-xl shadow-sm border border-slate-200">
+            <div className="p-4 border-b border-slate-200 bg-slate-50">
+              <div className="flex items-center gap-3">
+                <User className="w-5 h-5 text-emerald-600" />
+                <div>
+                  <h3 className="font-semibold text-slate-800">
+                    {cliente.nome || 'Nome não informado'}
+                  </h3>
+                  <p className="text-sm text-slate-600">CPF: {formatCPF(cliente.cpf)}</p>
                 </div>
-                {isExpanded ? (
-                  <ChevronDown className="w-5 h-5 text-slate-400" />
-                ) : (
-                  <ChevronRight className="w-5 h-5 text-slate-400" />
-                )}
-              </button>
+                <span className="ml-auto px-2 py-1 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full">
+                  {cliente.cadastros.length} {cliente.cadastros.length === 1 ? 'adesão' : 'adesões'}
+                </span>
+              </div>
+            </div>
 
-              {isExpanded && (
-                <div className="border-t border-slate-200 p-4 space-y-3">
-                  {empresa.cadastros.map((cadastro) => {
-                    const statusConfig = getStatusConfig(cadastro.status);
-                    const StatusIcon = statusConfig.icon;
-                    const isBlocked = !!cadastro.motivo_bloqueio;
-                    const hasERPData = cadastro.erp_dados_associado && Object.keys(cadastro.erp_dados_associado as object).length > 0;
+            <div className="p-4 space-y-3">
+              {cliente.cadastros.map((cadastro) => {
+                const isBlocked = !!cadastro.motivo_bloqueio;
+                const hasERPData = cadastro.erp_dados_associado && Object.keys(cadastro.erp_dados_associado as object).length > 0;
+                const statusAdesao = statusList.find(s => s.id === cadastro.status_adesao_id);
 
-                    return (
-                      <div
-                        key={cadastro.id}
-                        className="bg-slate-50 rounded-lg p-3 hover:bg-slate-100 transition-colors"
-                      >
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-3 mb-2 flex-wrap">
-                              <h4 className="font-medium text-slate-800 truncate">
-                                {cadastro.nome || formatCPF(cadastro.cpf)}
-                              </h4>
-                              {cadastro.tipo_cadastro === 'inclusao_dependente' && (
-                                <span className="inline-flex items-center px-2 py-1 rounded-lg text-xs font-medium bg-blue-50 text-blue-600">
-                                  Inclusão de Dependente
-                                </span>
-                              )}
-                              {isBlocked && (
-                                <span className="inline-flex items-center px-2 py-1 rounded-lg text-xs font-medium bg-red-50 text-red-600">
-                                  <Ban className="w-3 h-3 mr-1" />
-                                  Bloqueado
-                                </span>
-                              )}
-                            </div>
+                return (
+                  <div
+                    key={cadastro.id}
+                    className="bg-slate-50 rounded-lg p-4"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-3 mb-2 flex-wrap">
+                          {cadastro.empresa_nome && (
+                            <span className="text-sm font-medium text-slate-700">
+                              {cadastro.empresa_nome}
+                            </span>
+                          )}
+                          {cadastro.tipo_cadastro === 'inclusao_dependente' && (
+                            <span className="inline-flex items-center px-2 py-1 rounded-lg text-xs font-medium bg-blue-50 text-blue-600">
+                              Inclusão de Dependente
+                            </span>
+                          )}
+                          {isBlocked && (
+                            <span className="inline-flex items-center px-2 py-1 rounded-lg text-xs font-medium bg-red-50 text-red-600">
+                              <Ban className="w-3 h-3 mr-1" />
+                              Bloqueado
+                            </span>
+                          )}
+                        </div>
 
-                            <div className="space-y-1 text-sm text-slate-600">
-                              <p>
-                                <span className="font-medium">CPF:</span> {formatCPF(cadastro.cpf)}
-                              </p>
-                              {cadastro.data_nascimento && (
-                                <p>
-                                  <span className="font-medium">Nascimento:</span>{' '}
-                                  {formatDate(cadastro.data_nascimento)}
-                                </p>
-                              )}
-                              {isBlocked && (
-                                <p className="text-red-600 text-xs">
-                                  <span className="font-semibold">Motivo:</span> {cadastro.motivo_bloqueio}
-                                </p>
-                              )}
-                              <p className="text-xs text-slate-500">
-                                Atualizado em {new Date(cadastro.updated_at).toLocaleString('pt-BR')}
-                              </p>
-                            </div>
-                          </div>
+                        <div className="space-y-1 text-sm text-slate-600">
+                          {cadastro.data_nascimento && (
+                            <p>
+                              <span className="font-medium">Nascimento:</span>{' '}
+                              {formatDate(cadastro.data_nascimento)}
+                            </p>
+                          )}
+                          {cadastro.empresa_cnpj && (
+                            <p>
+                              <span className="font-medium">CNPJ:</span> {cadastro.empresa_cnpj}
+                            </p>
+                          )}
+                          {isBlocked && (
+                            <p className="text-red-600 text-xs">
+                              <span className="font-semibold">Motivo:</span> {cadastro.motivo_bloqueio}
+                            </p>
+                          )}
+                          <p className="text-xs text-slate-500">
+                            Atualizado em {new Date(cadastro.updated_at).toLocaleString('pt-BR')}
+                          </p>
+                        </div>
 
-                          <div className="flex-shrink-0 flex gap-2">
-                            {hasERPData && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setViewERPData(cadastro);
-                                }}
-                                className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
-                                title="Ver dados do ERP"
+                        <div className="mt-3">
+                          <label className="block text-xs font-medium text-slate-600 mb-1">
+                            Status da Adesão
+                          </label>
+                          <select
+                            value={cadastro.status_adesao_id || ''}
+                            onChange={(e) => handleChangeStatus(cadastro.id, e.target.value)}
+                            className="w-full sm:w-auto px-3 py-2 rounded-lg border border-slate-300 text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                            style={{
+                              backgroundColor: statusAdesao?.cor || '#6B7280',
+                            }}
+                          >
+                            <option value="" style={{ color: '#000', backgroundColor: '#fff' }}>
+                              Selecione um status
+                            </option>
+                            {statusList.map((status) => (
+                              <option
+                                key={status.id}
+                                value={status.id}
+                                style={{ color: '#000', backgroundColor: '#fff' }}
                               >
-                                <Eye className="w-5 h-5" />
-                              </button>
-                            )}
-                            {!isBlocked && (
-                              <button
-                                onClick={() => onSelect(cadastro)}
-                                className="text-emerald-600 hover:text-emerald-700 font-medium text-sm px-3 py-1.5 bg-white rounded-lg border border-emerald-200 hover:border-emerald-300 transition-colors"
-                              >
-                                Continuar →
-                              </button>
-                            )}
-                          </div>
+                                {status.nome}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+
+                      <div className="flex-shrink-0 flex gap-2">
+                        {hasERPData && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setViewERPData(cadastro);
+                            }}
+                            className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Ver dados do ERP"
+                          >
+                            <Eye className="w-5 h-5" />
+                          </button>
+                        )}
+                        {!isBlocked && (
+                          <button
+                            onClick={() => onSelect(cadastro)}
+                            className="text-emerald-600 hover:text-emerald-700 font-medium text-sm px-4 py-2 bg-white rounded-lg border border-emerald-200 hover:border-emerald-300 transition-colors"
+                          >
+                            Continuar →
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
+          </div>
+        ))}
         </div>
       )}
 

@@ -58,8 +58,8 @@ export function Cadastro() {
             }`}
           >
             <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-2 sm:mr-2" />
-            <span className="hidden xs:inline">Novo Cadastro</span>
-            <span className="xs:hidden">Novo</span>
+            <span className="hidden xs:inline">Nova Adesão</span>
+            <span className="xs:hidden">Nova Adesão</span>
           </button>
           <button
             onClick={() => {
@@ -73,8 +73,8 @@ export function Cadastro() {
             }`}
           >
             <UserPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-2 sm:mr-2" />
-            <span className="hidden xs:inline">Inclusão Dependente</span>
-            <span className="xs:hidden">Dep</span>
+            <span className="hidden xs:inline">Incluir Dep.</span>
+            <span className="xs:hidden">Incluir Dep.</span>
           </button>
           <button
             onClick={() => setActiveTab('incompletos')}
@@ -85,8 +85,8 @@ export function Cadastro() {
             }`}
           >
             <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-2 sm:mr-2" />
-            <span className="hidden sm:inline">Inclusões Pendentes</span>
-            <span className="sm:hidden">Incl</span>
+            <span className="hidden sm:inline">Adesões Pendentes</span>
+            <span className="sm:hidden">Pendentes</span>
             {cadastros.filter((c) => c.status === 'incompleto').length > 0 && (
               <span className="ml-2 sm:ml-2 px-1.5 sm:px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full">
                 {cadastros.filter((c) => c.status === 'incompleto').length}
@@ -102,8 +102,8 @@ export function Cadastro() {
             }`}
           >
             <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-2 sm:mr-2" />
-            <span className="hidden xs:inline">Completos</span>
-            <span className="xs:hidden">OK</span>
+            <span className="hidden xs:inline">Cadastradas</span>
+            <span className="xs:hidden">Cadastradas</span>
             {cadastros.filter((c) => c.status === 'enviado').length > 0 && (
               <span className="ml-2 sm:ml-2 px-1.5 sm:px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
                 {cadastros.filter((c) => c.status === 'enviado').length}
