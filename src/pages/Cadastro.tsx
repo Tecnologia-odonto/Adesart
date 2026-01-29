@@ -146,6 +146,7 @@ export function Cadastro() {
               <CadastrosIncompletosList
                 cadastros={cadastros}
                 onSelect={handleSelectCadastro}
+                onRefresh={refresh}
               />
             )}
             {activeTab === 'completos' && (

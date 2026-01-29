@@ -14,6 +14,7 @@ import { supabase } from '../../lib/supabase';
 interface CadastrosIncompletosListProps {
   cadastros: Cadastro[];
   onSelect: (cadastro: Cadastro) => void;
+  onRefresh?: () => void;
 }
 
 interface StatusAdesao {
@@ -28,7 +29,7 @@ interface ClienteGroup {
   cadastros: Cadastro[];
 }
 
-export function CadastrosIncompletosList({ cadastros, onSelect }: CadastrosIncompletosListProps) {
+export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: CadastrosIncompletosListProps) {
   const { profile } = useAuth();
   const [viewERPData, setViewERPData] = useState<Cadastro | null>(null);
   const [statusList, setStatusList] = useState<StatusAdesao[]>([]);
@@ -85,7 +86,10 @@ export function CadastrosIncompletosList({ cadastros, onSelect }: CadastrosIncom
         .eq('id', cadastroId);
 
       if (error) throw error;
-      window.location.reload();
+
+      if (onRefresh) {
+        await onRefresh();
+      }
     } catch (error) {
       console.error('Error updating status:', error);
       alert('Erro ao atualizar status');
