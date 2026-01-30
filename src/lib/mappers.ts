@@ -295,6 +295,7 @@ export function buildERPPayload(
 
   const parceiroObj: Record<string, any> = {
     codigo: codigoVendedor,
+    tipoCobranca: 1,
   };
 
   if (codigoAdesionista > 0) {
