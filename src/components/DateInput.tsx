@@ -46,11 +46,16 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const formatted = formatDateMask(e.target.value);
 
+      let finalValue = formatted;
+      if (formatted.length === 10) {
+        finalValue = convertToISODate(formatted);
+      }
+
       const maskedEvent = {
         ...e,
         target: {
           ...e.target,
-          value: formatted.length === 10 ? convertToISODate(formatted) : formatted,
+          value: finalValue,
         },
       };
 

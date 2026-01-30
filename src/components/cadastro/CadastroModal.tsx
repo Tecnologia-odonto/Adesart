@@ -11,6 +11,7 @@ import { DependentesSection, Dependente } from './DependentesSection';
 import { useAuth } from '../../contexts/AuthContext';
 import { useConfigCadastro } from '../../contexts/ConfigCadastroContext';
 import { DependenteAtivoModal } from './DependenteAtivoModal';
+import { SelectStatusModal } from './SelectStatusModal';
 import { supabase } from '../../lib/supabase';
 
 interface CadastroModalProps {
@@ -37,6 +38,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     situacao: string;
   }>>([]);
   const [showDependentesAtivosModal, setShowDependentesAtivosModal] = useState(false);
+  const [showSelectStatusModal, setShowSelectStatusModal] = useState(false);
   const [arquivo, setArquivo] = useState<{
     base64: string;
     nome: string;
@@ -221,6 +223,12 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     }
   }, [formData.nome, formData.dataNascimento, formData.sexo, formData.nomeMae]);
 
+  const isValidISODate = (dateStr: string): boolean => {
+    if (!dateStr) return true;
+    const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    return isoDateRegex.test(dateStr);
+  };
+
   const handleSave = async () => {
     setError('');
     setSuccess('');
@@ -230,9 +238,18 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       console.log('[CadastroModal] Salvando dependentes:', dependentes);
       console.log('[CadastroModal] Número de dependentes:', dependentes.length);
 
+      let dataNascimento = null;
+      if (formData.dataNascimento && formData.dataNascimento.trim() !== '') {
+        if (isValidISODate(formData.dataNascimento)) {
+          dataNascimento = formData.dataNascimento;
+        } else {
+          console.warn('[CadastroModal] Data de nascimento incompleta, salvando como null:', formData.dataNascimento);
+        }
+      }
+
       const updateData: any = {
         nome: formData.nome || null,
-        data_nascimento: formData.dataNascimento && formData.dataNascimento.trim() !== '' ? formData.dataNascimento : null,
+        data_nascimento: dataNascimento,
         sexo_codigo: formData.sexo !== '' && formData.sexo !== null && formData.sexo !== undefined ? formData.sexo : null,
         nome_mae: formData.nomeMae || null,
         numero_matricula: formData.numeroMatricula || null,
@@ -246,10 +263,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
       await updateCadastro(cadastro.id, updateData);
 
-      setSuccess('Cadastro salvo com sucesso!');
-      setTimeout(() => {
-        onSuccess();
-      }, 1500);
+      setShowSelectStatusModal(true);
     } catch (err: any) {
       console.error('Error saving cadastro:', err);
 
@@ -286,9 +300,18 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     setLoading(true);
 
     try {
+      let dataNascimento = null;
+      if (formData.dataNascimento && formData.dataNascimento.trim() !== '') {
+        if (isValidISODate(formData.dataNascimento)) {
+          dataNascimento = formData.dataNascimento;
+        } else {
+          console.warn('[CadastroModal] Data de nascimento incompleta ao fechar, salvando como null:', formData.dataNascimento);
+        }
+      }
+
       const updateData: any = {
         nome: formData.nome || null,
-        data_nascimento: formData.dataNascimento && formData.dataNascimento.trim() !== '' ? formData.dataNascimento : null,
+        data_nascimento: dataNascimento,
         sexo_codigo: formData.sexo !== '' && formData.sexo !== null && formData.sexo !== undefined ? formData.sexo : null,
         nome_mae: formData.nomeMae || null,
         numero_matricula: formData.numeroMatricula || null,
@@ -299,13 +322,32 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       };
 
       await updateCadastro(cadastro.id, updateData);
-      onClose();
+      setShowSelectStatusModal(true);
     } catch (err: any) {
       console.error('Error saving cadastro on close:', err);
-      onClose();
+      setShowSelectStatusModal(true);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleStatusSelect = async (statusId: string) => {
+    try {
+      await updateCadastro(cadastro.id, { status_adesao_id: statusId });
+      setShowSelectStatusModal(false);
+      onSuccess();
+      onClose();
+    } catch (err) {
+      console.error('Error updating status:', err);
+      setError('Erro ao atualizar status');
+      setShowSelectStatusModal(false);
+    }
+  };
+
+  const handleStatusCancel = () => {
+    setShowSelectStatusModal(false);
+    onSuccess();
+    onClose();
   };
 
   const handleArquivoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1134,6 +1176,13 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
           </div>
         </div>
       </div>
+
+      {showSelectStatusModal && (
+        <SelectStatusModal
+          onSelect={handleStatusSelect}
+          onClose={handleStatusCancel}
+        />
+      )}
 
       <DependenteAtivoModal
         isOpen={showDependentesAtivosModal}

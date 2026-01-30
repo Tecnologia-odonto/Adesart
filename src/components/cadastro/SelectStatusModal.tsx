@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Tag } from 'lucide-react';
+import { Tag } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Button } from '../Button';
 
@@ -50,23 +50,15 @@ export function SelectStatusModal({ onSelect, onClose }: SelectStatusModalProps)
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
         <div className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Tag className="w-5 h-5 text-emerald-600" />
-              <h3 className="text-lg font-semibold text-slate-800">
-                Selecione o Status da Adesão
-              </h3>
-            </div>
-            <button
-              onClick={onClose}
-              className="text-slate-400 hover:text-slate-600"
-            >
-              <X className="w-5 h-5" />
-            </button>
+          <div className="flex items-center gap-2 mb-4">
+            <Tag className="w-5 h-5 text-emerald-600" />
+            <h3 className="text-lg font-semibold text-slate-800">
+              Selecione o Status da Adesão
+            </h3>
           </div>
 
           <p className="text-sm text-slate-600 mb-4">
-            Escolha o status atual desta adesão para salvar o cadastro.
+            <span className="text-red-600 font-medium">* Obrigatório:</span> Escolha o status atual desta adesão para concluir.
           </p>
 
           {loading ? (
@@ -102,20 +94,13 @@ export function SelectStatusModal({ onSelect, onClose }: SelectStatusModalProps)
                 ))}
               </div>
 
-              <div className="flex gap-3">
+              <div className="flex justify-center">
                 <Button
                   onClick={handleConfirm}
                   disabled={!selectedId}
-                  className="flex-1"
+                  className="w-full"
                 >
-                  Confirmar
-                </Button>
-                <Button
-                  onClick={onClose}
-                  variant="secondary"
-                  className="flex-1"
-                >
-                  Cancelar
+                  Confirmar Status
                 </Button>
               </div>
             </>
