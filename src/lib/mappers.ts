@@ -220,16 +220,24 @@ export function buildERPPayload(
   vendedorCodigo?: string | null,
   funcionarioCadastroId?: number | null,
   userRole?: string | null,
-  userExternalId?: string | null
+  userExternalId?: string | null,
+  adesionistaCodigo?: string | null
 ): Record<string, unknown> {
   const sexoDescricao = cadastro.sexoCodigo === 1 ? 'Masculino' : 'Feminino';
 
-  // ✅ Se usuário é VENDEDOR, usa seu external_id. Senão, usa o vendedor selecionado
-  const codigoParceiro = userRole === 'VENDEDOR' && userExternalId
-    ? parseInt(userExternalId)
-    : (vendedorCodigo ? parseInt(vendedorCodigo) : 0);
+  let codigoVendedor = 0;
+  let codigoAdesionista = 0;
 
-  // ✅ usuário logado (vai para dependente[].funcionarioCadastro)
+  if (userRole === 'VENDEDOR' && userExternalId) {
+    codigoVendedor = parseInt(userExternalId);
+  } else if (vendedorCodigo) {
+    codigoVendedor = parseInt(vendedorCodigo);
+  }
+
+  if (adesionistaCodigo) {
+    codigoAdesionista = parseInt(adesionistaCodigo);
+  }
+
   const funcionarioCadastroCode = userExternalId
     ? parseInt(userExternalId)
     : (funcionarioCadastroId || 0);
@@ -286,9 +294,12 @@ export function buildERPPayload(
   responsavelFinanceiro.dataApresentacao = new Date().toISOString();
 
   const parceiroObj: Record<string, any> = {
-    codigo: codigoParceiro,
-    tipoCobranca: 1,
+    codigo: codigoVendedor,
   };
+
+  if (codigoAdesionista > 0) {
+    parceiroObj.adesionista = codigoAdesionista;
+  }
 
   const payload = {
     dados: {

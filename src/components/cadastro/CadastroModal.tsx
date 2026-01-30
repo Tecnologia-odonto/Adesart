@@ -555,7 +555,8 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         cadastro.vendedor_codigo,
         funcionarioCadastroId,
         profile?.role,
-        profile?.external_id
+        profile?.external_id,
+        cadastro.adesionista_codigo
       );
 
       const result = await enviarParaERP(cadastro.id, payload);

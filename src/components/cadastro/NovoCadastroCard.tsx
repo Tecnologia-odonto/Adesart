@@ -103,7 +103,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
 
   useEffect(() => {
     const fetchAdesionistas = async () => {
-      if (profile && ['GESTOR', 'SUPERVISOR', 'VENDEDOR', 'CADASTRO'].includes(profile.role || '')) {
+      if (profile && ['ADMINISTRADOR', 'GESTOR', 'SUPERVISOR', 'VENDEDOR', 'CADASTRO'].includes(profile.role || '')) {
         try {
           const { data, error } = await supabase
             .from('profiles')
@@ -331,9 +331,16 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
       }
 
       const vendedorSelecionado = vendedores.find(v => v.id === selectedVendedor);
-      const adesionistaSelecionado = profile?.role === 'ADESIONISTA'
-        ? { id: profile.id, external_id: profile.external_id || '', name: profile.name || '' }
-        : adesionistas.find(a => a.id === selectedAdesionista);
+
+      let adesionistaSelecionado = adesionistas.find(a => a.id === selectedAdesionista);
+
+      if (!adesionistaSelecionado) {
+        if (profile?.role === 'ADESIONISTA') {
+          adesionistaSelecionado = { id: profile.id, external_id: profile.external_id || '', name: profile.name || '' };
+        } else if (profile?.role === 'ADMINISTRADOR' && profile.external_id) {
+          adesionistaSelecionado = { id: profile.id, external_id: profile.external_id, name: profile.name || '' };
+        }
+      }
 
       const rascunho = await createOrUpdateRascunho({
         cpf: cpfLimpo,
@@ -514,9 +521,16 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
       }
 
       const vendedorSelecionado = vendedores.find(v => v.id === selectedVendedor);
-      const adesionistaSelecionado = profile?.role === 'ADESIONISTA'
-        ? { id: profile.id, external_id: profile.external_id || '', name: profile.name || '' }
-        : adesionistas.find(a => a.id === selectedAdesionista);
+
+      let adesionistaSelecionado = adesionistas.find(a => a.id === selectedAdesionista);
+
+      if (!adesionistaSelecionado) {
+        if (profile?.role === 'ADESIONISTA') {
+          adesionistaSelecionado = { id: profile.id, external_id: profile.external_id || '', name: profile.name || '' };
+        } else if (profile?.role === 'ADMINISTRADOR' && profile.external_id) {
+          adesionistaSelecionado = { id: profile.id, external_id: profile.external_id, name: profile.name || '' };
+        }
+      }
 
       const rascunho = await createOrUpdateRascunho({
         cpf: cpfLimpo,
@@ -594,20 +608,32 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
               </>
             )}
 
-            {adesionistas.length > 0 && profile?.role !== 'ADESIONISTA' && (
-              <Select
-                label="Adesionista (Opcional)"
-                value={selectedAdesionista}
-                onChange={(e) => setSelectedAdesionista(e.target.value)}
-                disabled={loading}
-              >
-                <option value="">Selecione um adesionista (opcional)</option>
-                {adesionistas.map((adesionista) => (
-                  <option key={adesionista.id} value={adesionista.id}>
-                    {adesionista.name || adesionista.email || 'Adesionista sem nome'} - Código: {adesionista.external_id}
-                  </option>
-                ))}
-              </Select>
+            {profile?.role !== 'ADESIONISTA' && ['ADMINISTRADOR', 'GESTOR', 'SUPERVISOR', 'VENDEDOR', 'CADASTRO'].includes(profile?.role || '') && (
+              <>
+                <Select
+                  label="Adesionista (Opcional)"
+                  value={selectedAdesionista}
+                  onChange={(e) => setSelectedAdesionista(e.target.value)}
+                  disabled={loading || adesionistas.length === 0}
+                >
+                  <option value="">Selecione um adesionista (opcional)</option>
+                  {adesionistas.map((adesionista) => (
+                    <option key={adesionista.id} value={adesionista.id}>
+                      {adesionista.name || adesionista.email || 'Adesionista sem nome'} - Código: {adesionista.external_id}
+                    </option>
+                  ))}
+                </Select>
+                {adesionistas.length === 0 && profile?.role === 'ADMINISTRADOR' && !profile?.external_id && (
+                  <div className="bg-amber-50 border border-amber-200 text-amber-700 px-4 py-3 rounded-lg text-sm">
+                    ⚠️ Configure seu ID Externo no perfil para ser usado como adesionista nos cadastros.
+                  </div>
+                )}
+                {adesionistas.length === 0 && (profile?.role !== 'ADMINISTRADOR' || profile?.external_id) && (
+                  <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-lg text-sm">
+                    ℹ️ Nenhum adesionista disponível. Este campo é opcional.
+                  </div>
+                )}
+              </>
             )}
 
             <Input
