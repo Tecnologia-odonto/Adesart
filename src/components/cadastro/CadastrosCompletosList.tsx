@@ -25,8 +25,10 @@ const ITEMS_PER_PAGE = 12;
 export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProps) {
   const { profile } = useAuth();
   const [viewDetails, setViewDetails] = useState<Cadastro | null>(null);
-  const [busca, setBusca] = useState('');
-  const [buscaAplicada, setBuscaAplicada] = useState('');
+  const [buscaCliente, setBuscaCliente] = useState('');
+  const [buscaClienteAplicada, setBuscaClienteAplicada] = useState('');
+  const [buscaEmpresa, setBuscaEmpresa] = useState('');
+  const [buscaEmpresaAplicada, setBuscaEmpresaAplicada] = useState('');
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState('');
   const [dataInicioAplicada, setDataInicioAplicada] = useState('');
@@ -50,7 +52,8 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
   };
 
   const handleAplicarFiltros = () => {
-    setBuscaAplicada(busca);
+    setBuscaClienteAplicada(buscaCliente);
+    setBuscaEmpresaAplicada(buscaEmpresa);
     setDataInicioAplicada(dataInicio);
     setDataFimAplicada(dataFim);
     setTipoFiltroAplicado(tipoFiltro);
@@ -67,17 +70,36 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
 
   const cadastrosFiltrados = useMemo(() => {
     return completos.filter((cadastro) => {
-      const buscaLower = buscaAplicada.toLowerCase().trim();
-      const buscaNumeros = buscaAplicada.replace(/\D/g, '');
+      const buscaClienteLower = buscaClienteAplicada.toLowerCase().trim();
+      const buscaClienteNumeros = buscaClienteAplicada.replace(/\D/g, '');
 
-      let matchBusca = true;
-      if (buscaAplicada) {
-        matchBusca =
-          cadastro.nome?.toLowerCase().includes(buscaLower) ||
-          cadastro.cpf.includes(buscaNumeros) ||
-          cadastro.empresa_nome?.toLowerCase().includes(buscaLower) ||
-          cadastro.empresa_cnpj?.replace(/\D/g, '').includes(buscaNumeros) ||
-          (cadastro.empresa_codigo && cadastro.empresa_codigo.toString().includes(buscaNumeros)) ||
+      let matchCliente = true;
+      if (buscaClienteAplicada) {
+        matchCliente =
+          cadastro.nome?.toLowerCase().includes(buscaClienteLower) ||
+          cadastro.cpf.includes(buscaClienteNumeros) ||
+          false;
+
+        if (!matchCliente && cadastro.dependentes) {
+          const dependentesArray = Array.isArray(cadastro.dependentes) ? cadastro.dependentes : [];
+          matchCliente = dependentesArray.some((dep: any) => {
+            return (
+              dep.nome?.toLowerCase().includes(buscaClienteLower) ||
+              (dep.cpf && dep.cpf.replace(/\D/g, '').includes(buscaClienteNumeros))
+            );
+          });
+        }
+      }
+
+      const buscaEmpresaLower = buscaEmpresaAplicada.toLowerCase().trim();
+      const buscaEmpresaNumeros = buscaEmpresaAplicada.replace(/\D/g, '');
+
+      let matchEmpresa = true;
+      if (buscaEmpresaAplicada) {
+        matchEmpresa =
+          cadastro.empresa_nome?.toLowerCase().includes(buscaEmpresaLower) ||
+          cadastro.empresa_cnpj?.replace(/\D/g, '').includes(buscaEmpresaNumeros) ||
+          (cadastro.empresa_codigo && cadastro.empresa_codigo.toString().includes(buscaEmpresaNumeros)) ||
           false;
       }
 
@@ -90,9 +112,9 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
         matchTipo = cadastro.tipo_cadastro === tipoFiltroAplicado;
       }
 
-      return matchBusca && matchDataInicio && matchDataFim && matchTipo;
+      return matchCliente && matchEmpresa && matchDataInicio && matchDataFim && matchTipo;
     });
-  }, [completos, buscaAplicada, dataInicioAplicada, dataFimAplicada, tipoFiltroAplicado]);
+  }, [completos, buscaClienteAplicada, buscaEmpresaAplicada, dataInicioAplicada, dataFimAplicada, tipoFiltroAplicado]);
 
   const empresasGrouped: EmpresaGroup[] = useMemo(() => {
     const cadastrosMap = new Map<string, Cadastro[]>();
@@ -140,8 +162,10 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
   }
 
   const limparFiltros = () => {
-    setBusca('');
-    setBuscaAplicada('');
+    setBuscaCliente('');
+    setBuscaClienteAplicada('');
+    setBuscaEmpresa('');
+    setBuscaEmpresaAplicada('');
     setDataInicio('');
     setDataFim('');
     setDataInicioAplicada('');
@@ -152,7 +176,7 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
     setDefaultDateFilter();
   };
 
-  const temFiltrosAtivos = buscaAplicada || dataInicioAplicada || dataFimAplicada || tipoFiltroAplicado !== 'todos';
+  const temFiltrosAtivos = buscaClienteAplicada || buscaEmpresaAplicada || dataInicioAplicada || dataFimAplicada || tipoFiltroAplicado !== 'todos';
 
   return (
     <>
@@ -171,17 +195,34 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <div className="relative">
             <Input
-              label="Buscar"
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder="CPF, Nome, Empresa, CNPJ ou Código..."
+              label="Busca Cliente"
+              value={buscaCliente}
+              onChange={(e) => setBuscaCliente(e.target.value)}
+              placeholder="CPF ou Nome do cliente/dependente"
             />
-            {busca && (
+            {buscaCliente && (
               <button
-                onClick={() => setBusca('')}
+                onClick={() => setBuscaCliente('')}
+                className="absolute right-2 top-9 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          <div className="relative">
+            <Input
+              label="Busca Empresa"
+              value={buscaEmpresa}
+              onChange={(e) => setBuscaEmpresa(e.target.value)}
+              placeholder="Nome, CNPJ ou Código da empresa"
+            />
+            {buscaEmpresa && (
+              <button
+                onClick={() => setBuscaEmpresa('')}
                 className="absolute right-2 top-9 text-slate-400 hover:text-slate-600"
               >
                 <X className="w-4 h-4" />
