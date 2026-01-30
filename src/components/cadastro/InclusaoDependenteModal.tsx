@@ -791,13 +791,24 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       const vendedorSelecionado = vendedores.find(v => v.id === selectedVendedor);
       const adesionistaSelecionado = adesionistas.find(a => a.id === selectedAdesionista);
 
-      if (!vendedorSelecionado || !vendedorSelecionado.external_id) {
-        setError('Vendedor selecionado não possui código (ID Externo)');
-        setEnviando(false);
-        return;
+      let codigoParceiro: number;
+
+      if (profile?.role === 'VENDEDOR') {
+        if (!profile.external_id) {
+          setError('Usuário vendedor não possui código (ID Externo)');
+          setEnviando(false);
+          return;
+        }
+        codigoParceiro = parseInt(profile.external_id);
+      } else {
+        if (!vendedorSelecionado || !vendedorSelecionado.external_id) {
+          setError('Vendedor selecionado não possui código (ID Externo)');
+          setEnviando(false);
+          return;
+        }
+        codigoParceiro = parseInt(vendedorSelecionado.external_id);
       }
 
-      const codigoParceiro = parseInt(vendedorSelecionado.external_id);
       const codigoAdesionista = adesionistaSelecionado?.external_id ? parseInt(adesionistaSelecionado.external_id) : undefined;
 
       const mesAnoAtual = new Date().toISOString().slice(0, 7);

@@ -224,8 +224,10 @@ export function buildERPPayload(
 ): Record<string, unknown> {
   const sexoDescricao = cadastro.sexoCodigo === 1 ? 'Masculino' : 'Feminino';
 
-  // ✅ vendedor selecionado (vai para dados.parceiro.codigo)
-  const codigoParceiro = vendedorCodigo ? parseInt(vendedorCodigo) : 0;
+  // ✅ Se usuário é VENDEDOR, usa seu external_id. Senão, usa o vendedor selecionado
+  const codigoParceiro = userRole === 'VENDEDOR' && userExternalId
+    ? parseInt(userExternalId)
+    : (vendedorCodigo ? parseInt(vendedorCodigo) : 0);
 
   // ✅ usuário logado (vai para dependente[].funcionarioCadastro)
   const funcionarioCadastroCode = userExternalId
