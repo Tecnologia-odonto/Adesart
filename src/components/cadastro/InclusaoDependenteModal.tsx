@@ -7,7 +7,7 @@ import { DateInput } from '../DateInput';
 import { useAuth } from '../../contexts/AuthContext';
 import { useConfigCadastro } from '../../contexts/ConfigCadastroContext';
 import { useCadastros } from '../../hooks/useCadastros';
-import { formatCPF, removeCPFMask, validateCPF } from '../../lib/cpf';
+import { formatCPF, removeCPFMask, validateCPF, normalizeToISO } from '../../lib/cpf';
 import { supabase } from '../../lib/supabase';
 import { LemmitLimitModal } from './LemmitLimitModal';
 
@@ -121,6 +121,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
     isUnlimited?: boolean;
   } | null>(null);
   const [consultingLemmitIndex, setConsultingLemmitIndex] = useState<number | null>(null);
+  const [cpfValidationErrors, setCpfValidationErrors] = useState<Record<number, string>>({});
 
   const funcionarioCadastroId = profile?.external_id ? parseInt(profile.external_id) : null;
 
@@ -310,6 +311,13 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       setError(`Dependente ${index + 1}: Data de nascimento é obrigatória`);
       return;
     }
+
+    const dataNascimentoISO = normalizeToISO(dep.dataNascimento);
+    if (!dataNascimentoISO) {
+      setError(`Dependente ${index + 1}: Data de nascimento inválida`);
+      return;
+    }
+
     if (dep.sexo === null || dep.sexo === undefined) {
       setError(`Dependente ${index + 1}: Sexo é obrigatório`);
       return;
@@ -330,6 +338,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
     const novosDependentes = [...dependentes];
     novosDependentes[index] = {
       ...novosDependentes[index],
+      dataNascimento: dataNascimentoISO,
       saved: true,
     };
     setDependentes(novosDependentes);
@@ -366,8 +375,25 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       const cpfFormatado = formatCPF(valor);
       const cpfLimpo = removeCPFMask(cpfFormatado);
 
-      if (cpfLimpo.length === 11 && validateCPF(cpfFormatado)) {
+      if (cpfLimpo.length === 11) {
+        if (!validateCPF(cpfFormatado)) {
+          setCpfValidationErrors(prev => ({ ...prev, [index]: 'CPF inválido' }));
+          return;
+        }
+
+        setCpfValidationErrors(prev => {
+          const next = { ...prev };
+          delete next[index];
+          return next;
+        });
+
         await consultarLemmitDependente(index, cpfLimpo);
+      } else {
+        setCpfValidationErrors(prev => {
+          const next = { ...prev };
+          delete next[index];
+          return next;
+        });
       }
     }
   };
@@ -668,6 +694,11 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       const adesionistaSelecionado = adesionistas.find(a => a.id === selectedAdesionista);
 
       for (const dep of dependentesSalvos) {
+        const dataNascimentoISO = normalizeToISO(dep.dataNascimento);
+        if (!dataNascimentoISO) {
+          throw new Error(`Data de nascimento inválida para dependente ${dep.nome}`);
+        }
+
         const planoMap = planos.find(pm => pm.plano_id === dep.plano);
 
         const cadastroData: any = {
@@ -683,13 +714,13 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
           nome: dep.nome,
           cpf: (() => {
           const cpfLimpo = removeCPFMask(dep.cpf || '').trim();
-          if (isMenorDeIdade(dep.dataNascimento)) {
+          if (isMenorDeIdade(dataNascimentoISO)) {
             return cpfLimpo ? cpfLimpo : '';
           }
           // ✅ maior de idade: API não aceita vazio
           return cpfLimpo ? cpfLimpo : '0';
         })(),
-          data_nascimento: dep.dataNascimento,
+          data_nascimento: dataNascimentoISO,
           sexo: dep.sexo === 1 ? 'Masculino' : 'Feminino',
           parentesco: dep.tipo,
           plano_codigo: dep.plano,
@@ -1163,6 +1194,16 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                                   Consultando...
                                 </span>
                               </div>
+                            )}
+                            {cpfValidationErrors[index] && (
+                              <p className="text-xs text-red-600 mt-1">
+                                {cpfValidationErrors[index]}
+                              </p>
+                            )}
+                            {!cpfValidationErrors[index] && config?.lemmit_inclusao_dependente && (
+                              <p className="text-xs text-slate-500 mt-1">
+                                Preenchimento automático ativado
+                              </p>
                             )}
                           </div>
 

@@ -4,7 +4,7 @@ import { Input } from '../Input';
 import { Select } from '../Select';
 import { Button } from '../Button';
 import { DateInput } from '../DateInput';
-import { formatCPF, formatDate } from '../../lib/cpf';
+import { formatCPF, formatDate, validateCPF, normalizeToISO } from '../../lib/cpf';
 import { useConfigCadastro } from '../../contexts/ConfigCadastroContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -48,6 +48,7 @@ export function DependentesSection({
     saldoFormatado?: string;
     isUnlimited?: boolean;
   } | null>(null);
+  const [cpfValidationError, setCpfValidationError] = useState('');
 
   console.log('[DependentesSection] Planos recebidos:', planos);
   console.log('[DependentesSection] Número de planos:', planos?.length || 0);
@@ -243,8 +244,20 @@ export function DependentesSection({
     setFormData({ ...formData, cpf: novoCpf });
 
     const cpfLimpo = novoCpf.replace(/\D/g, '');
-    if (cpfLimpo.length === 11 && config?.lemmit_dependente) {
-      consultarLemmit(cpfLimpo);
+
+    if (cpfLimpo.length === 11) {
+      if (!validateCPF(cpfLimpo)) {
+        setCpfValidationError('CPF inválido');
+        return;
+      }
+
+      setCpfValidationError('');
+
+      if (config?.lemmit_dependente) {
+        consultarLemmit(cpfLimpo);
+      }
+    } else {
+      setCpfValidationError('');
     }
   };
 
@@ -259,7 +272,13 @@ export function DependentesSection({
       return;
     }
 
-    const idade = calcularIdade(formData.dataNascimento);
+    const dataNascimentoISO = normalizeToISO(formData.dataNascimento);
+    if (!dataNascimentoISO) {
+      alert('Data de nascimento inválida');
+      return;
+    }
+
+    const idade = calcularIdade(dataNascimentoISO);
 
     if (idade >= 18 && !formData.cpf) {
       alert('Campo obrigatório: CPF (obrigatório para maiores de 18 anos)');
@@ -303,14 +322,13 @@ export function DependentesSection({
       return;
     }
 
-    const dataNascimentoFormatada = formatDate(formData.dataNascimento);
     const sexoNum = parseInt(formData.sexo);
     const cpfValue = formData.cpf.replace(/\D/g, '');
 
     const novoDependente: Dependente = {
       tipo: formData.tipo,
       nome: formData.nome,
-      dataNascimento: dataNascimentoFormatada,
+      dataNascimento: dataNascimentoISO,
       cpf: cpfValue || '0',
       sexo: sexoNum,
       sexoDescricao: sexoNum === 1 ? 'Masculino' : (sexoNum === 0 ? 'Feminino' : ''),
@@ -339,7 +357,7 @@ export function DependentesSection({
     setFormData({
       tipo: dep.tipo ?? 0,
       nome: dep.nome ?? '',
-      dataNascimento: dep.dataNascimento ?? '',
+      dataNascimento: normalizeToISO(dep.dataNascimento ?? ''),
       cpf: dep.cpf ?? '',
       sexo: dep.sexo !== undefined ? dep.sexo.toString() : '',
       plano: (dep.plano && dep.plano !== 0) ? dep.plano.toString() : '',
@@ -447,7 +465,12 @@ export function DependentesSection({
                   <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
                 </div>
               )}
-              {config?.lemmit_dependente && (
+              {cpfValidationError && (
+                <p className="text-xs text-red-600 mt-1">
+                  {cpfValidationError}
+                </p>
+              )}
+              {!cpfValidationError && config?.lemmit_dependente && (
                 <p className="text-xs text-slate-500 mt-1">
                   Preenchimento automático ativado
                 </p>
