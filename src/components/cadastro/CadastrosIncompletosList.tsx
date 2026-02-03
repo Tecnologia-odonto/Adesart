@@ -43,6 +43,8 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
   const [dataFimAplicada, setDataFimAplicada] = useState('');
   const [tipoFiltro, setTipoFiltro] = useState<'todos' | 'cadastro' | 'inclusao_dependente'>('todos');
   const [tipoFiltroAplicado, setTipoFiltroAplicado] = useState<'todos' | 'cadastro' | 'inclusao_dependente'>('todos');
+  const [statusAdesaoFiltro, setStatusAdesaoFiltro] = useState('');
+  const [statusAdesaoFiltroAplicado, setStatusAdesaoFiltroAplicado] = useState('');
 
   const incompletos = cadastros.filter((c) => c.status === 'incompleto');
 
@@ -79,6 +81,7 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
     setDataInicioAplicada(dataInicio);
     setDataFimAplicada(dataFim);
     setTipoFiltroAplicado(tipoFiltro);
+    setStatusAdesaoFiltroAplicado(statusAdesaoFiltro);
   };
 
   const handleChangeStatus = async (cadastroId: string, statusId: string) => {
@@ -151,9 +154,14 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
         matchTipo = cadastro.tipo_cadastro === tipoFiltroAplicado;
       }
 
-      return matchCliente && matchEmpresa && matchDataInicio && matchDataFim && matchTipo;
+      let matchStatusAdesao = true;
+      if (statusAdesaoFiltroAplicado) {
+        matchStatusAdesao = cadastro.status_adesao_id === statusAdesaoFiltroAplicado;
+      }
+
+      return matchCliente && matchEmpresa && matchDataInicio && matchDataFim && matchTipo && matchStatusAdesao;
     });
-  }, [incompletos, buscaClienteAplicada, buscaEmpresaAplicada, dataInicioAplicada, dataFimAplicada, tipoFiltroAplicado]);
+  }, [incompletos, buscaClienteAplicada, buscaEmpresaAplicada, dataInicioAplicada, dataFimAplicada, tipoFiltroAplicado, statusAdesaoFiltroAplicado]);
 
   const clientesGrouped: ClienteGroup[] = useMemo(() => {
     const clientesMap = new Map<string, Cadastro[]>();
@@ -204,10 +212,12 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
     setDataFimAplicada('');
     setTipoFiltro('todos');
     setTipoFiltroAplicado('todos');
+    setStatusAdesaoFiltro('');
+    setStatusAdesaoFiltroAplicado('');
     setDefaultDateFilter();
   };
 
-  const temFiltrosAtivos = buscaClienteAplicada || buscaEmpresaAplicada || dataInicioAplicada || dataFimAplicada || tipoFiltroAplicado !== 'todos';
+  const temFiltrosAtivos = buscaClienteAplicada || buscaEmpresaAplicada || dataInicioAplicada || dataFimAplicada || tipoFiltroAplicado !== 'todos' || statusAdesaoFiltroAplicado;
 
   return (
     <>
@@ -226,7 +236,7 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
           <div className="relative">
             <Input
               label="Busca Cliente"
@@ -269,6 +279,19 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
             <option value="todos">Todos</option>
             <option value="cadastro">Cadastro</option>
             <option value="inclusao_dependente">Inclusão</option>
+          </Select>
+
+          <Select
+            label="Status da Adesão"
+            value={statusAdesaoFiltro}
+            onChange={(e) => setStatusAdesaoFiltro(e.target.value)}
+          >
+            <option value="">Todos os Status</option>
+            {statusList.map((status) => (
+              <option key={status.id} value={status.id}>
+                {status.nome}
+              </option>
+            ))}
           </Select>
 
           <Input

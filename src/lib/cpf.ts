@@ -83,6 +83,17 @@ export function formatDate(date: string | Date): string {
   return `${day}/${month}/${year}`;
 }
 
+export function formatDateFromISO(isoDate: string): string {
+  if (!isoDate) return '';
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) {
+    const [year, month, day] = isoDate.split('-');
+    return `${day}/${month}/${year}`;
+  }
+
+  return formatDate(isoDate);
+}
+
 export function parseISODate(isoDate: string): Date | null {
   try {
     const date = new Date(isoDate);

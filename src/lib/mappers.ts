@@ -1,4 +1,4 @@
-import { formatCPF, formatDate, removeCPFMask } from './cpf';
+import { formatCPF, formatDate, formatDateFromISO, removeCPFMask } from './cpf';
 
 export interface LemmitPessoa {
   cpf?: string | null;
@@ -265,7 +265,7 @@ export function buildERPPayload(
   const responsavelFinanceiro: Record<string, any> = {
     codigoContrato: empresaId.toString(),
     nome: cadastro.nome,
-    dataNascimento: formatDate(cadastro.dataNascimento),
+    dataNascimento: formatDateFromISO(cadastro.dataNascimento),
     cpf: formatCPF(cadastro.cpf),
     sexo: cadastro.sexoCodigo,
     grupoFaturamento: 0,
@@ -311,7 +311,7 @@ export function buildERPPayload(
         ...(cadastro.dependentes || []).map((dep) => ({
           tipo: dep.tipo,
           nome: dep.nome,
-          dataNascimento: dep.dataNascimento,
+          dataNascimento: formatDateFromISO(dep.dataNascimento),
           cpf: formatCPF(dep.cpf),
           sexo: dep.sexo,
           sexoDescricao: dep.sexoDescricao,

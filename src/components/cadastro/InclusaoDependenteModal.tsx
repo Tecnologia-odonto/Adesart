@@ -7,7 +7,7 @@ import { DateInput } from '../DateInput';
 import { useAuth } from '../../contexts/AuthContext';
 import { useConfigCadastro } from '../../contexts/ConfigCadastroContext';
 import { useCadastros } from '../../hooks/useCadastros';
-import { formatCPF, removeCPFMask, validateCPF, normalizeToISO } from '../../lib/cpf';
+import { formatCPF, removeCPFMask, validateCPF, normalizeToISO, formatDateFromISO } from '../../lib/cpf';
 import { supabase } from '../../lib/supabase';
 import { LemmitLimitModal } from './LemmitLimitModal';
 
@@ -870,7 +870,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
         MMYYYY1Pagamento: mesAnoAtual,
         numeroCarteira: "",
         observacaoUsuario: "",
-        dataNascimento: dep.dataNascimento,
+        dataNascimento: formatDateFromISO(dep.dataNascimento),
         funcionarioCadastro: funcionarioCadastroId,
         dataCadastroLoteContrato: "",
         estadoCivil: 0
