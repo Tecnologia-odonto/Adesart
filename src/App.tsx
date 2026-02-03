@@ -11,6 +11,7 @@ import { Profile } from './pages/Profile';
 import { Cadastro } from './pages/Cadastro';
 import { ConfiguracoesCadastro } from './pages/ConfiguracoesCadastro';
 import { AuditoriaLemmit } from './pages/AuditoriaLemmit';
+import { FilaUploadERP } from './pages/FilaUploadERP';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -77,6 +78,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['ADMINISTRADOR']}>
             <AuditoriaLemmit />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/fila-upload-erp"
+        element={
+          <ProtectedRoute allowedRoles={['ADMINISTRADOR']}>
+            <FilaUploadERP />
           </ProtectedRoute>
         }
       />

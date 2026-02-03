@@ -570,60 +570,40 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
             throw new Error('Sessão não encontrada');
           }
 
-          const uploadPayload = {
+          const enqueuePayload = {
+            cadastroId: cadastro.id,
             idFuncionario: funcionarioCadastroId,
             idDependente: parseInt(primeiroDepCodigo),
-            arquivo: arquivo.base64,
+            arquivoPath: arquivo.path,
             arquivoNome: arquivo.nome,
+            tipo: 'titular',
           };
 
-          const uploadResponse = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-upload-documento`,
+          const enqueueResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-enqueue-upload`,
             {
               method: 'POST',
               headers: {
                 'Authorization': `Bearer ${session.access_token}`,
                 'Content-Type': 'application/json',
               },
-              body: JSON.stringify(uploadPayload),
+              body: JSON.stringify(enqueuePayload),
             }
           );
 
-          const uploadResult = await uploadResponse.json();
+          const enqueueResult = await enqueueResponse.json();
 
-          if (!uploadResponse.ok || !uploadResult.success) {
-            throw new Error(uploadResult.error || 'Erro ao enviar arquivo');
-          }
-
-          console.log('Arquivo enviado com sucesso:', uploadResult);
-        } catch (uploadErr: any) {
-          console.error('Erro ao enviar arquivo:', uploadErr);
-          setError(`Cadastro criado, mas erro ao enviar arquivo: ${uploadErr.message}`);
-          setLoading(false);
-          return;
-        }
-      }
-
-      const arquivoPath = arquivo?.path;
-      if (arquivoPath) {
-        try {
-          const { error: deleteError } = await supabase.storage
-            .from('cadastros-temp-files')
-            .remove([arquivoPath]);
-
-          if (deleteError) {
-            console.error('Erro ao deletar arquivo do bucket:', deleteError);
+          if (!enqueueResponse.ok || !enqueueResult.queued) {
+            console.warn('Aviso ao enfileirar arquivo:', enqueueResult);
           } else {
-            console.log('Arquivo deletado do bucket com sucesso:', arquivoPath);
+            console.log('Arquivo enfileirado para envio:', enqueueResult);
           }
-
-          await updateCadastro(cadastro.id, { arquivo_path: null });
-        } catch (deleteErr) {
-          console.error('Erro ao limpar arquivo:', deleteErr);
+        } catch (uploadErr: any) {
+          console.warn('Aviso ao enfileirar arquivo:', uploadErr);
         }
       }
 
-      setSuccess('Cadastro enviado com sucesso para o ERP!');
+      setSuccess('Cadastro enviado com sucesso! Arquivo em fila de envio ao ERP.');
       setTimeout(() => {
         onSuccess();
         onClose();

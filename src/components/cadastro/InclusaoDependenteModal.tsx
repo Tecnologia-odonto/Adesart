@@ -896,49 +896,41 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
           try {
             const dependenteCodigo = result.data.dados.dependentes[i].codigo;
 
-            const uploadPayload = {
+            const enqueuePayload = {
+              cadastroId: null,
               idFuncionario: funcionarioCadastroId,
               idDependente: parseInt(dependenteCodigo),
-              arquivo: dep.arquivo.base64,
+              arquivoPath: dep.arquivo.path,
               arquivoNome: dep.arquivo.nome,
+              tipo: 'dependente',
             };
 
-            const uploadResponse = await fetch(
-              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-upload-documento`,
+            const enqueueResponse = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-enqueue-upload`,
               {
                 method: 'POST',
                 headers: {
                   'Authorization': `Bearer ${session.access_token}`,
                   'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(uploadPayload),
+                body: JSON.stringify(enqueuePayload),
               }
             );
 
-            const uploadResult = await uploadResponse.json();
+            const enqueueResult = await enqueueResponse.json();
 
-            if (!uploadResponse.ok || !uploadResult.success) {
-              console.error(`Erro ao enviar arquivo do dependente ${i + 1}:`, uploadResult);
+            if (!enqueueResponse.ok || !enqueueResult.queued) {
+              console.warn(`Aviso ao enfileirar arquivo do dependente ${i + 1}:`, enqueueResult);
+            } else {
+              console.log(`Arquivo do dependente ${i + 1} enfileirado:`, enqueueResult);
             }
           } catch (uploadErr) {
-            console.error(`Erro ao enviar arquivo do dependente ${i + 1}:`, uploadErr);
+            console.warn(`Aviso ao enfileirar arquivo do dependente ${i + 1}:`, uploadErr);
           }
         }
       }
 
-      for (const dep of dependentesSalvos) {
-        if (dep.arquivo) {
-          try {
-            await supabase.storage
-              .from('cadastros-temp-files')
-              .remove([dep.arquivo.path]);
-          } catch (err) {
-            console.error('Erro ao limpar arquivo:', err);
-          }
-        }
-      }
-
-      setSuccess('Dependente(s) incluído(s) com sucesso!');
+      setSuccess('Dependente(s) incluído(s) com sucesso! Arquivos em fila de envio.');
       setTimeout(() => {
         onSuccess();
         onClose();
