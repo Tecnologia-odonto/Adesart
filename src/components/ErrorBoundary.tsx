@@ -8,6 +8,7 @@ interface Props {
 interface State {
   hasError: boolean;
   error?: Error;
+  errorInfo?: any;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
@@ -21,7 +22,16 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: any) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    console.error('╔══════════════════════════════════════════════════════════╗');
+    console.error('║            ErrorBoundary caught an error                ║');
+    console.error('╚══════════════════════════════════════════════════════════╝');
+    console.error('Error:', error);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('Component stack:', errorInfo.componentStack);
+    console.error('Error info:', errorInfo);
+
+    this.setState({ errorInfo });
   }
 
   render() {
