@@ -28,6 +28,8 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loadingCEP, setLoadingCEP] = useState(false);
+  const [loadingPlanos, setLoadingPlanos] = useState(true);
+  const [cadastroFresh, setCadastroFresh] = useState<Cadastro | null>(null);
   const [dependentes, setDependentes] = useState<Dependente[]>([]);
   const [planosEmpresa, setPlanosEmpresa] = useState<any[]>([]);
   const [dependentesInicializados, setDependentesInicializados] = useState(false);
@@ -47,6 +49,8 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   const [uploadingFile, setUploadingFile] = useState(false);
 
   const funcionarioCadastroId = profile?.external_id ? parseInt(profile.external_id) : null;
+
+  const cadastroAtual = cadastroFresh || cadastro;
 
   const [formData, setFormData] = useState({
     nome: cadastro.nome || '',
@@ -82,24 +86,51 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   });
 
   useEffect(() => {
-    console.log('[CadastroModal] Inicializando dependentes...');
-    console.log('[CadastroModal] cadastro.dependentes:', cadastro.dependentes);
+    const fetchFreshCadastro = async () => {
+      console.log('[CadastroModal] Buscando dados frescos do cadastro:', cadastro.id);
+      try {
+        const { data, error } = await supabase
+          .from('cadastros')
+          .select('*')
+          .eq('id', cadastro.id)
+          .single();
 
-    if (cadastro.dependentes && Array.isArray(cadastro.dependentes) && cadastro.dependentes.length > 0) {
-      console.log('[CadastroModal] Carregando dependentes salvos do banco:', cadastro.dependentes);
-      setDependentes(cadastro.dependentes as Dependente[]);
+        if (error) {
+          console.error('[CadastroModal] Erro ao buscar cadastro fresh:', error);
+          return;
+        }
+
+        if (data) {
+          console.log('[CadastroModal] Cadastro fresh carregado:', data);
+          setCadastroFresh(data as Cadastro);
+        }
+      } catch (err) {
+        console.error('[CadastroModal] Exceção ao buscar cadastro fresh:', err);
+      }
+    };
+
+    fetchFreshCadastro();
+  }, [cadastro.id]);
+
+  useEffect(() => {
+    console.log('[CadastroModal] Inicializando dependentes...');
+    console.log('[CadastroModal] cadastroAtual.dependentes:', cadastroAtual.dependentes);
+
+    if (cadastroAtual.dependentes && Array.isArray(cadastroAtual.dependentes) && cadastroAtual.dependentes.length > 0) {
+      console.log('[CadastroModal] Carregando dependentes salvos do banco:', cadastroAtual.dependentes);
+      setDependentes(cadastroAtual.dependentes as Dependente[]);
       setDependentesInicializados(true);
     } else {
       console.log('[CadastroModal] Nenhum dependente salvo no banco');
       setDependentesInicializados(true);
     }
 
-    if (cadastro.arquivo_path) {
-      const fileName = cadastro.arquivo_path.split('/').pop() || 'arquivo';
+    if (cadastroAtual.arquivo_path) {
+      const fileName = cadastroAtual.arquivo_path.split('/').pop() || 'arquivo';
 
       supabase.storage
         .from('cadastros-temp-files')
-        .download(cadastro.arquivo_path)
+        .download(cadastroAtual.arquivo_path)
         .then(({ data, error }) => {
           if (error) {
             console.error('Erro ao baixar arquivo do bucket:', error);
@@ -114,21 +145,23 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
               setArquivo({
                 base64: base64Puro,
                 nome: fileName,
-                path: cadastro.arquivo_path
+                path: cadastroAtual.arquivo_path
               });
             };
             reader.readAsDataURL(data);
           }
         });
     }
-  }, [cadastro.id]);
+  }, [cadastroAtual.dependentes, cadastroAtual.arquivo_path]);
 
   useEffect(() => {
-    const lemitRaw = cadastro.lemit_raw as { nome_mae?: string } | undefined;
-    if (lemitRaw?.nome_mae && !cadastro.nome_mae) {
+    const lemitRaw = cadastroAtual.lemit_raw as { nome_mae?: string } | undefined;
+    if (lemitRaw?.nome_mae && !cadastroAtual.nome_mae) {
       setFormData((prev) => ({ ...prev, nomeMae: lemitRaw.nome_mae || '' }));
     }
+  }, [cadastroAtual.lemit_raw, cadastroAtual.nome_mae]);
 
+  useEffect(() => {
     const enrichPlanos = (planos: any[]) => {
       return planos.map(plano => {
         const mapeamento = planosMap.find(p => p.plano_id === plano.Plano);
@@ -140,57 +173,78 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       });
     };
 
-    if (cadastro.planos_raw && Array.isArray(cadastro.planos_raw) && cadastro.planos_raw.length > 0) {
-      console.log('[CadastroModal] Carregando planos do cadastro:', cadastro.planos_raw);
-      const planosEnriquecidos = enrichPlanos(cadastro.planos_raw);
-      setPlanosEmpresa(planosEnriquecidos);
-    }
+    const loadPlanos = async () => {
+      setLoadingPlanos(true);
+      console.log('[CadastroModal] Iniciando carregamento de planos...');
 
-    const fetchPlanosIfNeeded = async () => {
-      if (cadastro.empresa_id && (!cadastro.planos_raw || (Array.isArray(cadastro.planos_raw) && cadastro.planos_raw.length === 0))) {
-        try {
-          console.log('[CadastroModal] Buscando planos para empresa ID:', cadastro.empresa_id);
-          const empresaData = await searchEmpresa(cadastro.empresa_id.toString(), 'id');
-          console.log('[CadastroModal] Resposta da busca:', empresaData);
-
-          if (empresaData.ok && empresaData.empresas && empresaData.empresas.length > 0) {
-            const empresa = empresaData.empresas[0];
-            const planos = empresa.precoPlano || [];
-            console.log('[CadastroModal] Planos encontrados:', planos);
-
-            const planosEnriquecidos = enrichPlanos(planos);
-            setPlanosEmpresa(planosEnriquecidos);
-            await updateCadastro(cadastro.id, {
-              planos_raw: planos,
-            });
-          } else {
-            console.warn('[CadastroModal] Nenhuma empresa ou plano encontrado');
-          }
-        } catch (err) {
-          console.error('Error fetching empresa planos:', err);
+      try {
+        if (cadastroAtual.planos_raw && Array.isArray(cadastroAtual.planos_raw) && cadastroAtual.planos_raw.length > 0) {
+          console.log('[CadastroModal] Carregando planos do cadastro:', cadastroAtual.planos_raw);
+          const planosEnriquecidos = enrichPlanos(cadastroAtual.planos_raw);
+          setPlanosEmpresa(planosEnriquecidos);
+          setLoadingPlanos(false);
+          return;
         }
+
+        if (cadastroAtual.empresa_id) {
+          console.log('[CadastroModal] planos_raw vazio ou ausente, buscando planos para empresa ID:', cadastroAtual.empresa_id);
+
+          try {
+            const empresaData = await searchEmpresa(cadastroAtual.empresa_id.toString(), 'id');
+            console.log('[CadastroModal] Resposta da busca de empresa:', empresaData);
+
+            if (empresaData.ok && empresaData.empresas && empresaData.empresas.length > 0) {
+              const empresa = empresaData.empresas[0];
+              const planos = empresa.precoPlano || [];
+              console.log('[CadastroModal] ✅ Planos encontrados via searchEmpresa:', planos);
+
+              if (planos.length > 0) {
+                const planosEnriquecidos = enrichPlanos(planos);
+                setPlanosEmpresa(planosEnriquecidos);
+
+                await updateCadastro(cadastroAtual.id, {
+                  planos_raw: planos,
+                });
+                console.log('[CadastroModal] ✅ planos_raw salvo no cadastro');
+              } else {
+                console.warn('[CadastroModal] ⚠️ Empresa encontrada mas sem planos');
+              }
+            } else {
+              console.warn('[CadastroModal] ⚠️ Empresa não encontrada ou resposta inválida');
+            }
+          } catch (err) {
+            console.error('[CadastroModal] ❌ Erro ao buscar planos da empresa:', err);
+          }
+        } else {
+          console.warn('[CadastroModal] ⚠️ Nenhum empresa_id disponível');
+        }
+      } finally {
+        setLoadingPlanos(false);
+        console.log('[CadastroModal] Carregamento de planos finalizado');
       }
     };
 
-    fetchPlanosIfNeeded();
-  }, [cadastro, planosMap]);
+    if (cadastroAtual && planosMap) {
+      loadPlanos();
+    }
+  }, [cadastroAtual.id, cadastroAtual.empresa_id, cadastroAtual.planos_raw, planosMap]);
 
   useEffect(() => {
-    const temDependentesSalvos = cadastro.dependentes && Array.isArray(cadastro.dependentes) && cadastro.dependentes.length > 0;
+    const temDependentesSalvos = cadastroAtual.dependentes && Array.isArray(cadastroAtual.dependentes) && cadastroAtual.dependentes.length > 0;
 
-    if (!dependentesInicializados || temDependentesSalvos) {
+    if (!dependentesInicializados || temDependentesSalvos || loadingPlanos) {
       return;
     }
 
-    if (dependentes.length === 0 && cadastro.cpf && planosEmpresa.length > 0) {
-      console.log('[CadastroModal] Criando titular automaticamente (não há dependentes salvos)');
+    if (dependentes.length === 0 && cadastroAtual.cpf && planosEmpresa.length > 0) {
+      console.log('[CadastroModal] ✅ Criando titular automaticamente (não há dependentes salvos)');
       const sexoDescricao = (formData.sexo === 1) ? 'Masculino' : (formData.sexo === 0) ? 'Feminino' : '';
 
       const responsavelComoDependente: Dependente = {
         tipo: 1,
         nome: formData.nome || '',
         dataNascimento: formData.dataNascimento || '',
-        cpf: cadastro.cpf,
+        cpf: cadastroAtual.cpf,
         sexo: formData.sexo || 0,
         sexoDescricao: sexoDescricao,
         plano: 0,
@@ -202,7 +256,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
       setDependentes([responsavelComoDependente]);
     }
-  }, [dependentesInicializados, planosEmpresa, cadastro.cpf, cadastro.dependentes, funcionarioCadastroId]);
+  }, [dependentesInicializados, planosEmpresa, cadastroAtual.cpf, cadastroAtual.dependentes, funcionarioCadastroId, loadingPlanos, formData.sexo, formData.nome, formData.dataNascimento, formData.nomeMae, dependentes.length]);
 
   useEffect(() => {
     if (dependentes.length > 0 && dependentes[0].tipo === 1) {
@@ -261,7 +315,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
       console.log('[CadastroModal] Dados para atualizar:', updateData);
 
-      await updateCadastro(cadastro.id, updateData);
+      await updateCadastro(cadastroAtual.id, updateData);
 
       setShowSelectStatusModal(true);
     } catch (err: any) {
@@ -321,7 +375,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         arquivo_path: arquivo ? arquivo.path : null,
       };
 
-      await updateCadastro(cadastro.id, updateData);
+      await updateCadastro(cadastroAtual.id, updateData);
       setShowSelectStatusModal(true);
     } catch (err: any) {
       console.error('Error saving cadastro on close:', err);
@@ -333,7 +387,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
   const handleStatusSelect = async (statusId: string) => {
     try {
-      await updateCadastro(cadastro.id, { status_adesao_id: statusId });
+      await updateCadastro(cadastroAtual.id, { status_adesao_id: statusId });
       setShowSelectStatusModal(false);
       onSuccess();
       onClose();
@@ -380,8 +434,8 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       }
 
       const fileExtension = file.name.split('.').pop();
-      const fileName = `${formData.nome || 'arquivo'}_${removeCPFMask(cadastro.cpf)}_${Date.now()}.${fileExtension}`;
-      const filePath = `cadastros/${cadastro.id}/${fileName}`;
+      const fileName = `${formData.nome || 'arquivo'}_${removeCPFMask(cadastroAtual.cpf)}_${Date.now()}.${fileExtension}`;
+      const filePath = `cadastros/${cadastroAtual.id}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('cadastros-temp-files')
@@ -506,12 +560,12 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       return;
     }
 
-    if (cadastro.empresa_exige_matricula === 1 && !formData.numeroMatricula) {
+    if (cadastroAtual.empresa_exige_matricula === 1 && !formData.numeroMatricula) {
       setError('Campo obrigatório: Matrícula (obrigatória para esta empresa)');
       return;
     }
 
-    if (!cadastro.empresa_id) {
+    if (!cadastroAtual.empresa_id) {
       setError('ID da empresa não encontrado. Por favor, busque a empresa novamente.');
       return;
     }
@@ -537,7 +591,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
     try {
       const cadastroCompleto: CadastroFormData = {
-        cpf: cadastro.cpf,
+        cpf: cadastroAtual.cpf,
         nome: formData.nome,
         dataNascimento: formData.dataNascimento,
         sexo: formData.sexo === 1 ? 'M' : 'F',
@@ -551,15 +605,15 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
       const payload = buildERPPayload(
         cadastroCompleto,
-        cadastro.empresa_id,
-        cadastro.vendedor_codigo,
+        cadastroAtual.empresa_id,
+        cadastroAtual.vendedor_codigo,
         funcionarioCadastroId,
         profile?.role,
         profile?.external_id,
-        cadastro.adesionista_codigo
+        cadastroAtual.adesionista_codigo
       );
 
-      const result = await enviarParaERP(cadastro.id, payload);
+      const result = await enviarParaERP(cadastroAtual.id, payload);
 
       if (arquivo && result?.data?.dados?.dependentes && result.data.dados.dependentes.length > 0) {
         try {
@@ -571,7 +625,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
           }
 
           const enqueuePayload = {
-            cadastroId: cadastro.id,
+            cadastroId: cadastroAtual.id,
             idFuncionario: funcionarioCadastroId,
             idDependente: parseInt(primeiroDepCodigo),
             arquivoPath: arquivo.path,
@@ -627,7 +681,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
     setLoading(true);
     try {
-      await deleteCadastro(cadastro.id);
+      await deleteCadastro(cadastroAtual.id);
       onSuccess();
     } catch (err) {
       console.error('Error deleting cadastro:', err);
@@ -759,12 +813,12 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         <div className="sticky top-0 bg-white border-b border-slate-200 p-6 flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-slate-800">
-              {cadastro.nome || 'Editar Cadastro'}
+              {cadastroAtual.nome || 'Editar Cadastro'}
             </h2>
-            <p className="text-sm text-slate-600 mt-1">CPF: {formatCPF(cadastro.cpf)}</p>
-            {cadastro.vendedor_codigo && (
+            <p className="text-sm text-slate-600 mt-1">CPF: {formatCPF(cadastroAtual.cpf)}</p>
+            {cadastroAtual.vendedor_codigo && (
               <p className="text-sm text-emerald-600 mt-0.5">
-                Vendedor: {cadastro.vendedor_nome || 'Nome não disponível'} (Código {cadastro.vendedor_codigo})
+                Vendedor: {cadastroAtual.vendedor_nome || 'Nome não disponível'} (Código {cadastroAtual.vendedor_codigo})
               </p>
             )}
           </div>
@@ -815,7 +869,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
               />
             </div>
 
-            {cadastro.empresa_exige_matricula === 1 && (
+            {cadastroAtual.empresa_exige_matricula === 1 && (
               <div className="md:col-span-2">
                 <Input
                   label="Matrícula"
@@ -1088,12 +1142,33 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
             </div>
           </div>
 
-          <DependentesSection
-            dependentes={dependentes}
-            planos={planosEmpresa}
-            funcionarioCadastro={funcionarioCadastroId}
-            onChange={setDependentes}
-          />
+          {loadingPlanos ? (
+            <div className="border-t border-slate-200 pt-6">
+              <div className="flex items-center justify-center py-12 bg-slate-50 rounded-lg border border-slate-200">
+                <div className="text-center">
+                  <Loader2 className="w-8 h-8 text-emerald-600 animate-spin mx-auto mb-3" />
+                  <p className="text-sm font-medium text-slate-700">Carregando planos da empresa...</p>
+                  <p className="text-xs text-slate-500 mt-1">Por favor, aguarde</p>
+                </div>
+              </div>
+            </div>
+          ) : planosEmpresa.length === 0 ? (
+            <div className="border-t border-slate-200 pt-6">
+              <div className="py-12 bg-amber-50 rounded-lg border border-amber-200">
+                <div className="text-center">
+                  <p className="text-sm font-medium text-amber-700">Nenhum plano disponível para esta empresa</p>
+                  <p className="text-xs text-amber-600 mt-1">Entre em contato com o suporte</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <DependentesSection
+              dependentes={dependentes}
+              planos={planosEmpresa}
+              funcionarioCadastro={funcionarioCadastroId}
+              onChange={setDependentes}
+            />
+          )}
 
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
@@ -1135,7 +1210,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
             <Button
               variant="secondary"
               onClick={handleSave}
-              disabled={loading}
+              disabled={loading || loadingPlanos}
               className="w-full sm:w-auto"
             >
               {loading ? (
@@ -1146,7 +1221,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
               Salvar
             </Button>
 
-            <Button onClick={handleEnviar} disabled={loading} className="w-full sm:w-auto">
+            <Button onClick={handleEnviar} disabled={loading || loadingPlanos} className="w-full sm:w-auto">
               {loading ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               ) : (
