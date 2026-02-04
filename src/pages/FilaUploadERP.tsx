@@ -41,6 +41,8 @@ export function FilaUploadERP() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [processingQueue, setProcessingQueue] = useState(false);
+  const [resettingStuck, setResettingStuck] = useState(false);
+  const [processingCount, setProcessingCount] = useState(0);
 
   useEffect(() => {
     if (profile?.role === 'ADMINISTRADOR') {
@@ -85,6 +87,9 @@ export function FilaUploadERP() {
 
       setItems(mappedData);
       setTotalCount(count || 0);
+
+      const processingItems = mappedData.filter(item => item.status === 'processing').length;
+      setProcessingCount(processingItems);
     } catch (error) {
       console.error('Erro ao carregar fila:', error);
     } finally {
@@ -137,6 +142,7 @@ export function FilaUploadERP() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         alert('Sessão não encontrada');
+        setProcessingQueue(false);
         return;
       }
 
@@ -153,15 +159,25 @@ export function FilaUploadERP() {
 
       const result = await response.json();
 
-      if (response.ok) {
-        alert(`Processamento concluído!\nProcessados: ${result.processed}\nSucesso: ${result.success}\nFalhas: ${result.failed}\nRetentativas: ${result.retry}`);
+      if (response.ok || response.status === 202) {
+        if (result.queued_count === 0) {
+          alert('Nenhum item na fila para processar no momento.');
+        } else {
+          const estimatedMinutes = Math.ceil(result.estimated_time_seconds / 60);
+          alert(
+            `Processamento iniciado em background!\n\n` +
+            `${result.queued_count} item(ns) sendo processado(s)\n` +
+            `Tempo estimado: ~${estimatedMinutes} minuto(s)\n\n` +
+            `A tela será atualizada automaticamente conforme os uploads são concluídos.`
+          );
+        }
         fetchQueueItems();
       } else {
-        alert(`Erro ao processar fila: ${result.error || 'Erro desconhecido'}`);
+        alert(`Erro ao iniciar processamento: ${result.error || result.details || 'Erro desconhecido'}`);
       }
     } catch (error) {
       console.error('Erro ao processar fila:', error);
-      alert('Erro ao processar fila');
+      alert('Erro ao conectar com o servidor. Verifique sua conexão e tente novamente.');
     } finally {
       setProcessingQueue(false);
     }
@@ -193,6 +209,43 @@ export function FilaUploadERP() {
     } catch (error) {
       console.error('Erro ao reprocessar:', error);
       alert('Erro ao reprocessar item');
+    }
+  };
+
+  const handleResetStuckItems = async () => {
+    if (!window.confirm('Deseja resetar itens travados em "Processando"? Itens travados há mais de 15 minutos serão marcados como "queued".')) {
+      return;
+    }
+
+    setResettingStuck(true);
+    try {
+      const { data, error } = await supabase.rpc('reset_stuck_queue_items', {
+        stuck_threshold_minutes: 15
+      });
+
+      if (error) {
+        console.error('Erro ao resetar itens travados:', error);
+        alert('Erro ao resetar itens travados');
+        return;
+      }
+
+      if (data && data.length > 0) {
+        const resetCount = data[0].reset_count;
+        if (resetCount > 0) {
+          alert(`${resetCount} item(ns) travado(s) foram resetados com sucesso!`);
+        } else {
+          alert('Nenhum item travado encontrado (15+ minutos em processamento)');
+        }
+      } else {
+        alert('Nenhum item travado encontrado');
+      }
+
+      fetchQueueItems();
+    } catch (error) {
+      console.error('Erro ao resetar itens:', error);
+      alert('Erro ao resetar itens travados');
+    } finally {
+      setResettingStuck(false);
     }
   };
 
@@ -266,24 +319,60 @@ export function FilaUploadERP() {
             <h1 className="text-3xl font-bold text-slate-800">Fila de Upload ERP</h1>
             <p className="text-slate-600 mt-2">Gerenciamento de uploads de documentos para o ERP</p>
           </div>
-          <Button
-            onClick={handleProcessQueue}
-            disabled={processingQueue}
-            className="flex items-center gap-2"
-          >
-            {processingQueue ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Processando...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="w-4 h-4" />
-                Processar Fila
-              </>
-            )}
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={handleResetStuckItems}
+              disabled={resettingStuck}
+              variant="secondary"
+              className="flex items-center gap-2"
+            >
+              {resettingStuck ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Resetando...
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="w-4 h-4" />
+                  Resetar Travados
+                </>
+              )}
+            </Button>
+            <Button
+              onClick={handleProcessQueue}
+              disabled={processingQueue}
+              className="flex items-center gap-2"
+            >
+              {processingQueue ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Processando...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4" />
+                  Processar Fila
+                </>
+              )}
+            </Button>
+          </div>
         </div>
+
+        {processingCount > 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center gap-3">
+              <Loader2 className="w-5 h-5 text-blue-600 animate-spin flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-blue-900 font-medium">
+                  Processamento em andamento
+                </p>
+                <p className="text-blue-700 text-sm mt-1">
+                  {processingCount} item(ns) sendo enviado(s) para o ERP. A tela será atualizada automaticamente.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
           <div className="flex items-center justify-between gap-4">
@@ -474,17 +563,33 @@ export function FilaUploadERP() {
           </>
         )}
 
-        {items.length > 0 && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h3 className="font-semibold text-blue-900 mb-2">Informações sobre o processamento</h3>
-            <ul className="text-sm text-blue-800 space-y-1">
-              <li>• A fila é processada automaticamente a cada 10 minutos</li>
-              <li>• Cada item pode ter até 5 tentativas de envio</li>
-              <li>• Após 5 falhas, o item é marcado como "Falhou" e pode ser reprocessado manualmente</li>
-              <li>• Arquivos são removidos do bucket apenas após envio bem-sucedido</li>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+            <h3 className="font-semibold text-emerald-900 mb-2 flex items-center gap-2">
+              <CheckCircle className="w-5 h-5" />
+              Processamento Automático Ativo
+            </h3>
+            <ul className="text-sm text-emerald-800 space-y-1">
+              <li>• Fila processada automaticamente a cada 2 minutos</li>
+              <li>• Intervalo de 10 segundos entre cada upload</li>
+              <li>• Até 5 tentativas automáticas por item</li>
+              <li>• Sistema de retry inteligente em caso de falha</li>
             </ul>
           </div>
-        )}
+
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h3 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5" />
+              Informações Importantes
+            </h3>
+            <ul className="text-sm text-blue-800 space-y-1">
+              <li>• Após 5 falhas, reprocessamento manual necessário</li>
+              <li>• Arquivos removidos apenas após sucesso</li>
+              <li>• Botão "Processar Fila" força processamento imediato</li>
+              <li>• Evite múltiplos cliques no botão de processamento</li>
+            </ul>
+          </div>
+        </div>
       </div>
     </Layout>
   );

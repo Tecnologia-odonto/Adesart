@@ -10,6 +10,7 @@ import { useCadastros } from '../../hooks/useCadastros';
 import { formatCPF, removeCPFMask, validateCPF, normalizeToISO, formatDateFromISO } from '../../lib/cpf';
 import { supabase } from '../../lib/supabase';
 import { LemmitLimitModal } from './LemmitLimitModal';
+import { ParceiroInvalidoModal } from './ParceiroInvalidoModal';
 
 interface InclusaoDependenteModalProps {
   onClose: () => void;
@@ -122,6 +123,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
   } | null>(null);
   const [consultingLemmitIndex, setConsultingLemmitIndex] = useState<number | null>(null);
   const [cpfValidationErrors, setCpfValidationErrors] = useState<Record<number, string>>({});
+  const [showParceiroInvalidoModal, setShowParceiroInvalidoModal] = useState(false);
 
   const funcionarioCadastroId = profile?.external_id ? parseInt(profile.external_id) : null;
 
@@ -766,6 +768,20 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
     }
   };
 
+  const handleRetryWithVendedor = async (vendedorCodigo: string, vendedorNome: string) => {
+    setShowParceiroInvalidoModal(false);
+    setSelectedVendedor('');
+
+    const vendedorEncontrado = vendedores.find(v => v.external_id === vendedorCodigo);
+    if (vendedorEncontrado) {
+      setSelectedVendedor(vendedorEncontrado.id);
+    }
+
+    setTimeout(() => {
+      handleEnviar();
+    }, 500);
+  };
+
   const handleEnviar = async () => {
     setError('');
     setSuccess('');
@@ -971,7 +987,13 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       }, 2000);
     } catch (err: any) {
       console.error('Erro ao enviar:', err);
-      setError(err.message || 'Erro ao incluir dependente');
+      const errorMessage = err.message || 'Erro ao incluir dependente';
+
+      if (errorMessage.toLowerCase().includes('parceiro') && errorMessage.toLowerCase().includes('inválido')) {
+        setShowParceiroInvalidoModal(true);
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setEnviando(false);
     }
@@ -1469,6 +1491,13 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
           consumoFormatado={lemmitLimitExceeded.consumoFormatado}
           saldoFormatado={lemmitLimitExceeded.saldoFormatado}
           isUnlimited={lemmitLimitExceeded.isUnlimited}
+        />
+      )}
+
+      {showParceiroInvalidoModal && (
+        <ParceiroInvalidoModal
+          onClose={() => setShowParceiroInvalidoModal(false)}
+          onRetry={handleRetryWithVendedor}
         />
       )}
     </div>

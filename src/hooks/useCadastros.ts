@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 export interface Cadastro {
   id: string;
-  status: 'incompleto' | 'enviado' | 'erro_envio';
+  status: 'incompleto' | 'enviado';
   tipo_cadastro: 'cadastro' | 'inclusao_dependente';
   created_by: string;
   team_id: string | null;
@@ -392,7 +392,7 @@ export function useCadastros() {
         }
 
         await updateCadastro(id, {
-          status: 'erro_envio',
+          status: 'incompleto',
           payload_erp: payload,
           erp_response: result,
         });
@@ -407,7 +407,7 @@ export function useCadastros() {
         }
 
         await updateCadastro(id, {
-          status: 'erro_envio',
+          status: 'incompleto',
           payload_erp: payload,
           erp_response: result,
         });

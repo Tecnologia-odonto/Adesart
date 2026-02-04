@@ -12,6 +12,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useConfigCadastro } from '../../contexts/ConfigCadastroContext';
 import { DependenteAtivoModal } from './DependenteAtivoModal';
 import { SelectStatusModal } from './SelectStatusModal';
+import { ParceiroInvalidoModal } from './ParceiroInvalidoModal';
 import { supabase } from '../../lib/supabase';
 
 interface CadastroModalProps {
@@ -41,6 +42,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   }>>([]);
   const [showDependentesAtivosModal, setShowDependentesAtivosModal] = useState(false);
   const [showSelectStatusModal, setShowSelectStatusModal] = useState(false);
+  const [showParceiroInvalidoModal, setShowParceiroInvalidoModal] = useState(false);
   const [arquivo, setArquivo] = useState<{
     base64: string;
     nome: string;
@@ -717,12 +719,106 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     } catch (err: any) {
       console.error('Error sending to ERP:', err);
 
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao enviar cadastro para o ERP';
+
       if (err.codigo === 3 && err.dependentesAtivos && err.dependentesAtivos.length > 0) {
         setDependentesAtivos(err.dependentesAtivos);
         setShowDependentesAtivosModal(true);
+      } else if (errorMessage.toLowerCase().includes('parceiro') && errorMessage.toLowerCase().includes('inválido')) {
+        setShowParceiroInvalidoModal(true);
       } else {
-        setError(err instanceof Error ? err.message : 'Erro ao enviar cadastro para o ERP');
+        setError(errorMessage);
       }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRetryWithVendedor = async (vendedorCodigo: string, vendedorNome: string) => {
+    setShowParceiroInvalidoModal(false);
+    setLoading(true);
+    setError('');
+
+    try {
+      await updateCadastro(cadastroAtual.id, {
+        vendedor_codigo: vendedorCodigo,
+        vendedor_nome: vendedorNome,
+      });
+
+      const cadastroCompleto: CadastroFormData = {
+        cpf: cadastroAtual.cpf,
+        nome: formData.nome,
+        dataNascimento: formData.dataNascimento,
+        sexoCodigo: formData.sexo,
+        contatos: formData.contatos,
+        endereco: formData.endereco,
+        nomeMae: formData.nomeMae,
+        numeroMatricula: formData.numeroMatricula,
+        dependentes: dependentes,
+      };
+
+      const payload = buildERPPayload(
+        cadastroCompleto,
+        cadastroAtual.empresa_id,
+        vendedorCodigo,
+        funcionarioCadastroId,
+        profile?.role,
+        profile?.external_id,
+        cadastroAtual.adesionista_codigo
+      );
+
+      const result = await enviarParaERP(cadastroAtual.id, payload);
+
+      if (arquivo && result?.data?.dados?.dependentes && result.data.dados.dependentes.length > 0) {
+        try {
+          const primeiroDepCodigo = result.data.dados.dependentes[0].codigo;
+
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) {
+            throw new Error('Sessão não encontrada');
+          }
+
+          const enqueuePayload = {
+            cadastroId: cadastroAtual.id,
+            idFuncionario: funcionarioCadastroId,
+            idDependente: parseInt(primeiroDepCodigo),
+            arquivoPath: arquivo.path,
+            arquivoNome: arquivo.nome,
+            tipo: 'titular',
+          };
+
+          const enqueueResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-enqueue-upload`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(enqueuePayload),
+            }
+          );
+
+          const enqueueResult = await enqueueResponse.json();
+
+          if (!enqueueResponse.ok || !enqueueResult.queued) {
+            console.warn('Aviso ao enfileirar arquivo:', enqueueResult);
+          } else {
+            console.log('Arquivo enfileirado para envio:', enqueueResult);
+          }
+        } catch (uploadErr: any) {
+          console.warn('Aviso ao enfileirar arquivo:', uploadErr);
+        }
+      }
+
+      setSuccess('Cadastro enviado com sucesso com o novo vendedor!');
+      setTimeout(() => {
+        onSuccess();
+        onClose();
+      }, 2000);
+    } catch (err: any) {
+      console.error('Error retrying with new vendedor:', err);
+      setError(err instanceof Error ? err.message : 'Erro ao reenviar cadastro');
     } finally {
       setLoading(false);
     }
@@ -1323,6 +1419,13 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         onClose={() => setShowDependentesAtivosModal(false)}
         dependentesAtivos={dependentesAtivos}
       />
+
+      {showParceiroInvalidoModal && (
+        <ParceiroInvalidoModal
+          onClose={() => setShowParceiroInvalidoModal(false)}
+          onRetry={handleRetryWithVendedor}
+        />
+      )}
     </div>
   );
 }

@@ -116,6 +116,95 @@ async function processQueueItem(
   }
 }
 
+async function processQueueInBackground(supabaseClient: any, queueItems: QueueItem[]) {
+  console.log(`Processando ${queueItems.length} itens em background com intervalo de 10s entre uploads...`);
+
+  const results = {
+    processed: 0,
+    success: 0,
+    failed: 0,
+    retry: 0,
+    errors: [] as any[],
+  };
+
+  for (const item of queueItems) {
+    const { error: lockError } = await supabaseClient
+      .from("erp_upload_queue")
+      .update({ status: "processing", last_attempt_at: new Date().toISOString() })
+      .eq("id", item.id)
+      .eq("status", item.status);
+
+    if (lockError) {
+      console.log(`Item ${item.id} já está sendo processado`);
+      continue;
+    }
+
+    results.processed++;
+
+    const result = await processQueueItem(supabaseClient, item);
+
+    const newAttempts = item.attempts + 1;
+
+    if (result.success) {
+      await supabaseClient
+        .from("erp_upload_queue")
+        .update({
+          status: "success",
+          attempts: newAttempts,
+          last_attempt_at: new Date().toISOString(),
+          erp_response: result.response,
+          last_status_code: result.statusCode,
+        })
+        .eq("id", item.id);
+
+      results.success++;
+      console.log(`✓ Item ${item.id} processado com sucesso`);
+    } else {
+      const isFinalFailure = newAttempts >= 5;
+      const newStatus = isFinalFailure ? "failed" : "retry_wait";
+
+      const nextAttempt = new Date();
+      nextAttempt.setMinutes(nextAttempt.getMinutes() + 10);
+
+      await supabaseClient
+        .from("erp_upload_queue")
+        .update({
+          status: newStatus,
+          attempts: newAttempts,
+          last_attempt_at: new Date().toISOString(),
+          next_attempt_at: isFinalFailure ? null : nextAttempt.toISOString(),
+          last_error: result.error,
+          last_status_code: result.statusCode,
+          erp_response: result.response,
+        })
+        .eq("id", item.id);
+
+      if (isFinalFailure) {
+        results.failed++;
+        console.error(`✗ Item ${item.id} falhou permanentemente após 5 tentativas`);
+      } else {
+        results.retry++;
+        console.warn(`⟳ Item ${item.id} falhará nova tentativa em 10 minutos (tentativa ${newAttempts}/5)`);
+      }
+
+      results.errors.push({
+        id: item.id,
+        error: result.error,
+        attempts: newAttempts,
+        final_failure: isFinalFailure,
+      });
+    }
+
+    if (queueItems.indexOf(item) < queueItems.length - 1) {
+      console.log(`Aguardando 10 segundos antes do próximo upload...`);
+      await new Promise(resolve => setTimeout(resolve, 10000));
+    }
+  }
+
+  console.log(`Processamento em background concluído:`, results);
+  return results;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -136,7 +225,19 @@ Deno.serve(async (req: Request) => {
       }
     );
 
-    const BATCH_SIZE = 10;
+    console.log("Verificando e resetando itens travados...");
+    const { data: resetResult, error: resetError } = await supabaseClient
+      .rpc("reset_stuck_queue_items", { stuck_threshold_minutes: 15 });
+
+    if (resetError) {
+      console.warn("Aviso: Erro ao resetar itens travados:", resetError);
+    } else if (resetResult && resetResult.length > 0) {
+      const { reset_count } = resetResult[0];
+      if (reset_count > 0) {
+        console.log(`✓ ${reset_count} item(ns) travado(s) foram resetados`);
+      }
+    }
+
     const now = new Date().toISOString();
 
     const { data: queueItems, error: fetchError } = await supabaseClient
@@ -146,7 +247,7 @@ Deno.serve(async (req: Request) => {
       .lt("attempts", 5)
       .lte("next_attempt_at", now)
       .order("created_at", { ascending: true })
-      .limit(BATCH_SIZE);
+      .limit(100);
 
     if (fetchError) {
       console.error("Erro ao buscar itens da fila:", fetchError);
@@ -162,7 +263,10 @@ Deno.serve(async (req: Request) => {
     if (!queueItems || queueItems.length === 0) {
       console.log("Nenhum item elegível para processamento");
       return new Response(
-        JSON.stringify({ message: "Nenhum item para processar", processed: 0 }),
+        JSON.stringify({
+          message: "Nenhum item na fila para processar",
+          queued_count: 0
+        }),
         {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -170,94 +274,24 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    console.log(`Processando ${queueItems.length} itens da fila...`);
+    console.log(`Encontrados ${queueItems.length} itens na fila. Iniciando processamento em background...`);
 
-    const results = {
-      processed: 0,
-      success: 0,
-      failed: 0,
-      retry: 0,
-      errors: [] as any[],
-    };
-
-    for (const item of queueItems) {
-      const { error: lockError } = await supabaseClient
-        .from("erp_upload_queue")
-        .update({ status: "processing", last_attempt_at: new Date().toISOString() })
-        .eq("id", item.id)
-        .eq("status", item.status);
-
-      if (lockError) {
-        console.log(`Item ${item.id} já está sendo processado`);
-        continue;
-      }
-
-      results.processed++;
-
-      const result = await processQueueItem(supabaseClient, item);
-
-      const newAttempts = item.attempts + 1;
-
-      if (result.success) {
-        await supabaseClient
-          .from("erp_upload_queue")
-          .update({
-            status: "success",
-            attempts: newAttempts,
-            last_attempt_at: new Date().toISOString(),
-            erp_response: result.response,
-            last_status_code: result.statusCode,
-          })
-          .eq("id", item.id);
-
-        results.success++;
-        console.log(`✓ Item ${item.id} processado com sucesso`);
-      } else {
-        const isFinalFailure = newAttempts >= 5;
-        const newStatus = isFinalFailure ? "failed" : "retry_wait";
-
-        const nextAttempt = new Date();
-        nextAttempt.setMinutes(nextAttempt.getMinutes() + 10);
-
-        await supabaseClient
-          .from("erp_upload_queue")
-          .update({
-            status: newStatus,
-            attempts: newAttempts,
-            last_attempt_at: new Date().toISOString(),
-            next_attempt_at: isFinalFailure ? null : nextAttempt.toISOString(),
-            last_error: result.error,
-            last_status_code: result.statusCode,
-            erp_response: result.response,
-          })
-          .eq("id", item.id);
-
-        if (isFinalFailure) {
-          results.failed++;
-          console.error(`✗ Item ${item.id} falhou permanentemente após 5 tentativas`);
-        } else {
-          results.retry++;
-          console.warn(`⟳ Item ${item.id} falhará nova tentativa em 10 minutos (tentativa ${newAttempts}/5)`);
-        }
-
-        results.errors.push({
-          id: item.id,
-          error: result.error,
-          attempts: newAttempts,
-          final_failure: isFinalFailure,
-        });
-      }
+    const ctx = (req as any).ctx;
+    if (ctx && typeof ctx.waitUntil === 'function') {
+      ctx.waitUntil(processQueueInBackground(supabaseClient, queueItems));
+    } else {
+      processQueueInBackground(supabaseClient, queueItems);
     }
-
-    console.log(`Processamento concluído:`, results);
 
     return new Response(
       JSON.stringify({
-        message: "Processamento concluído",
-        ...results,
+        message: "Processamento iniciado em background",
+        queued_count: queueItems.length,
+        estimated_time_seconds: queueItems.length * 10,
+        note: "Os itens serão processados automaticamente. Acompanhe o status na tela."
       }),
       {
-        status: 200,
+        status: 202,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
     );
