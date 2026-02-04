@@ -579,6 +579,9 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
   };
 
   const handleArquivoChange = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+
     const files = e.target.files;
     if (!files || files.length === 0) {
       return;
@@ -987,6 +990,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
           <button
             onClick={onClose}
             className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+            disabled={uploadingFileIndex !== null || enviando || salvandoPendente}
           >
             <X className="w-5 h-5 text-slate-600" />
           </button>
@@ -1419,7 +1423,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
             <Button
               variant="secondary"
               onClick={onClose}
-              disabled={enviando || salvandoPendente}
+              disabled={enviando || salvandoPendente || uploadingFileIndex !== null}
               className="w-full sm:w-auto"
             >
               <X className="w-4 h-4 mr-2" />

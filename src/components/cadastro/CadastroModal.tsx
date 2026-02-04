@@ -51,6 +51,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   const funcionarioCadastroId = profile?.external_id ? parseInt(profile.external_id) : null;
 
   const cadastroAtual = cadastroFresh || cadastro;
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
 
   const [formData, setFormData] = useState({
     nome: cadastro.nome || '',
@@ -97,6 +98,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
         if (error) {
           console.error('[CadastroModal] Erro ao buscar cadastro fresh:', error);
+          setInitialLoadComplete(true);
           return;
         }
 
@@ -106,6 +108,8 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         }
       } catch (err) {
         console.error('[CadastroModal] Exceção ao buscar cadastro fresh:', err);
+      } finally {
+        setInitialLoadComplete(true);
       }
     };
 
@@ -113,71 +117,101 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   }, [cadastro.id]);
 
   useEffect(() => {
-    console.log('[CadastroModal] Inicializando dependentes...');
-    console.log('[CadastroModal] cadastroAtual.dependentes:', cadastroAtual.dependentes);
+    try {
+      console.log('[CadastroModal] Inicializando dependentes...');
+      console.log('[CadastroModal] cadastroAtual.dependentes:', cadastroAtual?.dependentes);
 
-    if (cadastroAtual.dependentes && Array.isArray(cadastroAtual.dependentes) && cadastroAtual.dependentes.length > 0) {
-      console.log('[CadastroModal] Carregando dependentes salvos do banco:', cadastroAtual.dependentes);
-      setDependentes(cadastroAtual.dependentes as Dependente[]);
-      setDependentesInicializados(true);
-    } else {
-      console.log('[CadastroModal] Nenhum dependente salvo no banco');
+      if (!cadastroAtual) {
+        console.warn('[CadastroModal] cadastroAtual não disponível');
+        return;
+      }
+
+      if (cadastroAtual.dependentes && Array.isArray(cadastroAtual.dependentes) && cadastroAtual.dependentes.length > 0) {
+        console.log('[CadastroModal] Carregando dependentes salvos do banco:', cadastroAtual.dependentes);
+        setDependentes(cadastroAtual.dependentes as Dependente[]);
+        setDependentesInicializados(true);
+      } else {
+        console.log('[CadastroModal] Nenhum dependente salvo no banco');
+        setDependentesInicializados(true);
+      }
+
+      if (cadastroAtual.arquivo_path) {
+        const fileName = cadastroAtual.arquivo_path.split('/').pop() || 'arquivo';
+
+        supabase.storage
+          .from('cadastros-temp-files')
+          .download(cadastroAtual.arquivo_path)
+          .then(({ data, error }) => {
+            if (error) {
+              console.error('Erro ao baixar arquivo do bucket:', error);
+              return;
+            }
+
+            if (data) {
+              const reader = new FileReader();
+              reader.onload = () => {
+                const base64 = reader.result as string;
+                const base64Puro = base64.split(',')[1];
+                setArquivo({
+                  base64: base64Puro,
+                  nome: fileName,
+                  path: cadastroAtual.arquivo_path
+                });
+              };
+              reader.readAsDataURL(data);
+            }
+          })
+          .catch(err => {
+            console.error('Erro ao processar arquivo:', err);
+          });
+      }
+    } catch (err) {
+      console.error('[CadastroModal] Erro ao inicializar dependentes:', err);
       setDependentesInicializados(true);
     }
-
-    if (cadastroAtual.arquivo_path) {
-      const fileName = cadastroAtual.arquivo_path.split('/').pop() || 'arquivo';
-
-      supabase.storage
-        .from('cadastros-temp-files')
-        .download(cadastroAtual.arquivo_path)
-        .then(({ data, error }) => {
-          if (error) {
-            console.error('Erro ao baixar arquivo do bucket:', error);
-            return;
-          }
-
-          if (data) {
-            const reader = new FileReader();
-            reader.onload = () => {
-              const base64 = reader.result as string;
-              const base64Puro = base64.split(',')[1];
-              setArquivo({
-                base64: base64Puro,
-                nome: fileName,
-                path: cadastroAtual.arquivo_path
-              });
-            };
-            reader.readAsDataURL(data);
-          }
-        });
-    }
-  }, [cadastroAtual.dependentes, cadastroAtual.arquivo_path]);
+  }, [cadastroAtual?.dependentes, cadastroAtual?.arquivo_path]);
 
   useEffect(() => {
-    const lemitRaw = cadastroAtual.lemit_raw as { nome_mae?: string } | undefined;
-    if (lemitRaw?.nome_mae && !cadastroAtual.nome_mae) {
-      setFormData((prev) => ({ ...prev, nomeMae: lemitRaw.nome_mae || '' }));
+    try {
+      if (!cadastroAtual) return;
+
+      const lemitRaw = cadastroAtual.lemit_raw as { nome_mae?: string } | undefined;
+      if (lemitRaw?.nome_mae && !cadastroAtual.nome_mae) {
+        setFormData((prev) => ({ ...prev, nomeMae: lemitRaw.nome_mae || '' }));
+      }
+    } catch (err) {
+      console.error('[CadastroModal] Erro ao processar lemit_raw:', err);
     }
-  }, [cadastroAtual.lemit_raw, cadastroAtual.nome_mae]);
+  }, [cadastroAtual?.lemit_raw, cadastroAtual?.nome_mae]);
 
   useEffect(() => {
     const enrichPlanos = (planos: any[]) => {
-      return planos.map(plano => {
-        const mapeamento = planosMap.find(p => p.plano_id === plano.Plano);
-        return {
-          ...plano,
-          nomeExibicao: mapeamento?.nome_exibicao || `Plano ${plano.Plano}`,
-          registroProduto: mapeamento?.registro_produto,
-        };
-      });
+      try {
+        return planos.map(plano => {
+          const mapeamento = planosMap.find(p => p.plano_id === plano.Plano);
+          return {
+            ...plano,
+            nomeExibicao: mapeamento?.nome_exibicao || `Plano ${plano.Plano}`,
+            registroProduto: mapeamento?.registro_produto,
+          };
+        });
+      } catch (err) {
+        console.error('[CadastroModal] Erro ao enriquecer planos:', err);
+        return planos;
+      }
     };
 
     const loadPlanos = async () => {
-      setLoadingPlanos(true);
-      console.log('[CadastroModal] Iniciando carregamento de planos...');
-
       try {
+        setLoadingPlanos(true);
+        console.log('[CadastroModal] Iniciando carregamento de planos...');
+
+        if (!cadastroAtual || !cadastroAtual.id) {
+          console.warn('[CadastroModal] cadastroAtual inválido, abortando loadPlanos');
+          setLoadingPlanos(false);
+          return;
+        }
+
         if (cadastroAtual.planos_raw && Array.isArray(cadastroAtual.planos_raw) && cadastroAtual.planos_raw.length > 0) {
           console.log('[CadastroModal] Carregando planos do cadastro:', cadastroAtual.planos_raw);
           const planosEnriquecidos = enrichPlanos(cadastroAtual.planos_raw);
@@ -218,62 +252,77 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         } else {
           console.warn('[CadastroModal] ⚠️ Nenhum empresa_id disponível');
         }
+      } catch (err) {
+        console.error('[CadastroModal] ❌ Erro geral em loadPlanos:', err);
       } finally {
         setLoadingPlanos(false);
         console.log('[CadastroModal] Carregamento de planos finalizado');
       }
     };
 
-    if (cadastroAtual && planosMap) {
+    if (cadastroAtual && cadastroAtual.id && planosMap) {
       loadPlanos();
+    } else {
+      console.warn('[CadastroModal] Condições para loadPlanos não atendidas:', { cadastroAtual: !!cadastroAtual, id: cadastroAtual?.id, planosMap: !!planosMap });
+      setLoadingPlanos(false);
     }
   }, [cadastroAtual.id, cadastroAtual.empresa_id, cadastroAtual.planos_raw, planosMap]);
 
   useEffect(() => {
-    const temDependentesSalvos = cadastroAtual.dependentes && Array.isArray(cadastroAtual.dependentes) && cadastroAtual.dependentes.length > 0;
+    try {
+      if (!cadastroAtual) return;
 
-    if (!dependentesInicializados || temDependentesSalvos || loadingPlanos) {
-      return;
-    }
+      const temDependentesSalvos = cadastroAtual.dependentes && Array.isArray(cadastroAtual.dependentes) && cadastroAtual.dependentes.length > 0;
 
-    if (dependentes.length === 0 && cadastroAtual.cpf && planosEmpresa.length > 0) {
-      console.log('[CadastroModal] ✅ Criando titular automaticamente (não há dependentes salvos)');
-      const sexoDescricao = (formData.sexo === 1) ? 'Masculino' : (formData.sexo === 0) ? 'Feminino' : '';
+      if (!dependentesInicializados || temDependentesSalvos || loadingPlanos) {
+        return;
+      }
 
-      const responsavelComoDependente: Dependente = {
-        tipo: 1,
-        nome: formData.nome || '',
-        dataNascimento: formData.dataNascimento || '',
-        cpf: cadastroAtual.cpf,
-        sexo: formData.sexo || 0,
-        sexoDescricao: sexoDescricao,
-        plano: 0,
-        planoValor: '0,00',
-        nomeMae: formData.nomeMae || '',
-        carenciaAtendimento: 0,
-        funcionarioCadastro: funcionarioCadastroId || 0,
-      };
+      if (dependentes.length === 0 && cadastroAtual.cpf && planosEmpresa.length > 0) {
+        console.log('[CadastroModal] ✅ Criando titular automaticamente (não há dependentes salvos)');
+        const sexoDescricao = (formData.sexo === 1) ? 'Masculino' : (formData.sexo === 0) ? 'Feminino' : '';
 
-      setDependentes([responsavelComoDependente]);
-    }
-  }, [dependentesInicializados, planosEmpresa, cadastroAtual.cpf, cadastroAtual.dependentes, funcionarioCadastroId, loadingPlanos, formData.sexo, formData.nome, formData.dataNascimento, formData.nomeMae, dependentes.length]);
-
-  useEffect(() => {
-    if (dependentes.length > 0 && dependentes[0].tipo === 1) {
-      const sexoDescricao = (formData.sexo === 1) ? 'Masculino' : (formData.sexo === 0) ? 'Feminino' : '';
-
-      setDependentes(prev => {
-        const titularAtualizado = [...prev];
-        titularAtualizado[0] = {
-          ...titularAtualizado[0],
+        const responsavelComoDependente: Dependente = {
+          tipo: 1,
           nome: formData.nome || '',
           dataNascimento: formData.dataNascimento || '',
+          cpf: cadastroAtual.cpf,
           sexo: formData.sexo || 0,
           sexoDescricao: sexoDescricao,
+          plano: 0,
+          planoValor: '0,00',
           nomeMae: formData.nomeMae || '',
+          carenciaAtendimento: 0,
+          funcionarioCadastro: funcionarioCadastroId || 0,
         };
-        return titularAtualizado;
-      });
+
+        setDependentes([responsavelComoDependente]);
+      }
+    } catch (err) {
+      console.error('[CadastroModal] Erro ao criar titular automático:', err);
+    }
+  }, [dependentesInicializados, planosEmpresa, cadastroAtual?.cpf, cadastroAtual?.dependentes, funcionarioCadastroId, loadingPlanos, formData.sexo, formData.nome, formData.dataNascimento, formData.nomeMae, dependentes.length]);
+
+  useEffect(() => {
+    try {
+      if (dependentes.length > 0 && dependentes[0].tipo === 1) {
+        const sexoDescricao = (formData.sexo === 1) ? 'Masculino' : (formData.sexo === 0) ? 'Feminino' : '';
+
+        setDependentes(prev => {
+          const titularAtualizado = [...prev];
+          titularAtualizado[0] = {
+            ...titularAtualizado[0],
+            nome: formData.nome || '',
+            dataNascimento: formData.dataNascimento || '',
+            sexo: formData.sexo || 0,
+            sexoDescricao: sexoDescricao,
+            nomeMae: formData.nomeMae || '',
+          };
+          return titularAtualizado;
+        });
+      }
+    } catch (err) {
+      console.error('[CadastroModal] Erro ao atualizar titular:', err);
     }
   }, [formData.nome, formData.dataNascimento, formData.sexo, formData.nomeMae]);
 
@@ -405,6 +454,9 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   };
 
   const handleArquivoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+
     const files = e.target.files;
     if (!files || files.length === 0) {
       return;
@@ -807,6 +859,32 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     }
   };
 
+  if (!initialLoadComplete) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-xl shadow-xl p-8">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="w-8 h-8 text-emerald-600 animate-spin" />
+            <p className="text-slate-700 font-medium">Carregando cadastro...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!cadastroAtual || !cadastroAtual.id) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-xl shadow-xl p-8">
+          <div className="flex flex-col items-center gap-4">
+            <p className="text-red-700 font-medium">Erro: Dados do cadastro não disponíveis</p>
+            <Button onClick={onClose}>Fechar</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
       <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full my-8 max-h-[90vh] overflow-y-auto">
@@ -825,7 +903,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
           <button
             onClick={handleCloseWithSave}
             className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-            disabled={loading}
+            disabled={loading || uploadingFile}
           >
             <X className="w-5 h-5 text-slate-600" />
           </button>
@@ -1198,7 +1276,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
             <Button
               variant="secondary"
               onClick={handleCloseWithSave}
-              disabled={loading}
+              disabled={loading || uploadingFile}
               className="w-full sm:w-auto"
             >
               <X className="w-4 h-4 mr-2" />
@@ -1210,7 +1288,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
             <Button
               variant="secondary"
               onClick={handleSave}
-              disabled={loading || loadingPlanos}
+              disabled={loading || loadingPlanos || uploadingFile}
               className="w-full sm:w-auto"
             >
               {loading ? (
@@ -1221,7 +1299,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
               Salvar
             </Button>
 
-            <Button onClick={handleEnviar} disabled={loading || loadingPlanos} className="w-full sm:w-auto">
+            <Button onClick={handleEnviar} disabled={loading || loadingPlanos || uploadingFile} className="w-full sm:w-auto">
               {loading ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               ) : (
