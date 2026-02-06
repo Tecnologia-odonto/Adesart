@@ -296,6 +296,7 @@ Deno.serve(async (req: Request) => {
       razaoSocial: empresa.RazaoSocial,
       nomeFantasia: empresa.NomeFantazia,
       cnpj: empresa.Cnpj,
+      codigoSituacao: empresa.CodigoSituacao || null,
       enderecoEmpresa: {
         cep: empresa.Cep,
         uf: empresa.Uf,

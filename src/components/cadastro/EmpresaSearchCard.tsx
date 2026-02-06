@@ -4,12 +4,15 @@ import { Input } from '../Input';
 import { Button } from '../Button';
 import { useCadastros } from '../../hooks/useCadastros';
 import { ObservacoesEmpresaModal } from './ObservacoesEmpresaModal';
+import { EmpresaCanceladaModal } from './EmpresaCanceladaModal';
+import { useConfigCadastro } from '../../contexts/ConfigCadastroContext';
 
 interface Empresa {
   id: number;
   razaoSocial: string;
   nomeFantasia: string;
   cnpj: string;
+  codigoSituacao?: number | null;
   enderecoEmpresa: any;
   precoPlano: any[];
   exigeMatricula?: number;
@@ -30,7 +33,10 @@ export function EmpresaSearchCard({ onEmpresaSelected, selectedEmpresa }: Empres
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [showObservacoesModal, setShowObservacoesModal] = useState(false);
   const [observacoesVistas, setObservacoesVistas] = useState(false);
+  const [showEmpresaCanceladaModal, setShowEmpresaCanceladaModal] = useState(false);
+  const [empresaCanceladaNome, setEmpresaCanceladaNome] = useState('');
   const { searchEmpresa } = useCadastros();
+  const { config } = useConfigCadastro();
   const debounceTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -121,8 +127,17 @@ export function EmpresaSearchCard({ onEmpresaSelected, selectedEmpresa }: Empres
       setEmpresas(result.empresas);
 
       if (result.empresas.length === 1) {
+        const empresa = result.empresas[0];
+
+        if (empresa.codigoSituacao && config?.codigos_empresa_invalidos?.includes(empresa.codigoSituacao.toString())) {
+          setEmpresaCanceladaNome(empresa.nomeFantasia);
+          setShowEmpresaCanceladaModal(true);
+          setEmpresas([]);
+          return;
+        }
+
         setObservacoesVistas(false);
-        onEmpresaSelected(result.empresas[0]);
+        onEmpresaSelected(empresa);
       }
     } catch (err) {
       console.error('Error searching empresa:', err);
@@ -138,8 +153,55 @@ export function EmpresaSearchCard({ onEmpresaSelected, selectedEmpresa }: Empres
   };
 
   const handleSelectEmpresa = (empresa: Empresa) => {
+    if (empresa.codigoSituacao && config?.codigos_empresa_invalidos?.includes(empresa.codigoSituacao.toString())) {
+      setEmpresaCanceladaNome(empresa.nomeFantasia);
+      setShowEmpresaCanceladaModal(true);
+      setEmpresas([]);
+      return;
+    }
+
     setObservacoesVistas(false);
     onEmpresaSelected(empresa);
+  };
+
+  const handleBuscarNovaEmpresa = async (codigoEmpresa: string) => {
+    setShowEmpresaCanceladaModal(false);
+    setSearchType('id');
+    setSearchValue(codigoEmpresa);
+    setError('');
+    setEmpresas([]);
+
+    setLoading(true);
+
+    try {
+      const result = await searchEmpresa(codigoEmpresa, 'id');
+
+      if (!result.ok || !result.empresas || result.empresas.length === 0) {
+        setError('Nenhuma empresa encontrada com este código');
+        return;
+      }
+
+      setEmpresas(result.empresas);
+
+      if (result.empresas.length === 1) {
+        const empresa = result.empresas[0];
+
+        if (empresa.codigoSituacao && config?.codigos_empresa_invalidos?.includes(empresa.codigoSituacao.toString())) {
+          setEmpresaCanceladaNome(empresa.nomeFantasia);
+          setShowEmpresaCanceladaModal(true);
+          setEmpresas([]);
+          return;
+        }
+
+        setObservacoesVistas(false);
+        onEmpresaSelected(empresa);
+      }
+    } catch (err) {
+      console.error('Error searching empresa:', err);
+      setError(err instanceof Error ? err.message : 'Erro ao buscar empresa');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAlterarEmpresa = () => {
@@ -157,6 +219,14 @@ export function EmpresaSearchCard({ onEmpresaSelected, selectedEmpresa }: Empres
           observacoes={selectedEmpresa.observacoes}
           nomeEmpresa={selectedEmpresa.nomeFantasia}
           onClose={handleCloseObservacoesModal}
+        />
+      )}
+
+      {showEmpresaCanceladaModal && (
+        <EmpresaCanceladaModal
+          empresaNome={empresaCanceladaNome}
+          onClose={() => setShowEmpresaCanceladaModal(false)}
+          onBuscarNova={handleBuscarNovaEmpresa}
         />
       )}
 

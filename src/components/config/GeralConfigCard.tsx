@@ -8,9 +8,11 @@ export function GeralConfigCard() {
   const [editingSituacoes, setEditingSituacoes] = useState(false);
   const [editingPlanos, setEditingPlanos] = useState(false);
   const [editingPlanosOcultos, setEditingPlanosOcultos] = useState(false);
+  const [editingEmpresasInvalidas, setEditingEmpresasInvalidas] = useState(false);
   const [tempSituacoes, setTempSituacoes] = useState('');
   const [tempPlanos, setTempPlanos] = useState('');
   const [tempPlanosOcultos, setTempPlanosOcultos] = useState('');
+  const [tempEmpresasInvalidas, setTempEmpresasInvalidas] = useState('');
 
   const handleToggleLemmit = async () => {
     if (!config) return;
@@ -152,6 +154,33 @@ export function GeralConfigCard() {
     } catch (error) {
       console.error('Error updating planos ocultos:', error);
       alert('Erro ao atualizar planos ocultos');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleEditEmpresasInvalidas = () => {
+    if (config) {
+      setTempEmpresasInvalidas(config.codigos_empresa_invalidos?.join(', ') || '');
+      setEditingEmpresasInvalidas(true);
+    }
+  };
+
+  const handleSaveEmpresasInvalidas = async () => {
+    if (!config) return;
+
+    const valores = tempEmpresasInvalidas
+      .split(',')
+      .map(v => v.trim())
+      .filter(v => v !== '');
+
+    setUpdating(true);
+    try {
+      await updateConfig({ codigos_empresa_invalidos: valores });
+      setEditingEmpresasInvalidas(false);
+    } catch (error) {
+      console.error('Error updating codigos empresa invalidos:', error);
+      alert('Erro ao atualizar códigos de empresa inválidos');
     } finally {
       setUpdating(false);
     }
@@ -465,6 +494,59 @@ export function GeralConfigCard() {
               </p>
               <button
                 onClick={handleEditPlanosOcultos}
+                className="px-3 py-1.5 text-sm bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300"
+              >
+                Editar
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-800 mb-1">
+            Códigos de Empresa Inválidos
+          </h3>
+          <p className="text-xs text-slate-600 mb-3">
+            Códigos de situação de empresas canceladas que não devem permitir cadastros. Quando detectado, o sistema bloqueará e permitirá buscar outra empresa.
+          </p>
+
+          {editingEmpresasInvalidas ? (
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={tempEmpresasInvalidas}
+                onChange={(e) => setTempEmpresasInvalidas(e.target.value)}
+                placeholder="Ex: 2, 5, 9"
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSaveEmpresasInvalidas}
+                  disabled={updating}
+                  className="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  Salvar
+                </button>
+                <button
+                  onClick={() => setEditingEmpresasInvalidas(false)}
+                  disabled={updating}
+                  className="px-3 py-1.5 text-sm bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-slate-700">
+                {config?.codigos_empresa_invalidos && config.codigos_empresa_invalidos.length > 0
+                  ? config.codigos_empresa_invalidos.join(', ')
+                  : 'Nenhum código configurado'}
+              </p>
+              <button
+                onClick={handleEditEmpresasInvalidas}
                 className="px-3 py-1.5 text-sm bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300"
               >
                 Editar

@@ -309,10 +309,14 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       setError(`Dependente ${index + 1}: Nome é obrigatório`);
       return;
     }
-    if (!isMenorDeIdade(dep.dataNascimento) && !dep.cpf) {
-      setError(`Dependente ${index + 1}: CPF é obrigatório`);
+
+    const menorDeIdade = isMenorDeIdade(dep.dataNascimento);
+
+    if (!menorDeIdade && !dep.cpf) {
+      setError(`Dependente ${index + 1}: CPF é obrigatório para maiores de 18 anos`);
       return;
     }
+
     if (!dep.dataNascimento) {
       setError(`Dependente ${index + 1}: Data de nascimento é obrigatória`);
       return;
@@ -324,7 +328,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       return;
     }
 
-    if (dep.sexo === null || dep.sexo === undefined) {
+    if (dep.sexo === null || dep.sexo === undefined || dep.sexo === 0) {
       setError(`Dependente ${index + 1}: Sexo é obrigatório`);
       return;
     }
@@ -349,7 +353,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
     };
     setDependentes(novosDependentes);
     setError('');
-    setSuccess('Dependente salvo! Adicione mais ou clique em "Salvar Todos"');
+    setSuccess('Dependente salvo! Adicione mais ou clique em "Incluir Dependentes"');
     setTimeout(() => setSuccess(''), 3000);
   };
 

@@ -27,6 +27,7 @@ export interface CadastroConfig {
   situacoes_que_barram: number[];
   planos_validos: number[];
   planos_ocultos: string[];
+  codigos_empresa_invalidos: string[];
   exigir_arquivo: boolean;
   lemmit_dependente: boolean;
   lemmit_inclusao_dependente: boolean;
