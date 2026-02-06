@@ -51,9 +51,18 @@ export interface Cadastro {
   updated_at: string;
 }
 
+export interface CadastroStats {
+  total: number;
+  incompletos: number;
+  enviados: number;
+  erros: number;
+}
+
 export function useCadastros() {
   const [cadastros, setCadastros] = useState<Cadastro[]>([]);
+  const [stats, setStats] = useState<CadastroStats>({ total: 0, incompletos: 0, enviados: 0, erros: 0 });
   const [loading, setLoading] = useState(true);
+  const [loadingStats, setLoadingStats] = useState(true);
   const { profile } = useAuth();
 
   const fetchCadastros = async () => {
@@ -74,9 +83,34 @@ export function useCadastros() {
     }
   };
 
+  const fetchStats = async () => {
+    if (!profile?.id) return;
+
+    try {
+      setLoadingStats(true);
+      const { data, error } = await supabase.rpc('get_cadastros_stats', {
+        p_user_id: profile.id,
+      });
+
+      if (error) throw error;
+
+      setStats(data || { total: 0, incompletos: 0, enviados: 0, erros: 0 });
+    } catch (error) {
+      console.error('Error fetching cadastros stats:', error);
+    } finally {
+      setLoadingStats(false);
+    }
+  };
+
   useEffect(() => {
     fetchCadastros();
   }, []);
+
+  useEffect(() => {
+    if (profile?.id) {
+      fetchStats();
+    }
+  }, [profile?.id]);
 
   const checkERPAssociado = async (cpf: string) => {
     const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-check-associado`;
@@ -127,9 +161,6 @@ export function useCadastros() {
   const consultarEnderecoCEP = async (cep: string) => {
     const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-endereco-cep`;
 
-    console.log('[CEP] Iniciando busca de CEP:', cep);
-    console.log('[CEP] URL da API:', apiUrl);
-
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -142,9 +173,6 @@ export function useCadastros() {
         },
         body: JSON.stringify({ cep }),
       });
-
-      console.log('[CEP] Status da resposta:', response.status);
-      console.log('[CEP] Headers da resposta:', Object.fromEntries(response.headers.entries()));
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -161,18 +189,9 @@ export function useCadastros() {
       }
 
       const data = await response.json();
-      console.log('[CEP] ✅ Dados recebidos com sucesso:');
-      console.log('[CEP] - Response completo:', JSON.stringify(data, null, 2));
-      console.log('[CEP] - Estrutura:', Object.keys(data));
-      if (data.dados) {
-        console.log('[CEP] - Campos em dados:', Object.keys(data.dados));
-        console.log('[CEP] - Valores:', data.dados);
-      }
-
       return data;
     } catch (error) {
-      console.error('[CEP] ❌ Erro ao consultar CEP:', error);
-      console.error('[CEP] Detalhes do erro:', error);
+      console.error('[CEP] Erro ao consultar CEP:', error);
       throw error;
     }
   };
@@ -333,9 +352,6 @@ export function useCadastros() {
   };
 
   const updateCadastro = async (id: string, data: Partial<Cadastro>) => {
-    console.log('[useCadastros] updateCadastro chamado com:', { id, data });
-    console.log('[useCadastros] Dependentes sendo salvos:', data.dependentes);
-
     const { data: updated, error } = await supabase
       .from('cadastros')
       .update(data)
@@ -347,9 +363,6 @@ export function useCadastros() {
       console.error('[useCadastros] Erro ao atualizar:', error);
       throw error;
     }
-
-    console.log('[useCadastros] Cadastro atualizado com sucesso:', updated);
-    console.log('[useCadastros] Dependentes salvos no banco:', updated.dependentes);
 
     await fetchCadastros();
     return updated;
@@ -499,9 +512,16 @@ export function useCadastros() {
 
   const canDelete = profile?.role === 'ADMINISTRADOR';
 
+  const refresh = async () => {
+    await fetchCadastros();
+    await fetchStats();
+  };
+
   return {
     cadastros,
+    stats,
     loading,
+    loadingStats,
     canDelete,
     checkERPAssociado,
     consultarCPF,
@@ -512,6 +532,6 @@ export function useCadastros() {
     updateCadastro,
     enviarParaERP,
     deleteCadastro,
-    refresh: fetchCadastros,
+    refresh,
   };
 }

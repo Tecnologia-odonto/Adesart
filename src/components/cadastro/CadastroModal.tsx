@@ -90,22 +90,20 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
   useEffect(() => {
     const fetchFreshCadastro = async () => {
-      console.log('[CadastroModal] Buscando dados frescos do cadastro:', cadastro.id);
       try {
         const { data, error } = await supabase
           .from('cadastros')
           .select('*')
           .eq('id', cadastro.id)
-          .single();
+          .maybeSingle();
 
         if (error) {
-          console.error('[CadastroModal] Erro ao buscar cadastro fresh:', error);
+          console.error('[CadastroModal] Erro ao buscar cadastro:', error);
           setInitialLoadComplete(true);
           return;
         }
 
         if (data) {
-          console.log('[CadastroModal] Cadastro fresh carregado:', data);
           setCadastroFresh(data as Cadastro);
         }
       } catch (err) {
@@ -120,20 +118,15 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
   useEffect(() => {
     try {
-      console.log('[CadastroModal] Inicializando dependentes...');
-      console.log('[CadastroModal] cadastroAtual.dependentes:', cadastroAtual?.dependentes);
-
       if (!cadastroAtual) {
         console.warn('[CadastroModal] cadastroAtual não disponível');
         return;
       }
 
       if (cadastroAtual.dependentes && Array.isArray(cadastroAtual.dependentes) && cadastroAtual.dependentes.length > 0) {
-        console.log('[CadastroModal] Carregando dependentes salvos do banco:', cadastroAtual.dependentes);
         setDependentes(cadastroAtual.dependentes as Dependente[]);
         setDependentesInicializados(true);
       } else {
-        console.log('[CadastroModal] Nenhum dependente salvo no banco');
         setDependentesInicializados(true);
       }
 
@@ -206,7 +199,6 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     const loadPlanos = async () => {
       try {
         setLoadingPlanos(true);
-        console.log('[CadastroModal] Iniciando carregamento de planos...');
 
         if (!cadastroAtual || !cadastroAtual.id) {
           console.warn('[CadastroModal] cadastroAtual inválido, abortando loadPlanos');
@@ -215,7 +207,6 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         }
 
         if (cadastroAtual.planos_raw && Array.isArray(cadastroAtual.planos_raw) && cadastroAtual.planos_raw.length > 0) {
-          console.log('[CadastroModal] Carregando planos do cadastro:', cadastroAtual.planos_raw);
           const planosEnriquecidos = enrichPlanos(cadastroAtual.planos_raw);
           setPlanosEmpresa(planosEnriquecidos);
           setLoadingPlanos(false);
@@ -223,16 +214,12 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         }
 
         if (cadastroAtual.empresa_id) {
-          console.log('[CadastroModal] planos_raw vazio ou ausente, buscando planos para empresa ID:', cadastroAtual.empresa_id);
-
           try {
             const empresaData = await searchEmpresa(cadastroAtual.empresa_id.toString(), 'id');
-            console.log('[CadastroModal] Resposta da busca de empresa:', empresaData);
 
             if (empresaData.ok && empresaData.empresas && empresaData.empresas.length > 0) {
               const empresa = empresaData.empresas[0];
               const planos = empresa.precoPlano || [];
-              console.log('[CadastroModal] ✅ Planos encontrados via searchEmpresa:', planos);
 
               if (planos.length > 0) {
                 const planosEnriquecidos = enrichPlanos(planos);
@@ -241,7 +228,6 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
                 await updateCadastro(cadastroAtual.id, {
                   planos_raw: planos,
                 });
-                console.log('[CadastroModal] ✅ planos_raw salvo no cadastro');
               } else {
                 console.warn('[CadastroModal] ⚠️ Empresa encontrada mas sem planos');
               }
@@ -258,7 +244,6 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         console.error('[CadastroModal] ❌ Erro geral em loadPlanos:', err);
       } finally {
         setLoadingPlanos(false);
-        console.log('[CadastroModal] Carregamento de planos finalizado');
       }
     };
 
@@ -281,7 +266,6 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       }
 
       if (dependentes.length === 0 && cadastroAtual.cpf && planosEmpresa.length > 0) {
-        console.log('[CadastroModal] ✅ Criando titular automaticamente (não há dependentes salvos)');
         const sexoDescricao = (formData.sexo === 1) ? 'Masculino' : (formData.sexo === 0) ? 'Feminino' : '';
 
         const responsavelComoDependente: Dependente = {
@@ -340,9 +324,6 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     setLoading(true);
 
     try {
-      console.log('[CadastroModal] Salvando dependentes:', dependentes);
-      console.log('[CadastroModal] Número de dependentes:', dependentes.length);
-
       let dataNascimento = null;
       if (formData.dataNascimento && formData.dataNascimento.trim() !== '') {
         if (isValidISODate(formData.dataNascimento)) {
@@ -363,8 +344,6 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         dependentes: dependentes,
         arquivo_path: arquivo ? arquivo.path : null,
       };
-
-      console.log('[CadastroModal] Dados para atualizar:', updateData);
 
       await updateCadastro(cadastroAtual.id, updateData);
 
@@ -502,13 +481,35 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         throw uploadError;
       }
 
-      const base64 = await new Promise<string>((resolve) => {
+      const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
+
+        const timeout = setTimeout(() => {
+          reader.abort();
+          reject(new Error('Tempo limite excedido ao processar arquivo'));
+        }, 30000);
+
         reader.onload = () => {
-          const base64String = reader.result as string;
-          const base64Puro = base64String.split(',')[1];
-          resolve(base64Puro);
+          clearTimeout(timeout);
+          try {
+            const base64String = reader.result as string;
+            const base64Puro = base64String.split(',')[1];
+            resolve(base64Puro);
+          } catch (err) {
+            reject(err);
+          }
         };
+
+        reader.onerror = () => {
+          clearTimeout(timeout);
+          reject(new Error('Erro ao ler arquivo'));
+        };
+
+        reader.onabort = () => {
+          clearTimeout(timeout);
+          reject(new Error('Leitura do arquivo cancelada'));
+        };
+
         reader.readAsDataURL(file);
       });
 
@@ -522,7 +523,8 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       console.error('Erro ao fazer upload do arquivo:', err);
-      setError('Erro ao fazer upload do arquivo');
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao fazer upload do arquivo';
+      setError(errorMessage);
     } finally {
       setUploadingFile(false);
       e.target.value = '';
@@ -678,36 +680,99 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
             throw new Error('Sessão não encontrada');
           }
 
-          const enqueuePayload = {
-            cadastroId: cadastroAtual.id,
+          const uploadPayload = {
             idFuncionario: funcionarioCadastroId,
             idDependente: parseInt(primeiroDepCodigo),
-            arquivoPath: arquivo.path,
+            arquivo: arquivo.base64,
             arquivoNome: arquivo.nome,
-            tipo: 'titular',
           };
 
-          const enqueueResponse = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-enqueue-upload`,
+          const uploadResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-upload-documento`,
             {
               method: 'POST',
               headers: {
                 'Authorization': `Bearer ${session.access_token}`,
                 'Content-Type': 'application/json',
               },
-              body: JSON.stringify(enqueuePayload),
+              body: JSON.stringify(uploadPayload),
             }
           );
 
-          const enqueueResult = await enqueueResponse.json();
+          const uploadResult = await uploadResponse.json();
 
-          if (!enqueueResponse.ok || !enqueueResult.queued) {
-            console.warn('Aviso ao enfileirar arquivo:', enqueueResult);
+          if (uploadResponse.ok && uploadResult.success) {
+            try {
+              await supabase.storage
+                .from('cadastros-temp-files')
+                .remove([arquivo.path]);
+            } catch (removeErr) {
+              console.warn('Aviso ao remover arquivo do bucket:', removeErr);
+            }
           } else {
-            console.log('Arquivo enfileirado para envio:', enqueueResult);
+            console.warn('Falha ao enviar documento, enfileirando para tentativa posterior...');
+
+            const enqueuePayload = {
+              cadastroId: cadastroAtual.id,
+              idFuncionario: funcionarioCadastroId,
+              idDependente: parseInt(primeiroDepCodigo),
+              arquivoPath: arquivo.path,
+              arquivoNome: arquivo.nome,
+              tipo: 'titular',
+            };
+
+            const enqueueResponse = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-enqueue-upload`,
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${session.access_token}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(enqueuePayload),
+              }
+            );
+
+            const enqueueResult = await enqueueResponse.json();
+
+            if (!enqueueResponse.ok || !enqueueResult.queued) {
+              console.error('Erro ao enfileirar arquivo:', enqueueResult);
+            }
           }
         } catch (uploadErr: any) {
-          console.warn('Aviso ao enfileirar arquivo:', uploadErr);
+          console.warn('Erro ao processar upload, tentando enfileirar...', uploadErr);
+
+          try {
+            const primeiroDepCodigo = result.data.dados.dependentes[0].codigo;
+            const { data: { session } } = await supabase.auth.getSession();
+
+            if (session) {
+              const enqueuePayload = {
+                cadastroId: cadastroAtual.id,
+                idFuncionario: funcionarioCadastroId,
+                idDependente: parseInt(primeiroDepCodigo),
+                arquivoPath: arquivo.path,
+                arquivoNome: arquivo.nome,
+                tipo: 'titular',
+              };
+
+              const enqueueResponse = await fetch(
+                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-enqueue-upload`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${session.access_token}`,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(enqueuePayload),
+                }
+              );
+
+              await enqueueResponse.json();
+            }
+          } catch (enqueueErr) {
+            console.error('Erro crítico ao enfileirar arquivo:', enqueueErr);
+          }
         }
       }
 
@@ -778,36 +843,99 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
             throw new Error('Sessão não encontrada');
           }
 
-          const enqueuePayload = {
-            cadastroId: cadastroAtual.id,
+          const uploadPayload = {
             idFuncionario: funcionarioCadastroId,
             idDependente: parseInt(primeiroDepCodigo),
-            arquivoPath: arquivo.path,
+            arquivo: arquivo.base64,
             arquivoNome: arquivo.nome,
-            tipo: 'titular',
           };
 
-          const enqueueResponse = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-enqueue-upload`,
+          const uploadResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-upload-documento`,
             {
               method: 'POST',
               headers: {
                 'Authorization': `Bearer ${session.access_token}`,
                 'Content-Type': 'application/json',
               },
-              body: JSON.stringify(enqueuePayload),
+              body: JSON.stringify(uploadPayload),
             }
           );
 
-          const enqueueResult = await enqueueResponse.json();
+          const uploadResult = await uploadResponse.json();
 
-          if (!enqueueResponse.ok || !enqueueResult.queued) {
-            console.warn('Aviso ao enfileirar arquivo:', enqueueResult);
+          if (uploadResponse.ok && uploadResult.success) {
+            try {
+              await supabase.storage
+                .from('cadastros-temp-files')
+                .remove([arquivo.path]);
+            } catch (removeErr) {
+              console.warn('Aviso ao remover arquivo do bucket:', removeErr);
+            }
           } else {
-            console.log('Arquivo enfileirado para envio:', enqueueResult);
+            console.warn('Falha ao enviar documento, enfileirando para tentativa posterior...');
+
+            const enqueuePayload = {
+              cadastroId: cadastroAtual.id,
+              idFuncionario: funcionarioCadastroId,
+              idDependente: parseInt(primeiroDepCodigo),
+              arquivoPath: arquivo.path,
+              arquivoNome: arquivo.nome,
+              tipo: 'titular',
+            };
+
+            const enqueueResponse = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-enqueue-upload`,
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${session.access_token}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(enqueuePayload),
+              }
+            );
+
+            const enqueueResult = await enqueueResponse.json();
+
+            if (!enqueueResponse.ok || !enqueueResult.queued) {
+              console.error('Erro ao enfileirar arquivo:', enqueueResult);
+            }
           }
         } catch (uploadErr: any) {
-          console.warn('Aviso ao enfileirar arquivo:', uploadErr);
+          console.warn('Erro ao processar upload, tentando enfileirar...', uploadErr);
+
+          try {
+            const primeiroDepCodigo = result.data.dados.dependentes[0].codigo;
+            const { data: { session } } = await supabase.auth.getSession();
+
+            if (session) {
+              const enqueuePayload = {
+                cadastroId: cadastroAtual.id,
+                idFuncionario: funcionarioCadastroId,
+                idDependente: parseInt(primeiroDepCodigo),
+                arquivoPath: arquivo.path,
+                arquivoNome: arquivo.nome,
+                tipo: 'titular',
+              };
+
+              const enqueueResponse = await fetch(
+                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-enqueue-upload`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${session.access_token}`,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(enqueuePayload),
+                }
+              );
+
+              await enqueueResponse.json();
+            }
+          } catch (enqueueErr) {
+            console.error('Erro crítico ao enfileirar arquivo:', enqueueErr);
+          }
         }
       }
 
@@ -901,20 +1029,11 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     if (cepLimpo.length === 8) {
       setLoadingCEP(true);
       setError('');
-      console.log('[CadastroModal] Iniciando busca de CEP:', cepLimpo);
 
       try {
         const enderecoERP = await consultarEnderecoCEP(cepLimpo);
-        console.log('[CadastroModal] ✅ Resultado da busca de CEP:', enderecoERP);
-        console.log('[CadastroModal] Estrutura do retorno:', Object.keys(enderecoERP));
-        console.log('[CadastroModal] enderecoERP.ok:', enderecoERP.ok);
-        console.log('[CadastroModal] enderecoERP.dados existe?', !!enderecoERP.dados);
-        if (enderecoERP.dados) {
-          console.log('[CadastroModal] Dados recebidos:', JSON.stringify(enderecoERP.dados, null, 2));
-        }
 
         if (enderecoERP.ok && enderecoERP.dados) {
-          console.log('[CadastroModal] CEP encontrado com sucesso!');
 
           const dados = enderecoERP.dados;
 

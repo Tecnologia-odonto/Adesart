@@ -13,6 +13,7 @@ import { ClientExistsModal } from './ClientExistsModal';
 import { EmpresaSearchCard } from './EmpresaSearchCard';
 import { LemmitErrorModal } from './LemmitErrorModal';
 import { LemmitLimitModal } from './LemmitLimitModal';
+import { CadastroExistenteModal } from './CadastroExistenteModal';
 
 interface NovoCadastroCardProps {
   onSuccess: (cadastro: any, isBlocked?: boolean) => void;
@@ -73,6 +74,11 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
     isUnlimited?: boolean;
     cadastroData?: any;
   } | null>(null);
+  const [cadastroExistente, setCadastroExistente] = useState<{
+    cpf: string;
+    cadastro: any;
+    canContinue: boolean;
+  } | null>(null);
   const { checkERPAssociado, consultarCPF, consultarEnderecoCEP, findClienteByCPF, createOrUpdateRascunho } = useCadastros();
   const { loadConfig } = useConfigCadastro();
   const { profile } = useAuth();
@@ -115,7 +121,6 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
 
           if (error) throw error;
 
-          console.log('Adesionistas carregados:', data);
           setAdesionistas(data || []);
         } catch (err) {
           console.error('Error fetching adesionistas:', err);
@@ -152,6 +157,34 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
     try {
       const cpfLimpo = removeCPFMask(cpf);
 
+      // Verificar se existe cadastro usando função segura que bypassa RLS
+      const { data: checkResult, error: checkError } = await supabase.rpc('check_cpf_existente', {
+        p_cpf: cpfLimpo,
+        p_user_id: profile?.id,
+      });
+
+      if (checkError) {
+        console.error('Erro ao verificar CPF existente:', checkError);
+      }
+
+      // Se existe cadastro na base local
+      if (checkResult?.exists) {
+        setCadastroExistente({
+          cpf,
+          cadastro: {
+            id: checkResult.cadastro_id,
+            nome: '',
+            status: checkResult.status,
+            created_at: checkResult.created_at,
+            vendedor_nome: 'Não informado',
+            empresa_razao_social: checkResult.empresa_nome || '',
+          },
+          canContinue: checkResult.can_continue,
+        });
+        setLoading(false);
+        return;
+      }
+
       const erpCheck = await checkERPAssociado(cpfLimpo);
 
       if (erpCheck.exists && erpCheck.shouldBlock) {
@@ -180,13 +213,10 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
           });
 
           if (canUse) {
-            console.log('✅ Lemmit ATIVO - Consultando API');
-
             try {
               lemitData = await consultarCPF(cpfLimpo);
 
               if (lemitData && lemitData.pessoa && Object.keys(lemitData.pessoa).length > 0) {
-                console.log('✅ Dados retornados da Lemmit com sucesso');
                 cadastroData = mapLemitToCadastro(lemitData, cpfLimpo);
 
                 await supabase.from('lemmit_consultas').insert({
@@ -201,8 +231,6 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
                   p_amount: 0.12,
                 });
               } else {
-                console.warn('⚠️ Lemmit retornou dados vazios - continuando com preenchimento manual');
-
                 await supabase.from('lemmit_consultas').insert({
                   user_id: profile?.id,
                   cpf: cpfLimpo,
@@ -231,11 +259,8 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
                 p_user_id: profile?.id,
                 p_amount: 0.12,
               });
-
-              console.warn('⚠️ Erro na Lemmit - continuando com preenchimento manual');
             }
           } else {
-            console.log('❌ Limite mensal atingido - Preenchimento manual');
 
             const { data: limitInfo } = await supabase.rpc('get_lemmit_limit_info', {
               p_user_id: profile?.id,
@@ -267,21 +292,16 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
             }
 
             setLoading(false);
-            console.log('ℹ️ Aguardando confirmação do usuário para continuar com cadastro manual');
             return;
           }
         } catch (error) {
           console.error('Erro ao verificar limite Lemmit:', error);
         }
-      } else {
-        console.log('❌ Lemmit DESATIVADO - Pulando consulta');
       }
 
-      console.log('🔍 Buscando dados anteriores do cliente no banco...');
       const clienteAnterior = await findClienteByCPF(cpfLimpo);
 
       if (clienteAnterior) {
-        console.log('✅ Cliente encontrado no banco. Mesclando com dados da Lemmit...');
 
         if (!cadastroData.nome && clienteAnterior.nome) {
           cadastroData.nome = clienteAnterior.nome;
@@ -326,7 +346,6 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
             };
           }
         } catch (cepError) {
-          console.warn('Error fetching CEP from ERP:', cepError);
         }
       }
 
@@ -436,7 +455,6 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
             };
           }
         } catch (cepError) {
-          console.warn('Error fetching CEP from ERP:', cepError);
         }
       }
 
@@ -516,7 +534,6 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
             };
           }
         } catch (cepError) {
-          console.warn('Error fetching CEP from ERP:', cepError);
         }
       }
 
@@ -568,6 +585,31 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
       console.error('Error continuing after Lemmit limit:', err);
       setError(err instanceof Error ? err.message : 'Erro ao continuar cadastro');
       setLemmitLimitExceeded(null);
+    }
+  };
+
+  const handleContinuarCadastroExistente = async () => {
+    if (!cadastroExistente) return;
+
+    try {
+      const { data: cadastroCompleto, error } = await supabase
+        .from('cadastros')
+        .select('*')
+        .eq('id', cadastroExistente.cadastro.id)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!cadastroCompleto) {
+        throw new Error('Cadastro não encontrado ou você não tem permissão para acessá-lo');
+      }
+
+      setCadastroExistente(null);
+      setCpf('');
+      onSuccess(cadastroCompleto);
+    } catch (err) {
+      console.error('Error loading existing cadastro:', err);
+      setError(err instanceof Error ? err.message : 'Erro ao carregar cadastro existente');
+      setCadastroExistente(null);
     }
   };
 
@@ -699,6 +741,16 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         consumoFormatado={lemmitLimitExceeded.consumoFormatado}
         saldoFormatado={lemmitLimitExceeded.saldoFormatado}
         isUnlimited={lemmitLimitExceeded.isUnlimited}
+      />
+    )}
+
+    {cadastroExistente && (
+      <CadastroExistenteModal
+        cpf={cadastroExistente.cpf}
+        cadastro={cadastroExistente.cadastro}
+        canContinue={cadastroExistente.canContinue}
+        onClose={() => setCadastroExistente(null)}
+        onContinue={cadastroExistente.canContinue ? handleContinuarCadastroExistente : undefined}
       />
     )}
     </>

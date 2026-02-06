@@ -210,7 +210,6 @@ export function ConfigCadastroProvider({ children }: { children: ReactNode }) {
           filter: 'id=eq.1'
         },
         (payload) => {
-          console.log('Realtime update recebido:', payload.new);
           setConfig(payload.new as CadastroConfig);
         }
       )

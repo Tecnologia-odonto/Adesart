@@ -110,6 +110,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
   const [enviando, setEnviando] = useState(false);
   const [salvandoPendente, setSalvandoPendente] = useState(false);
   const [planosEmpresa, setPlanosEmpresa] = useState<any[]>([]);
+  const [empresaCompleta, setEmpresaCompleta] = useState<any>(null);
   const [loadingEmpresa, setLoadingEmpresa] = useState(false);
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [selectedVendedor, setSelectedVendedor] = useState<string>('');
@@ -124,6 +125,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
   const [consultingLemmitIndex, setConsultingLemmitIndex] = useState<number | null>(null);
   const [cpfValidationErrors, setCpfValidationErrors] = useState<Record<number, string>>({});
   const [showParceiroInvalidoModal, setShowParceiroInvalidoModal] = useState(false);
+  const [autoSavingIndex, setAutoSavingIndex] = useState<number | null>(null);
 
   const funcionarioCadastroId = profile?.external_id ? parseInt(profile.external_id) : null;
 
@@ -261,6 +263,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
     setDependentes([]);
     setError('');
     setPlanosEmpresa([]);
+    setEmpresaCompleta(null);
 
     if (responsavel.codigoEmpresa) {
       setLoadingEmpresa(true);
@@ -269,6 +272,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
 
         if (result.ok && result.empresas && result.empresas.length > 0) {
           const empresa = result.empresas[0];
+          setEmpresaCompleta(empresa);
           setPlanosEmpresa(empresa.precoPlano || []);
         } else {
           setError('Não foi possível carregar os planos da empresa');
@@ -363,6 +367,72 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
     setDependentes(dependentes.filter((_, i) => i !== index));
   };
 
+  const autoSaveDependente = async (index: number) => {
+    if (!responsavelSelecionado || !profile?.id) {
+      return;
+    }
+
+    const dep = dependentes[index];
+
+    if (!dep.cpf) {
+      return;
+    }
+
+    setAutoSavingIndex(index);
+
+    try {
+      const vendedorSelecionado = vendedores.find(v => v.id === selectedVendedor);
+      const adesionistaSelecionado = adesionistas.find(a => a.id === selectedAdesionista);
+
+      const cpfLimpo = removeCPFMask(dep.cpf || '').trim();
+
+      const cadastroData: any = {
+        created_by: profile.id,
+        team_id: profile.team_id || null,
+        status: 'incompleto',
+        tipo_cadastro: 'inclusao_dependente',
+        responsavel_financeiro_codigo: responsavelSelecionado.codigo,
+        responsavel_financeiro_nome: responsavelSelecionado.nome,
+        responsavel_financeiro_cpf: responsavelSelecionado.cpf,
+        empresa_nome: empresaCompleta?.nomeFantasia || responsavelSelecionado.empresa,
+        empresa_codigo: responsavelSelecionado.codigoEmpresa,
+        cpf: cpfLimpo || '',
+        nome: dep.nome || '',
+        data_nascimento: dep.dataNascimento ? normalizeToISO(dep.dataNascimento) : null,
+        sexo: dep.sexo === 1 ? 'Masculino' : dep.sexo === 2 ? 'Feminino' : null,
+        parentesco: dep.tipo || null,
+        plano_codigo: dep.plano || null,
+        nome_mae: dep.nomeMae || null,
+      };
+
+      if (vendedorSelecionado) {
+        cadastroData.vendedor_id = vendedorSelecionado.id;
+        cadastroData.vendedor_codigo = vendedorSelecionado.external_id;
+        cadastroData.vendedor_nome = vendedorSelecionado.name;
+      }
+
+      if (adesionistaSelecionado) {
+        cadastroData.adesionista_id = adesionistaSelecionado.id;
+        cadastroData.adesionista_codigo = adesionistaSelecionado.external_id;
+        cadastroData.adesionista_nome = adesionistaSelecionado.name;
+      }
+
+      const { error: insertError } = await supabase
+        .from('cadastros')
+        .insert([cadastroData]);
+
+      if (insertError) {
+        console.error('Erro ao auto-salvar:', insertError);
+      } else {
+        console.log('Cadastro auto-salvo com sucesso');
+      }
+    } catch (err: any) {
+      console.error('Erro ao auto-salvar dependente:', err);
+    } finally {
+      setAutoSavingIndex(null);
+    }
+  };
+
   const handleAtualizarDependente = async (index: number, campo: string, valor: any) => {
     setDependentes((prev) => {
       const next = [...prev];
@@ -390,6 +460,10 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
         });
 
         await consultarLemmitDependente(index, cpfLimpo);
+
+        setTimeout(() => {
+          autoSaveDependente(index);
+        }, 500);
       } else {
         setCpfValidationErrors(prev => {
           const next = { ...prev };
@@ -402,7 +476,6 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
 
   const consultarLemmitDependente = async (index: number, cpfLimpo: string) => {
     if (!config?.lemmit_inclusao_dependente) {
-      console.log('Lemmit para inclusão de dependentes está desativado');
       return;
     }
 
@@ -415,7 +488,6 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       });
 
       if (!canUse) {
-        console.log('Limite mensal atingido para consulta de dependente');
 
         const { data: limitInfo } = await supabase.rpc('get_lemmit_limit_info', {
           p_user_id: profile?.id,
@@ -479,13 +551,11 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       }
 
       if (!lemitData) {
-        console.warn('Resposta Lemmit vazia');
         setConsultingLemmitIndex(null);
         return;
       }
 
       if (lemitData?.pessoa && Object.keys(lemitData.pessoa).length > 0) {
-        console.log('Dados Lemmit recebidos para dependente:', lemitData.pessoa);
 
         setDependentes((prevDependentes) => {
           const novosDependentes = [...prevDependentes];
@@ -518,13 +588,6 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
             sexo: sexoValue,
           };
 
-          console.log('Dependente atualizado com dados Lemmit:', {
-            index,
-            anterior: depAtual,
-            novo: novosDependentes[index],
-            dadosLemmit: lemitData.pessoa
-          });
-
           return novosDependentes;
         });
 
@@ -544,7 +607,6 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
           console.error('Erro ao registrar consulta Lemmit:', logError);
         }
       } else {
-        console.warn('Lemmit não retornou dados para o dependente');
 
         try {
           await supabase.from('lemmit_consultas').insert({
@@ -630,13 +692,35 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
         throw uploadError;
       }
 
-      const base64 = await new Promise<string>((resolve) => {
+      const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
+
+        const timeout = setTimeout(() => {
+          reader.abort();
+          reject(new Error('Tempo limite excedido ao processar arquivo'));
+        }, 30000);
+
         reader.onload = () => {
-          const base64String = reader.result as string;
-          const base64Puro = base64String.split(',')[1];
-          resolve(base64Puro);
+          clearTimeout(timeout);
+          try {
+            const base64String = reader.result as string;
+            const base64Puro = base64String.split(',')[1];
+            resolve(base64Puro);
+          } catch (err) {
+            reject(err);
+          }
         };
+
+        reader.onerror = () => {
+          clearTimeout(timeout);
+          reject(new Error('Erro ao ler arquivo'));
+        };
+
+        reader.onabort = () => {
+          clearTimeout(timeout);
+          reject(new Error('Leitura do arquivo cancelada'));
+        };
+
         reader.readAsDataURL(file);
       });
 
@@ -655,7 +739,8 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       console.error('Erro ao fazer upload do arquivo:', err);
-      setError('Erro ao fazer upload do arquivo');
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao fazer upload do arquivo';
+      setError(errorMessage);
     } finally {
       setUploadingFileIndex(null);
       e.target.value = '';
@@ -714,7 +799,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
           responsavel_financeiro_codigo: responsavelSelecionado.codigo,
           responsavel_financeiro_nome: responsavelSelecionado.nome,
           responsavel_financeiro_cpf: responsavelSelecionado.cpf,
-          empresa_nome: responsavelSelecionado.empresa,
+          empresa_nome: empresaCompleta?.nomeFantasia || responsavelSelecionado.empresa,
           empresa_codigo: responsavelSelecionado.codigoEmpresa,
           nome: dep.nome,
           cpf: (() => {
@@ -946,36 +1031,95 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
           try {
             const dependenteCodigo = result.data.dados.dependentes[i].codigo;
 
-            const enqueuePayload = {
-              cadastroId: null,
+            const uploadPayload = {
               idFuncionario: funcionarioCadastroId,
               idDependente: parseInt(dependenteCodigo),
-              arquivoPath: dep.arquivo.path,
+              arquivo: dep.arquivo.base64,
               arquivoNome: dep.arquivo.nome,
-              tipo: 'dependente',
             };
 
-            const enqueueResponse = await fetch(
-              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-enqueue-upload`,
+            const uploadResponse = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-upload-documento`,
               {
                 method: 'POST',
                 headers: {
                   'Authorization': `Bearer ${session.access_token}`,
                   'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(enqueuePayload),
+                body: JSON.stringify(uploadPayload),
               }
             );
 
-            const enqueueResult = await enqueueResponse.json();
+            const uploadResult = await uploadResponse.json();
 
-            if (!enqueueResponse.ok || !enqueueResult.queued) {
-              console.warn(`Aviso ao enfileirar arquivo do dependente ${i + 1}:`, enqueueResult);
+            if (uploadResponse.ok && uploadResult.success) {
+              try {
+                await supabase.storage
+                  .from('cadastros-temp-files')
+                  .remove([dep.arquivo.path]);
+              } catch (removeErr) {
+                console.warn(`Aviso ao remover arquivo do dependente ${i + 1}:`, removeErr);
+              }
             } else {
-              console.log(`Arquivo do dependente ${i + 1} enfileirado:`, enqueueResult);
+
+              const enqueuePayload = {
+                cadastroId: null,
+                idFuncionario: funcionarioCadastroId,
+                idDependente: parseInt(dependenteCodigo),
+                arquivoPath: dep.arquivo.path,
+                arquivoNome: dep.arquivo.nome,
+                tipo: 'dependente',
+              };
+
+              const enqueueResponse = await fetch(
+                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-enqueue-upload`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${session.access_token}`,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(enqueuePayload),
+                }
+              );
+
+              const enqueueResult = await enqueueResponse.json();
+
+              if (!enqueueResponse.ok || !enqueueResult.queued) {
+                console.error(`Erro ao enfileirar arquivo do dependente ${i + 1}:`, enqueueResult);
+              }
             }
           } catch (uploadErr) {
-            console.warn(`Aviso ao enfileirar arquivo do dependente ${i + 1}:`, uploadErr);
+            console.warn(`Erro ao processar upload do dependente ${i + 1}, tentando enfileirar...`, uploadErr);
+
+            try {
+              const dependenteCodigo = result.data.dados.dependentes[i].codigo;
+
+              const enqueuePayload = {
+                cadastroId: null,
+                idFuncionario: funcionarioCadastroId,
+                idDependente: parseInt(dependenteCodigo),
+                arquivoPath: dep.arquivo.path,
+                arquivoNome: dep.arquivo.nome,
+                tipo: 'dependente',
+              };
+
+              const enqueueResponse = await fetch(
+                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-enqueue-upload`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${session.access_token}`,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(enqueuePayload),
+                }
+              );
+
+              await enqueueResponse.json();
+            } catch (enqueueErr) {
+              console.error(`Erro crítico ao enfileirar arquivo do dependente ${i + 1}:`, enqueueErr);
+            }
           }
         }
       }
@@ -1221,6 +1365,14 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                                 </span>
                               </div>
                             )}
+                            {autoSavingIndex === index && (
+                              <div className="absolute right-3 top-9 flex items-center gap-2">
+                                <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
+                                <span className="text-xs text-blue-600 font-medium">
+                                  Salvando...
+                                </span>
+                              </div>
+                            )}
                             {cpfValidationErrors[index] && (
                               <p className="text-xs text-red-600 mt-1">
                                 {cpfValidationErrors[index]}
@@ -1290,22 +1442,6 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                               // CORREÇÃO: usar SEMPRE ValorTitular
                               const valorTitular = Number(planoEmpresaSelecionado?.ValorTitular ?? 0);
                               const valorFormatado = valorTitular.toFixed(2);
-
-                              console.log("[Plano Select]", {
-                                planoSelecionado,
-                                nomePlano,
-                                planoEmpresaSelecionado,
-                                valorTitular,
-                                valorFormatado,
-                                totalPlanosEmpresa: planosEmpresa?.length ?? 0,
-                              });
-
-                              if (!planoEmpresaSelecionado && planoSelecionado !== 0) {
-                                console.warn("[Plano Select] Plano não encontrado em planosEmpresa", {
-                                  planoSelecionado,
-                                  samplePlanosEmpresa: (planosEmpresa || []).slice(0, 5),
-                                });
-                              }
 
                               setDependentes((prev) => {
                                 const next = [...prev];

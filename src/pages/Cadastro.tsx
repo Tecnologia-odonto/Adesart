@@ -5,11 +5,12 @@ import { CadastrosIncompletosList } from '../components/cadastro/CadastrosIncomp
 import { CadastrosCompletosList } from '../components/cadastro/CadastrosCompletosList';
 import { CadastroModal } from '../components/cadastro/CadastroModal';
 import { InclusaoDependenteModal } from '../components/cadastro/InclusaoDependenteModal';
+import { ContinuarInclusaoDependenteModal } from '../components/cadastro/ContinuarInclusaoDependenteModal';
 import { useCadastros, Cadastro as CadastroType } from '../hooks/useCadastros';
 import { Plus, FileText, Loader2, CheckCircle, UserPlus } from 'lucide-react';
 
 export function Cadastro() {
-  const { cadastros, loading, refresh } = useCadastros();
+  const { cadastros, stats, loading, refresh } = useCadastros();
   const [activeTab, setActiveTab] = useState<'novo' | 'dependente' | 'incompletos' | 'completos'>('novo');
   const [selectedCadastro, setSelectedCadastro] = useState<CadastroType | null>(null);
   const [showInclusaoDependente, setShowInclusaoDependente] = useState(false);
@@ -87,9 +88,9 @@ export function Cadastro() {
             <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-2 sm:mr-2" />
             <span className="hidden sm:inline">Adesões Pendentes</span>
             <span className="sm:hidden">Pendentes</span>
-            {cadastros.filter((c) => c.status === 'incompleto').length > 0 && (
+            {stats.incompletos > 0 && (
               <span className="ml-2 sm:ml-2 px-1.5 sm:px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full">
-                {cadastros.filter((c) => c.status === 'incompleto').length}
+                {stats.incompletos}
               </span>
             )}
           </button>
@@ -104,9 +105,9 @@ export function Cadastro() {
             <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-2 sm:mr-2" />
             <span className="hidden xs:inline">Cadastradas</span>
             <span className="xs:hidden">Cadastradas</span>
-            {cadastros.filter((c) => c.status === 'enviado').length > 0 && (
+            {stats.enviados > 0 && (
               <span className="ml-2 sm:ml-2 px-1.5 sm:px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
-                {cadastros.filter((c) => c.status === 'enviado').length}
+                {stats.enviados}
               </span>
             )}
           </button>
@@ -155,7 +156,15 @@ export function Cadastro() {
           </div>
         )}
 
-        {selectedCadastro && (
+        {selectedCadastro && selectedCadastro.tipo_cadastro === 'inclusao_dependente' && (
+          <ContinuarInclusaoDependenteModal
+            cadastro={selectedCadastro}
+            onClose={handleCloseModal}
+            onSuccess={handleModalSuccess}
+          />
+        )}
+
+        {selectedCadastro && selectedCadastro.tipo_cadastro !== 'inclusao_dependente' && (
           <CadastroModal
             cadastro={selectedCadastro}
             onClose={handleCloseModal}

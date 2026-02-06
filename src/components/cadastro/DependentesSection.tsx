@@ -50,9 +50,6 @@ export function DependentesSection({
   } | null>(null);
   const [cpfValidationError, setCpfValidationError] = useState('');
 
-  console.log('[DependentesSection] Planos recebidos:', planos);
-  console.log('[DependentesSection] Número de planos:', planos?.length || 0);
-
   const planosOcultos = config?.planos_ocultos || [];
 
   const planosFiltrados = planos.filter((p) => {
@@ -68,9 +65,6 @@ export function DependentesSection({
 
     return !isOculto;
   });
-
-  console.log('[DependentesSection] Planos ocultos configurados:', planosOcultos);
-  console.log('[DependentesSection] Planos após filtro:', planosFiltrados);
 
   const [formData, setFormData] = useState<{
     tipo: number;
@@ -131,7 +125,6 @@ export function DependentesSection({
       });
 
       if (!canUse) {
-        console.log('[DependentesSection] Limite mensal atingido - preenchimento manual');
 
         const { data: limitInfo } = await supabase.rpc('get_lemmit_limit_info', {
           p_user_id: profile?.id,
@@ -164,7 +157,6 @@ export function DependentesSection({
 
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        console.warn('[DependentesSection] Sessão expirada - continuando sem Lemmit');
         return;
       }
 
@@ -181,23 +173,7 @@ export function DependentesSection({
       const result = await response.json();
 
       if (!response.ok) {
-        if (result.notFound) {
-          console.log('[DependentesSection] CPF não encontrado na Lemmit - continuando preenchimento manual');
-          return;
-        }
-
-        if (result.invalidCPF) {
-          console.log('[DependentesSection] CPF inválido na Lemmit - continuando preenchimento manual');
-          return;
-        }
-
-        if (result.workflowError) {
-          console.log('[DependentesSection] Erro no workflow da Lemmit - continuando preenchimento manual');
-          return;
-        }
-
-        if (result.canContinue) {
-          console.log('[DependentesSection] Erro na Lemmit mas pode continuar - preenchimento manual');
+        if (result.notFound || result.invalidCPF || result.workflowError || result.canContinue) {
           return;
         }
 
@@ -221,19 +197,9 @@ export function DependentesSection({
           sexo: sexoValue || prev.sexo,
           nomeMae: pessoa.nome_mae || prev.nomeMae,
         }));
-
-        console.log('[DependentesSection] Dados Lemmit aplicados:', {
-          nome: pessoa.nome,
-          dataNascimento: dataNascFormatada,
-          sexo: sexoValue,
-          nomeMae: pessoa.nome_mae,
-        });
-      } else {
-        console.log('[DependentesSection] Consulta Lemmit sem dados - continuando preenchimento manual');
       }
     } catch (error: any) {
       console.error('[DependentesSection] Erro ao consultar Lemmit:', error);
-      console.log('[DependentesSection] Continuando com preenchimento manual');
     } finally {
       setConsultandoLemmit(false);
     }
@@ -316,8 +282,6 @@ export function DependentesSection({
     const planoId = parseInt(formData.plano);
     const planoSelecionado = planos.find((p) => p.Plano === planoId);
     if (!planoSelecionado) {
-      console.error('[DependentesSection] Plano não encontrado. Planos disponíveis:', planos);
-      console.error('[DependentesSection] Plano buscado:', planoId);
       alert('Plano não encontrado');
       return;
     }

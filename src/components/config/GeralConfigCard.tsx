@@ -16,12 +16,10 @@ export function GeralConfigCard() {
     if (!config) return;
 
     const novoValor = !config.ativar_lemmit;
-    console.log('Toggling Lemmit:', { atual: config.ativar_lemmit, novo: novoValor });
 
     setUpdating(true);
     try {
       await updateConfig({ ativar_lemmit: novoValor });
-      console.log('Config atualizada com sucesso');
     } catch (error) {
       console.error('Error updating config:', error);
       alert('Erro ao atualizar configuração');
@@ -34,12 +32,10 @@ export function GeralConfigCard() {
     if (!config) return;
 
     const novoValor = !config.exigir_arquivo;
-    console.log('Toggling Exigir Arquivo:', { atual: config.exigir_arquivo, novo: novoValor });
 
     setUpdating(true);
     try {
       await updateConfig({ exigir_arquivo: novoValor });
-      console.log('Config atualizada com sucesso');
     } catch (error) {
       console.error('Error updating config:', error);
       alert('Erro ao atualizar configuração');
@@ -52,12 +48,10 @@ export function GeralConfigCard() {
     if (!config) return;
 
     const novoValor = !config.lemmit_dependente;
-    console.log('Toggling Lemmit no Dependente:', { atual: config.lemmit_dependente, novo: novoValor });
 
     setUpdating(true);
     try {
       await updateConfig({ lemmit_dependente: novoValor });
-      console.log('Config atualizada com sucesso');
     } catch (error) {
       console.error('Error updating config:', error);
       alert('Erro ao atualizar configuração');
@@ -70,12 +64,10 @@ export function GeralConfigCard() {
     if (!config) return;
 
     const novoValor = !config.lemmit_inclusao_dependente;
-    console.log('Toggling Lemmit Incluir Dep.:', { atual: config.lemmit_inclusao_dependente, novo: novoValor });
 
     setUpdating(true);
     try {
       await updateConfig({ lemmit_inclusao_dependente: novoValor });
-      console.log('Config atualizada com sucesso');
     } catch (error) {
       console.error('Error updating config:', error);
       alert('Erro ao atualizar configuração');

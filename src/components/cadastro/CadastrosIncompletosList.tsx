@@ -45,8 +45,20 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
   const [tipoFiltroAplicado, setTipoFiltroAplicado] = useState<'todos' | 'cadastro' | 'inclusao_dependente'>('todos');
   const [statusAdesaoFiltro, setStatusAdesaoFiltro] = useState('');
   const [statusAdesaoFiltroAplicado, setStatusAdesaoFiltroAplicado] = useState('');
+  const [vendedorFiltro, setVendedorFiltro] = useState('');
+  const [vendedorFiltroAplicado, setVendedorFiltroAplicado] = useState('');
 
   const incompletos = cadastros.filter((c) => c.status === 'incompleto');
+
+  const vendedoresUnicos = useMemo(() => {
+    const vendedoresSet = new Set<string>();
+    incompletos.forEach((c) => {
+      if (c.vendedor_nome) {
+        vendedoresSet.add(c.vendedor_nome);
+      }
+    });
+    return Array.from(vendedoresSet).sort();
+  }, [incompletos]);
 
   useEffect(() => {
     fetchStatus();
@@ -82,6 +94,7 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
     setDataFimAplicada(dataFim);
     setTipoFiltroAplicado(tipoFiltro);
     setStatusAdesaoFiltroAplicado(statusAdesaoFiltro);
+    setVendedorFiltroAplicado(vendedorFiltro);
   };
 
   const handleChangeStatus = async (cadastroId: string, statusId: string) => {
@@ -159,9 +172,14 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
         matchStatusAdesao = cadastro.status_adesao_id === statusAdesaoFiltroAplicado;
       }
 
-      return matchCliente && matchEmpresa && matchDataInicio && matchDataFim && matchTipo && matchStatusAdesao;
+      let matchVendedor = true;
+      if (vendedorFiltroAplicado) {
+        matchVendedor = cadastro.vendedor_nome === vendedorFiltroAplicado;
+      }
+
+      return matchCliente && matchEmpresa && matchDataInicio && matchDataFim && matchTipo && matchStatusAdesao && matchVendedor;
     });
-  }, [incompletos, buscaClienteAplicada, buscaEmpresaAplicada, dataInicioAplicada, dataFimAplicada, tipoFiltroAplicado, statusAdesaoFiltroAplicado]);
+  }, [incompletos, buscaClienteAplicada, buscaEmpresaAplicada, dataInicioAplicada, dataFimAplicada, tipoFiltroAplicado, statusAdesaoFiltroAplicado, vendedorFiltroAplicado]);
 
   const clientesGrouped: ClienteGroup[] = useMemo(() => {
     const clientesMap = new Map<string, Cadastro[]>();
@@ -214,10 +232,12 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
     setTipoFiltroAplicado('todos');
     setStatusAdesaoFiltro('');
     setStatusAdesaoFiltroAplicado('');
+    setVendedorFiltro('');
+    setVendedorFiltroAplicado('');
     setDefaultDateFilter();
   };
 
-  const temFiltrosAtivos = buscaClienteAplicada || buscaEmpresaAplicada || dataInicioAplicada || dataFimAplicada || tipoFiltroAplicado !== 'todos' || statusAdesaoFiltroAplicado;
+  const temFiltrosAtivos = buscaClienteAplicada || buscaEmpresaAplicada || dataInicioAplicada || dataFimAplicada || tipoFiltroAplicado !== 'todos' || statusAdesaoFiltroAplicado || vendedorFiltroAplicado;
 
   return (
     <>
@@ -290,6 +310,19 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
             {statusList.map((status) => (
               <option key={status.id} value={status.id}>
                 {status.nome}
+              </option>
+            ))}
+          </Select>
+
+          <Select
+            label="Vendedor"
+            value={vendedorFiltro}
+            onChange={(e) => setVendedorFiltro(e.target.value)}
+          >
+            <option value="">Todos os Vendedores</option>
+            {vendedoresUnicos.map((vendedor) => (
+              <option key={vendedor} value={vendedor}>
+                {vendedor}
               </option>
             ))}
           </Select>
@@ -391,6 +424,11 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
                           {cadastro.empresa_cnpj && (
                             <p>
                               <span className="font-medium">CNPJ:</span> {cadastro.empresa_cnpj}
+                            </p>
+                          )}
+                          {cadastro.vendedor_nome && (
+                            <p>
+                              <span className="font-medium">Vendedor:</span> {cadastro.vendedor_nome}
                             </p>
                           )}
                           {isBlocked && (
