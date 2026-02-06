@@ -52,15 +52,48 @@ export interface Cadastro {
 }
 
 export interface CadastroStats {
-  total: number;
-  incompletos: number;
-  enviados: number;
-  erros: number;
+  cadastro_total: number;
+  cadastro_cadastros: number;
+  cadastro_dependentes: number;
+  cadastro_incompletos: number;
+  cadastro_incompletos_cadastros: number;
+  cadastro_incompletos_dependentes: number;
+  cadastro_enviados: number;
+  cadastro_enviados_cadastros: number;
+  cadastro_enviados_dependentes: number;
+  inclusao_total: number;
+  inclusao_cadastros: number;
+  inclusao_dependentes: number;
+  inclusao_incompletos: number;
+  inclusao_incompletos_cadastros: number;
+  inclusao_incompletos_dependentes: number;
+  inclusao_enviados: number;
+  inclusao_enviados_cadastros: number;
+  inclusao_enviados_dependentes: number;
 }
 
 export function useCadastros() {
   const [cadastros, setCadastros] = useState<Cadastro[]>([]);
-  const [stats, setStats] = useState<CadastroStats>({ total: 0, incompletos: 0, enviados: 0, erros: 0 });
+  const [stats, setStats] = useState<CadastroStats>({
+    cadastro_total: 0,
+    cadastro_cadastros: 0,
+    cadastro_dependentes: 0,
+    cadastro_incompletos: 0,
+    cadastro_incompletos_cadastros: 0,
+    cadastro_incompletos_dependentes: 0,
+    cadastro_enviados: 0,
+    cadastro_enviados_cadastros: 0,
+    cadastro_enviados_dependentes: 0,
+    inclusao_total: 0,
+    inclusao_cadastros: 0,
+    inclusao_dependentes: 0,
+    inclusao_incompletos: 0,
+    inclusao_incompletos_cadastros: 0,
+    inclusao_incompletos_dependentes: 0,
+    inclusao_enviados: 0,
+    inclusao_enviados_cadastros: 0,
+    inclusao_enviados_dependentes: 0
+  });
   const [loading, setLoading] = useState(true);
   const [loadingStats, setLoadingStats] = useState(true);
   const { profile } = useAuth();
@@ -94,7 +127,26 @@ export function useCadastros() {
 
       if (error) throw error;
 
-      setStats(data || { total: 0, incompletos: 0, enviados: 0, erros: 0 });
+      setStats(data || {
+        cadastro_total: 0,
+        cadastro_cadastros: 0,
+        cadastro_dependentes: 0,
+        cadastro_incompletos: 0,
+        cadastro_incompletos_cadastros: 0,
+        cadastro_incompletos_dependentes: 0,
+        cadastro_enviados: 0,
+        cadastro_enviados_cadastros: 0,
+        cadastro_enviados_dependentes: 0,
+        inclusao_total: 0,
+        inclusao_cadastros: 0,
+        inclusao_dependentes: 0,
+        inclusao_incompletos: 0,
+        inclusao_incompletos_cadastros: 0,
+        inclusao_incompletos_dependentes: 0,
+        inclusao_enviados: 0,
+        inclusao_enviados_cadastros: 0,
+        inclusao_enviados_dependentes: 0
+      });
     } catch (error) {
       console.error('Error fetching cadastros stats:', error);
     } finally {

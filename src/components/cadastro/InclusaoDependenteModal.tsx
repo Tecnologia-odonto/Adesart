@@ -11,6 +11,7 @@ import { formatCPF, removeCPFMask, validateCPF, normalizeToISO, formatDateFromIS
 import { supabase } from '../../lib/supabase';
 import { LemmitLimitModal } from './LemmitLimitModal';
 import { ParceiroInvalidoModal } from './ParceiroInvalidoModal';
+import { SelectStatusModal } from './SelectStatusModal';
 
 interface InclusaoDependenteModalProps {
   onClose: () => void;
@@ -126,6 +127,8 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
   const [cpfValidationErrors, setCpfValidationErrors] = useState<Record<number, string>>({});
   const [showParceiroInvalidoModal, setShowParceiroInvalidoModal] = useState(false);
   const [autoSavingIndex, setAutoSavingIndex] = useState<number | null>(null);
+  const [showSelectStatusModal, setShowSelectStatusModal] = useState(false);
+  const [pendingSaveDependentes, setPendingSaveDependentes] = useState(false);
 
   const funcionarioCadastroId = profile?.external_id ? parseInt(profile.external_id) : null;
 
@@ -751,7 +754,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
     }
   };
 
-  const handleSalvarPendente = async () => {
+  const handleRequestSalvarPendente = () => {
     setError('');
     setSuccess('');
 
@@ -781,6 +784,15 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       return;
     }
 
+    setPendingSaveDependentes(true);
+    setShowSelectStatusModal(true);
+  };
+
+  const handleStatusSelected = async (statusId: string) => {
+    setShowSelectStatusModal(false);
+
+    if (!pendingSaveDependentes) return;
+
     setSalvandoPendente(true);
 
     try {
@@ -799,6 +811,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
           created_by: profile.id,
           team_id: profile.team_id || null,
           status: 'incompleto',
+          status_adesao_id: statusId,
           tipo_cadastro: 'inclusao_dependente',
           responsavel_financeiro_codigo: responsavelSelecionado.codigo,
           responsavel_financeiro_nome: responsavelSelecionado.nome,
@@ -1591,7 +1604,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
             <div className="flex-1" />
 
             <Button
-              onClick={handleSalvarPendente}
+              onClick={handleRequestSalvarPendente}
               disabled={salvandoPendente || enviando || !responsavelSelecionado || dependentes.filter(d => d.saved).length === 0}
               className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700"
               variant="secondary"
@@ -1634,6 +1647,16 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
         <ParceiroInvalidoModal
           onClose={() => setShowParceiroInvalidoModal(false)}
           onRetry={handleRetryWithVendedor}
+        />
+      )}
+
+      {showSelectStatusModal && (
+        <SelectStatusModal
+          onSelect={handleStatusSelected}
+          onClose={() => {
+            setShowSelectStatusModal(false);
+            setPendingSaveDependentes(false);
+          }}
         />
       )}
     </div>

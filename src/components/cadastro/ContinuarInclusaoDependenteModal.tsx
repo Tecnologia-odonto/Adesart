@@ -12,6 +12,7 @@ import { Cadastro } from '../../hooks/useCadastros';
 import { useCadastros } from '../../hooks/useCadastros';
 import { EmpresaSearchCard } from './EmpresaSearchCard';
 import { LemmitLimitModal } from './LemmitLimitModal';
+import { SelectStatusModal } from './SelectStatusModal';
 
 interface ContinuarInclusaoDependenteModalProps {
   cadastro: Cadastro;
@@ -135,6 +136,8 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
     saldoFormatado?: string;
     isUnlimited?: boolean;
   } | null>(null);
+  const [showSelectStatusModal, setShowSelectStatusModal] = useState(false);
+  const [pendingClose, setPendingClose] = useState(false);
 
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [selectedVendedor, setSelectedVendedor] = useState<string>(cadastro.vendedor_id || '');
@@ -543,6 +546,32 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
     ));
   };
 
+  const handleRequestClose = () => {
+    setPendingClose(true);
+    setShowSelectStatusModal(true);
+  };
+
+  const handleStatusSelected = async (statusId: string) => {
+    try {
+      const { error: updateError } = await supabase
+        .from('cadastros')
+        .update({ status_adesao_id: statusId })
+        .eq('id', cadastro.id);
+
+      if (updateError) throw updateError;
+
+      setShowSelectStatusModal(false);
+
+      if (pendingClose) {
+        onClose();
+      }
+    } catch (err: any) {
+      console.error('Erro ao atualizar status:', err);
+      setError('Erro ao atualizar status da adesão');
+      setShowSelectStatusModal(false);
+    }
+  };
+
   const handleSalvarRascunho = async () => {
     setSalvando(true);
     setError('');
@@ -910,7 +939,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
               <p className="text-sm text-amber-100">Busque e selecione a empresa antes de continuar</p>
             </div>
             <button
-              onClick={onClose}
+              onClick={handleRequestClose}
               className="text-white hover:bg-amber-700 p-2 rounded-lg transition-colors"
             >
               <X className="w-5 h-5" />
@@ -931,7 +960,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
         <div className="sticky top-0 bg-emerald-600 text-white px-6 py-4 flex items-center justify-between rounded-t-xl z-10">
           <h2 className="text-xl font-bold">Continuar Inclusão de Dependentes</h2>
           <button
-            onClick={onClose}
+            onClick={handleRequestClose}
             className="text-white hover:bg-emerald-700 p-2 rounded-lg transition-colors"
           >
             <X className="w-5 h-5" />
@@ -1190,7 +1219,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
             )}
           </Button>
           <div className="flex gap-3">
-            <Button onClick={onClose} variant="secondary" disabled={loading || salvando}>
+            <Button onClick={handleRequestClose} variant="secondary" disabled={loading || salvando}>
               Cancelar
             </Button>
             <Button
@@ -1217,6 +1246,16 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
           saldoFormatado={lemmitLimitExceeded.saldoFormatado}
           isUnlimited={lemmitLimitExceeded.isUnlimited}
           onClose={() => setLemmitLimitExceeded(null)}
+        />
+      )}
+
+      {showSelectStatusModal && (
+        <SelectStatusModal
+          onSelect={handleStatusSelected}
+          onClose={() => {
+            setShowSelectStatusModal(false);
+            setPendingClose(false);
+          }}
         />
       )}
     </div>

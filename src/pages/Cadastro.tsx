@@ -88,9 +88,9 @@ export function Cadastro() {
             <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-2 sm:mr-2" />
             <span className="hidden sm:inline">Adesões Pendentes</span>
             <span className="sm:hidden">Pendentes</span>
-            {stats.incompletos > 0 && (
+            {(stats.cadastro_incompletos + stats.inclusao_incompletos) > 0 && (
               <span className="ml-2 sm:ml-2 px-1.5 sm:px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full">
-                {stats.incompletos}
+                {stats.cadastro_incompletos + stats.inclusao_incompletos}
               </span>
             )}
           </button>
@@ -105,9 +105,9 @@ export function Cadastro() {
             <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-2 sm:mr-2" />
             <span className="hidden xs:inline">Cadastradas</span>
             <span className="xs:hidden">Cadastradas</span>
-            {stats.enviados > 0 && (
+            {(stats.cadastro_enviados + stats.inclusao_enviados) > 0 && (
               <span className="ml-2 sm:ml-2 px-1.5 sm:px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
-                {stats.enviados}
+                {stats.cadastro_enviados + stats.inclusao_enviados}
               </span>
             )}
           </button>
