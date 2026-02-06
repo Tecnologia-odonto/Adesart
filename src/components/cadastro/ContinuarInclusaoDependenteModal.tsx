@@ -108,8 +108,28 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
   const [empresaNome, setEmpresaNome] = useState(cadastro.empresa_nome);
   const [empresaObservacao, setEmpresaObservacao] = useState('');
 
-  const [dependentes, setDependentes] = useState<DependenteForm[]>([
-    {
+  const [dependentes, setDependentes] = useState<DependenteForm[]>(() => {
+    const dependentesExistentes = cadastro.dependentes as any[] || [];
+
+    if (dependentesExistentes.length > 0) {
+      return dependentesExistentes.map((dep: any) => ({
+        id: crypto.randomUUID(),
+        nome: dep.nome || '',
+        cpf: dep.cpf || '',
+        dataNascimento: dep.data_nascimento || '',
+        sexo: dep.sexo === 'Masculino' ? 1 : dep.sexo === 'Feminino' ? 2 : 0,
+        parentesco: dep.parentesco || 0,
+        plano: dep.plano_codigo || 0,
+        planoValor: '0.00',
+        nomeMae: dep.nome_mae || '',
+        arquivo: dep.arquivo_path ? { base64: '', nome: 'Arquivo existente', path: dep.arquivo_path } : null,
+        cpfValidationError: '',
+        uploadingFile: false,
+        consultingLemmit: false
+      }));
+    }
+
+    return [{
       id: crypto.randomUUID(),
       nome: cadastro.nome || '',
       cpf: cadastro.cpf || '',
@@ -123,8 +143,8 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
       cpfValidationError: '',
       uploadingFile: false,
       consultingLemmit: false
-    }
-  ]);
+    }];
+  });
 
   const [loading, setLoading] = useState(false);
   const [salvando, setSalvando] = useState(false);
@@ -182,6 +202,23 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
       fetchEmpresaPlanos();
     }
   }, [empresaCodigo]);
+
+  useEffect(() => {
+    if (planosEmpresa.length > 0) {
+      setDependentes(prev => prev.map(dep => {
+        if (dep.plano && dep.plano !== 0) {
+          const planoEncontrado = planosEmpresa.find((p: any) => p.codigoPlano === dep.plano);
+          if (planoEncontrado) {
+            return {
+              ...dep,
+              planoValor: planoEncontrado.valorPlano?.toString() || '0.00'
+            };
+          }
+        }
+        return dep;
+      }));
+    }
+  }, [planosEmpresa]);
 
   const fetchEmpresaPlanos = async () => {
     if (!empresaCodigo) return;
@@ -1109,11 +1146,11 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
 
                   <Select
                     label="Parentesco"
-                    value={dep.parentesco.toString()}
+                    value={dep.parentesco || 0}
                     onChange={(e) => updateDependente(index, 'parentesco', parseInt(e.target.value))}
                     required
                   >
-                    <option value="0">Selecione</option>
+                    <option value={0}>Selecione</option>
                     {parentescos
                       .filter(p => p.ativo && p.parentesco_id !== 1)
                       .map(p => (
@@ -1125,12 +1162,12 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
 
                   <Select
                     label="Plano"
-                    value={dep.plano.toString()}
+                    value={dep.plano || 0}
                     onChange={(e) => handlePlanoChange(index, parseInt(e.target.value))}
                     required
                     disabled={loadingEmpresa}
                   >
-                    <option value="0">
+                    <option value={0}>
                       {loadingEmpresa ? 'Carregando planos...' : 'Selecione'}
                     </option>
                     {planosEmpresa

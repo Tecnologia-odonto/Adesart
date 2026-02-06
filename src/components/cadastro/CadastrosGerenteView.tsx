@@ -66,9 +66,9 @@ export function CadastrosGerenteView({ cadastros, onSelect, statusFilter }: Prop
     const equipesMap = new Map<string, Map<string, Map<string, Cadastro[]>>>();
 
     cadastrosFiltrados.forEach((cadastro) => {
-      const user = users.find((u) => u.id === cadastro.created_by);
-      const equipeId = user?.team_id || 'sem_equipe';
-      const userKey = cadastro.created_by || 'sem_usuario';
+      const vendedor = users.find((u) => u.id === cadastro.vendedor_id);
+      const equipeId = vendedor?.team_id || 'sem_equipe';
+      const userKey = cadastro.vendedor_id || 'sem_vendedor';
       const empresaKey = cadastro.empresa_id !== null ? `empresa_${cadastro.empresa_id}` : 'sem_empresa';
 
       if (!equipesMap.has(equipeId)) {
@@ -96,7 +96,7 @@ export function CadastrosGerenteView({ cadastros, onSelect, statusFilter }: Prop
 
       usersMap.forEach((empresasMap, userKey) => {
         const firstCadastro = Array.from(empresasMap.values())[0][0];
-        const user = users.find((u) => u.id === firstCadastro.created_by);
+        const vendedor = users.find((u) => u.id === firstCadastro.vendedor_id);
         const empresas: EmpresaGroup[] = [];
 
         empresasMap.forEach((cads, empresaKey) => {
@@ -115,8 +115,8 @@ export function CadastrosGerenteView({ cadastros, onSelect, statusFilter }: Prop
         });
 
         usersArray.push({
-          userId: firstCadastro.created_by,
-          userName: user?.name || 'Usuário não identificado',
+          userId: firstCadastro.vendedor_id,
+          userName: vendedor?.name || firstCadastro.vendedor_nome || 'Vendedor não identificado',
           empresas,
         });
       });

@@ -51,6 +51,13 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
     setDataInicioAplicada(firstDayStr);
   };
 
+  const contarPessoas = (cadastros: Cadastro[]) => {
+    return cadastros.reduce((total, cadastro) => {
+      const dependentesArray = Array.isArray(cadastro.dependentes) ? cadastro.dependentes : [];
+      return total + 1 + dependentesArray.length;
+    }, 0);
+  };
+
   const handleAplicarFiltros = () => {
     setBuscaClienteAplicada(buscaCliente);
     setBuscaEmpresaAplicada(buscaEmpresa);
@@ -263,7 +270,7 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
 
           {temFiltrosAtivos && (
             <div className="text-sm text-slate-600">
-              Mostrando {cadastrosFiltrados.length} de {completos.length} cadastros em {empresasGrouped.length} {empresasGrouped.length === 1 ? 'empresa' : 'empresas'}
+              Mostrando {contarPessoas(cadastrosFiltrados)} pessoas de {contarPessoas(completos)} pessoas em {empresasGrouped.length} {empresasGrouped.length === 1 ? 'empresa' : 'empresas'}
             </div>
           )}
         </div>

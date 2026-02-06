@@ -59,7 +59,7 @@ export function CadastrosSupervisorView({ cadastros, onSelect, statusFilter }: P
     const usersMap = new Map<string, Map<string, Cadastro[]>>();
 
     cadastrosFiltrados.forEach((cadastro) => {
-      const userKey = cadastro.created_by || 'sem_usuario';
+      const userKey = cadastro.vendedor_id || 'sem_vendedor';
       const empresaKey = cadastro.empresa_id !== null ? `empresa_${cadastro.empresa_id}` : 'sem_empresa';
 
       if (!usersMap.has(userKey)) {
@@ -78,7 +78,7 @@ export function CadastrosSupervisorView({ cadastros, onSelect, statusFilter }: P
 
     usersMap.forEach((empresasMap, userKey) => {
       const firstCadastro = Array.from(empresasMap.values())[0][0];
-      const user = users.find(u => u.id === firstCadastro.created_by);
+      const user = users.find(u => u.id === firstCadastro.vendedor_id);
       const empresas: EmpresaGroup[] = [];
 
       empresasMap.forEach((cads, empresaKey) => {
@@ -97,8 +97,8 @@ export function CadastrosSupervisorView({ cadastros, onSelect, statusFilter }: P
       });
 
       result.push({
-        userId: firstCadastro.created_by,
-        userName: user?.name || 'Usuário não identificado',
+        userId: firstCadastro.vendedor_id,
+        userName: user?.name || firstCadastro.vendedor_nome || 'Vendedor não identificado',
         empresas,
       });
     });
