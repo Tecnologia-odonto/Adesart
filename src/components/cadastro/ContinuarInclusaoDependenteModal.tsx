@@ -698,12 +698,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
         return {
           tipo: dep.parentesco,
           nome: dep.nome,
-          cpf: (() => {
-            if (isMenorDeIdade(dataNascimentoISO)) {
-              return cpfLimpo ? cpfLimpo : '';
-            }
-            return cpfLimpo ? cpfLimpo : '0';
-          })(),
+          cpf: cpfLimpo ? cpfLimpo : '',
           sexo: dep.sexo,
           plano: dep.plano,
           planoValor: dep.planoValor,
@@ -1109,11 +1104,13 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
                     <option value="0">
                       {loadingEmpresa ? 'Carregando planos...' : 'Selecione'}
                     </option>
-                    {planosEmpresa.map((p: any) => (
-                      <option key={p.codigoPlano} value={p.codigoPlano}>
-                        {p.nomePlano} - R$ {p.valorPlano?.toFixed(2)}
-                      </option>
-                    ))}
+                    {planosEmpresa
+                      .filter((p: any) => !config?.planos_ocultos?.includes(p.codigoPlano?.toString()))
+                      .map((p: any) => (
+                        <option key={p.codigoPlano} value={p.codigoPlano}>
+                          {p.nomePlano} - R$ {p.valorPlano?.toFixed(2)}
+                        </option>
+                      ))}
                   </Select>
 
                   <div className="md:col-span-2">

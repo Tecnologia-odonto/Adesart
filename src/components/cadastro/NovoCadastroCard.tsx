@@ -361,6 +361,21 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         }
       }
 
+      let vendedorData = {};
+      if (needsVendedor && vendedorSelecionado) {
+        vendedorData = {
+          vendedor_id: vendedorSelecionado.id,
+          vendedor_codigo: vendedorSelecionado.external_id,
+          vendedor_nome: vendedorSelecionado.name,
+        };
+      } else if (profile?.role === 'VENDEDOR' && profile.external_id) {
+        vendedorData = {
+          vendedor_id: profile.id,
+          vendedor_codigo: profile.external_id,
+          vendedor_nome: profile.name || '',
+        };
+      }
+
       const rascunho = await createOrUpdateRascunho({
         cpf: cpfLimpo,
         nome: cadastroData.nome,
@@ -378,11 +393,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         empresa_raw: selectedEmpresa?.raw,
         empresa_exige_matricula: selectedEmpresa?.exigeMatricula || 0,
         planos_raw: selectedEmpresa?.precoPlano,
-        ...(needsVendedor && vendedorSelecionado && {
-          vendedor_id: vendedorSelecionado.id,
-          vendedor_codigo: vendedorSelecionado.external_id,
-          vendedor_nome: vendedorSelecionado.name,
-        }),
+        ...vendedorData,
         ...(adesionistaSelecionado && {
           adesionista_id: adesionistaSelecionado.id,
           adesionista_codigo: adesionistaSelecionado.external_id,
@@ -462,6 +473,21 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         ? { id: profile.id, external_id: profile.external_id || '', name: profile.name || '' }
         : adesionistas.find(a => a.id === selectedAdesionista);
 
+      let vendedorData = {};
+      if (needsVendedor && vendedorSelecionado) {
+        vendedorData = {
+          vendedor_id: vendedorSelecionado.id,
+          vendedor_codigo: vendedorSelecionado.external_id,
+          vendedor_nome: vendedorSelecionado.name,
+        };
+      } else if (profile?.role === 'VENDEDOR' && profile.external_id) {
+        vendedorData = {
+          vendedor_id: profile.id,
+          vendedor_codigo: profile.external_id,
+          vendedor_nome: profile.name || '',
+        };
+      }
+
       const rascunho = await createOrUpdateRascunho({
         cpf,
         nome: cadastroData.nome,
@@ -479,11 +505,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         empresa_raw: selectedEmpresa?.raw,
         empresa_exige_matricula: selectedEmpresa?.exigeMatricula || 0,
         planos_raw: selectedEmpresa?.precoPlano,
-        ...(needsVendedor && vendedorSelecionado && {
-          vendedor_id: vendedorSelecionado.id,
-          vendedor_codigo: vendedorSelecionado.external_id,
-          vendedor_nome: vendedorSelecionado.name,
-        }),
+        ...vendedorData,
         ...(adesionistaSelecionado && {
           adesionista_id: adesionistaSelecionado.id,
           adesionista_codigo: adesionistaSelecionado.external_id,
@@ -549,6 +571,21 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         }
       }
 
+      let vendedorData = {};
+      if (needsVendedor && vendedorSelecionado) {
+        vendedorData = {
+          vendedor_id: vendedorSelecionado.id,
+          vendedor_codigo: vendedorSelecionado.external_id,
+          vendedor_nome: vendedorSelecionado.name,
+        };
+      } else if (profile?.role === 'VENDEDOR' && profile.external_id) {
+        vendedorData = {
+          vendedor_id: profile.id,
+          vendedor_codigo: profile.external_id,
+          vendedor_nome: profile.name || '',
+        };
+      }
+
       const rascunho = await createOrUpdateRascunho({
         cpf: cpfLimpo,
         nome: cadastroData.nome,
@@ -566,11 +603,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         empresa_raw: selectedEmpresa?.raw,
         empresa_exige_matricula: selectedEmpresa?.exigeMatricula || 0,
         planos_raw: selectedEmpresa?.precoPlano,
-        ...(needsVendedor && vendedorSelecionado && {
-          vendedor_id: vendedorSelecionado.id,
-          vendedor_codigo: vendedorSelecionado.external_id,
-          vendedor_nome: vendedorSelecionado.name,
-        }),
+        ...vendedorData,
         ...(adesionistaSelecionado && {
           adesionista_id: adesionistaSelecionado.id,
           adesionista_codigo: adesionistaSelecionado.external_id,

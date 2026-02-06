@@ -29,6 +29,11 @@ interface ClienteGroup {
   cadastros: Cadastro[];
 }
 
+interface UserProfile {
+  id: string;
+  name: string;
+}
+
 export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: CadastrosIncompletosListProps) {
   const { profile } = useAuth();
   const [viewERPData, setViewERPData] = useState<Cadastro | null>(null);
@@ -45,23 +50,29 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
   const [tipoFiltroAplicado, setTipoFiltroAplicado] = useState<'todos' | 'cadastro' | 'inclusao_dependente'>('todos');
   const [statusAdesaoFiltro, setStatusAdesaoFiltro] = useState('');
   const [statusAdesaoFiltroAplicado, setStatusAdesaoFiltroAplicado] = useState('');
-  const [vendedorFiltro, setVendedorFiltro] = useState('');
-  const [vendedorFiltroAplicado, setVendedorFiltroAplicado] = useState('');
+  const [criadoPorFiltro, setCriadoPorFiltro] = useState('');
+  const [criadoPorFiltroAplicado, setCriadoPorFiltroAplicado] = useState('');
+  const [users, setUsers] = useState<UserProfile[]>([]);
 
   const incompletos = cadastros.filter((c) => c.status === 'incompleto');
 
-  const vendedoresUnicos = useMemo(() => {
-    const vendedoresSet = new Set<string>();
+  const criadoresPorUnicos = useMemo(() => {
+    const criadoresSet = new Map<string, string>();
     incompletos.forEach((c) => {
-      if (c.vendedor_nome) {
-        vendedoresSet.add(c.vendedor_nome);
+      if (c.created_by) {
+        const user = users.find(u => u.id === c.created_by);
+        if (user) {
+          criadoresSet.set(c.created_by, user.name);
+        }
       }
     });
-    return Array.from(vendedoresSet).sort();
-  }, [incompletos]);
+    return Array.from(criadoresSet.entries())
+      .sort((a, b) => a[1].localeCompare(b[1]));
+  }, [incompletos, users]);
 
   useEffect(() => {
     fetchStatus();
+    fetchUsers();
     setDefaultDateFilter();
   }, []);
 
@@ -87,6 +98,20 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
     }
   };
 
+  const fetchUsers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, name')
+        .order('name', { ascending: true });
+
+      if (error) throw error;
+      setUsers(data || []);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    }
+  };
+
   const handleAplicarFiltros = () => {
     setBuscaClienteAplicada(buscaCliente);
     setBuscaEmpresaAplicada(buscaEmpresa);
@@ -94,7 +119,7 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
     setDataFimAplicada(dataFim);
     setTipoFiltroAplicado(tipoFiltro);
     setStatusAdesaoFiltroAplicado(statusAdesaoFiltro);
-    setVendedorFiltroAplicado(vendedorFiltro);
+    setCriadoPorFiltroAplicado(criadoPorFiltro);
   };
 
   const handleChangeStatus = async (cadastroId: string, statusId: string) => {
@@ -172,14 +197,14 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
         matchStatusAdesao = cadastro.status_adesao_id === statusAdesaoFiltroAplicado;
       }
 
-      let matchVendedor = true;
-      if (vendedorFiltroAplicado) {
-        matchVendedor = cadastro.vendedor_nome === vendedorFiltroAplicado;
+      let matchCriadoPor = true;
+      if (criadoPorFiltroAplicado) {
+        matchCriadoPor = cadastro.created_by === criadoPorFiltroAplicado;
       }
 
-      return matchCliente && matchEmpresa && matchDataInicio && matchDataFim && matchTipo && matchStatusAdesao && matchVendedor;
+      return matchCliente && matchEmpresa && matchDataInicio && matchDataFim && matchTipo && matchStatusAdesao && matchCriadoPor;
     });
-  }, [incompletos, buscaClienteAplicada, buscaEmpresaAplicada, dataInicioAplicada, dataFimAplicada, tipoFiltroAplicado, statusAdesaoFiltroAplicado, vendedorFiltroAplicado]);
+  }, [incompletos, buscaClienteAplicada, buscaEmpresaAplicada, dataInicioAplicada, dataFimAplicada, tipoFiltroAplicado, statusAdesaoFiltroAplicado, criadoPorFiltroAplicado]);
 
   const clientesGrouped: ClienteGroup[] = useMemo(() => {
     const clientesMap = new Map<string, Cadastro[]>();
@@ -232,12 +257,12 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
     setTipoFiltroAplicado('todos');
     setStatusAdesaoFiltro('');
     setStatusAdesaoFiltroAplicado('');
-    setVendedorFiltro('');
-    setVendedorFiltroAplicado('');
+    setCriadoPorFiltro('');
+    setCriadoPorFiltroAplicado('');
     setDefaultDateFilter();
   };
 
-  const temFiltrosAtivos = buscaClienteAplicada || buscaEmpresaAplicada || dataInicioAplicada || dataFimAplicada || tipoFiltroAplicado !== 'todos' || statusAdesaoFiltroAplicado || vendedorFiltroAplicado;
+  const temFiltrosAtivos = buscaClienteAplicada || buscaEmpresaAplicada || dataInicioAplicada || dataFimAplicada || tipoFiltroAplicado !== 'todos' || statusAdesaoFiltroAplicado || criadoPorFiltroAplicado;
 
   return (
     <>
@@ -314,18 +339,20 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
             ))}
           </Select>
 
-          <Select
-            label="Vendedor"
-            value={vendedorFiltro}
-            onChange={(e) => setVendedorFiltro(e.target.value)}
-          >
-            <option value="">Todos os Vendedores</option>
-            {vendedoresUnicos.map((vendedor) => (
-              <option key={vendedor} value={vendedor}>
-                {vendedor}
-              </option>
-            ))}
-          </Select>
+          {profile?.role !== 'VENDEDOR' && (
+            <Select
+              label="Criado por"
+              value={criadoPorFiltro}
+              onChange={(e) => setCriadoPorFiltro(e.target.value)}
+            >
+              <option value="">Todos</option>
+              {criadoresPorUnicos.map(([id, name]) => (
+                <option key={id} value={id}>
+                  {name}
+                </option>
+              ))}
+            </Select>
+          )}
 
           <Input
             type="date"

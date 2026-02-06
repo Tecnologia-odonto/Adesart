@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Users, Building2, ChevronDown, ChevronRight, Ban, Eye, Clock, CheckCircle2 } from 'lucide-react';
 import { Cadastro } from '../../hooks/useCadastros';
 import { formatCPF, formatDate } from '../../lib/cpf';
 import { AlreadyExistsModal } from './AlreadyExistsModal';
+import { supabase } from '../../lib/supabase';
 
 interface Props {
   cadastros: Cadastro[];
@@ -10,10 +11,9 @@ interface Props {
   statusFilter: 'incompleto' | 'enviado';
 }
 
-interface VendedorGroup {
-  vendedorId: string | null;
-  vendedorNome: string;
-  vendedorCodigo: string | null;
+interface UserGroup {
+  userId: string | null;
+  userName: string;
   empresas: EmpresaGroup[];
 }
 
@@ -24,25 +24,49 @@ interface EmpresaGroup {
   cadastros: Cadastro[];
 }
 
+interface UserProfile {
+  id: string;
+  name: string;
+}
+
 export function CadastrosSupervisorView({ cadastros, onSelect, statusFilter }: Props) {
-  const [expandedVendedores, setExpandedVendedores] = useState<Set<string>>(new Set());
+  const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [expandedEmpresas, setExpandedEmpresas] = useState<Set<string>>(new Set());
   const [viewERPData, setViewERPData] = useState<Cadastro | null>(null);
+  const [users, setUsers] = useState<UserProfile[]>([]);
 
   const cadastrosFiltrados = cadastros.filter((c) => c.status === statusFilter);
 
-  const vendedoresGrouped: VendedorGroup[] = useMemo(() => {
-    const vendedoresMap = new Map<string, Map<string, Cadastro[]>>();
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, name')
+        .order('name', { ascending: true });
+
+      if (error) throw error;
+      setUsers(data || []);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    }
+  };
+
+  const usersGrouped: UserGroup[] = useMemo(() => {
+    const usersMap = new Map<string, Map<string, Cadastro[]>>();
 
     cadastrosFiltrados.forEach((cadastro) => {
-      const vendedorKey = cadastro.vendedor_id || 'sem_vendedor';
+      const userKey = cadastro.created_by || 'sem_usuario';
       const empresaKey = cadastro.empresa_id !== null ? `empresa_${cadastro.empresa_id}` : 'sem_empresa';
 
-      if (!vendedoresMap.has(vendedorKey)) {
-        vendedoresMap.set(vendedorKey, new Map());
+      if (!usersMap.has(userKey)) {
+        usersMap.set(userKey, new Map());
       }
 
-      const empresasMap = vendedoresMap.get(vendedorKey)!;
+      const empresasMap = usersMap.get(userKey)!;
       if (!empresasMap.has(empresaKey)) {
         empresasMap.set(empresaKey, []);
       }
@@ -50,10 +74,11 @@ export function CadastrosSupervisorView({ cadastros, onSelect, statusFilter }: P
       empresasMap.get(empresaKey)!.push(cadastro);
     });
 
-    const result: VendedorGroup[] = [];
+    const result: UserGroup[] = [];
 
-    vendedoresMap.forEach((empresasMap, vendedorKey) => {
+    usersMap.forEach((empresasMap, userKey) => {
       const firstCadastro = Array.from(empresasMap.values())[0][0];
+      const user = users.find(u => u.id === firstCadastro.created_by);
       const empresas: EmpresaGroup[] = [];
 
       empresasMap.forEach((cads, empresaKey) => {
@@ -72,30 +97,29 @@ export function CadastrosSupervisorView({ cadastros, onSelect, statusFilter }: P
       });
 
       result.push({
-        vendedorId: firstCadastro.vendedor_id,
-        vendedorNome: firstCadastro.vendedor_nome || 'Vendedor não informado',
-        vendedorCodigo: firstCadastro.vendedor_codigo,
+        userId: firstCadastro.created_by,
+        userName: user?.name || 'Usuário não identificado',
         empresas,
       });
     });
 
     result.sort((a, b) => {
-      if (!a.vendedorId) return 1;
-      if (!b.vendedorId) return -1;
-      return a.vendedorNome.localeCompare(b.vendedorNome);
+      if (!a.userId) return 1;
+      if (!b.userId) return -1;
+      return a.userName.localeCompare(b.userName);
     });
 
     return result;
-  }, [cadastrosFiltrados]);
+  }, [cadastrosFiltrados, users]);
 
-  const toggleVendedor = (vendedorKey: string) => {
-    const newExpanded = new Set(expandedVendedores);
-    if (newExpanded.has(vendedorKey)) {
-      newExpanded.delete(vendedorKey);
+  const toggleUser = (userKey: string) => {
+    const newExpanded = new Set(expandedUsers);
+    if (newExpanded.has(userKey)) {
+      newExpanded.delete(userKey);
     } else {
-      newExpanded.add(vendedorKey);
+      newExpanded.add(userKey);
     }
-    setExpandedVendedores(newExpanded);
+    setExpandedUsers(newExpanded);
   };
 
   const toggleEmpresa = (empresaKey: string) => {
@@ -122,40 +146,37 @@ export function CadastrosSupervisorView({ cadastros, onSelect, statusFilter }: P
   return (
     <>
       <div className="space-y-4">
-        {vendedoresGrouped.map((vendedor) => {
-          const vendedorKey = vendedor.vendedorId || 'sem_vendedor';
-          const isVendedorExpanded = expandedVendedores.has(vendedorKey);
-          const totalCadastros = vendedor.empresas.reduce((sum, emp) => sum + emp.cadastros.length, 0);
+        {usersGrouped.map((user) => {
+          const userKey = user.userId || 'sem_usuario';
+          const isUserExpanded = expandedUsers.has(userKey);
+          const totalCadastros = user.empresas.reduce((sum, emp) => sum + emp.cadastros.length, 0);
 
           return (
-            <div key={vendedorKey} className="bg-white rounded-xl shadow-sm border border-slate-200">
+            <div key={userKey} className="bg-white rounded-xl shadow-sm border border-slate-200">
               <button
-                onClick={() => toggleVendedor(vendedorKey)}
+                onClick={() => toggleUser(userKey)}
                 className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors"
               >
                 <div className="flex items-center gap-3">
                   <Users className="w-5 h-5 text-blue-600" />
                   <div className="text-left">
-                    <h3 className="font-semibold text-slate-800">{vendedor.vendedorNome}</h3>
-                    {vendedor.vendedorCodigo && (
-                      <p className="text-xs text-slate-500">Código: {vendedor.vendedorCodigo}</p>
-                    )}
+                    <h3 className="font-semibold text-slate-800">{user.userName}</h3>
                   </div>
                   <span className={`ml-2 px-2 py-1 ${statusFilter === 'incompleto' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'} text-xs font-semibold rounded-full`}>
                     {totalCadastros}
                   </span>
                 </div>
-                {isVendedorExpanded ? (
+                {isUserExpanded ? (
                   <ChevronDown className="w-5 h-5 text-slate-400" />
                 ) : (
                   <ChevronRight className="w-5 h-5 text-slate-400" />
                 )}
               </button>
 
-              {isVendedorExpanded && (
+              {isUserExpanded && (
                 <div className="border-t border-slate-200 p-4 space-y-3">
-                  {vendedor.empresas.map((empresa) => {
-                    const empresaKey = `${vendedorKey}_${empresa.empresaId !== null ? empresa.empresaId : 'sem_empresa'}`;
+                  {user.empresas.map((empresa) => {
+                    const empresaKey = `${userKey}_${empresa.empresaId !== null ? empresa.empresaId : 'sem_empresa'}`;
                     const isEmpresaExpanded = expandedEmpresas.has(empresaKey);
 
                     return (

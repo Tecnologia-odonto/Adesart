@@ -804,11 +804,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
           nome: dep.nome,
           cpf: (() => {
           const cpfLimpo = removeCPFMask(dep.cpf || '').trim();
-          if (isMenorDeIdade(dataNascimentoISO)) {
-            return cpfLimpo ? cpfLimpo : '';
-          }
-          // ✅ maior de idade: API não aceita vazio
-          return cpfLimpo ? cpfLimpo : '0';
+          return cpfLimpo ? cpfLimpo : '';
         })(),
           data_nascimento: dataNascimentoISO,
           sexo: dep.sexo === 1 ? 'Masculino' : 'Feminino',
@@ -918,6 +914,10 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
         setError(`Dependente ${i + 1}: Nome da mãe é obrigatório`);
         return;
       }
+      if (config?.exigir_arquivo && !dep.arquivo) {
+        setError(`Dependente ${i + 1}: Arquivo é obrigatório`);
+        return;
+      }
     }
 
     setEnviando(true);
@@ -953,11 +953,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
         nome: dep.nome,
         cpf: (() => {
           const cpfLimpo = removeCPFMask(dep.cpf || '').trim();
-          if (isMenorDeIdade(dep.dataNascimento)) {
-            return cpfLimpo ? cpfLimpo : '';
-          }
-          // ✅ maior de idade: API não aceita vazio
-          return cpfLimpo ? cpfLimpo : '0';
+          return cpfLimpo ? cpfLimpo : '';
         })(),
         sexo: dep.sexo,
         plano: dep.plano,

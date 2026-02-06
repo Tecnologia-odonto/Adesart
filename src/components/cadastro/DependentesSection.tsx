@@ -293,7 +293,7 @@ export function DependentesSection({
       tipo: formData.tipo,
       nome: formData.nome,
       dataNascimento: dataNascimentoISO,
-      cpf: cpfValue || '0',
+      cpf: cpfValue || '',
       sexo: sexoNum,
       sexoDescricao: sexoNum === 1 ? 'Masculino' : (sexoNum === 0 ? 'Feminino' : ''),
       plano: planoId,

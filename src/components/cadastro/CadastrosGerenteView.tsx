@@ -19,13 +19,12 @@ interface Team {
 interface EquipeGroup {
   equipeId: string | null;
   equipeNome: string;
-  vendedores: VendedorGroup[];
+  users: UserGroup[];
 }
 
-interface VendedorGroup {
-  vendedorId: string | null;
-  vendedorNome: string;
-  vendedorCodigo: string | null;
+interface UserGroup {
+  userId: string | null;
+  userName: string;
   empresas: EmpresaGroup[];
 }
 
@@ -38,25 +37,24 @@ interface EmpresaGroup {
 
 export function CadastrosGerenteView({ cadastros, onSelect, statusFilter }: Props) {
   const [teams, setTeams] = useState<Team[]>([]);
-  const [vendedores, setVendedores] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [expandedEquipes, setExpandedEquipes] = useState<Set<string>>(new Set());
-  const [expandedVendedores, setExpandedVendedores] = useState<Set<string>>(new Set());
+  const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [expandedEmpresas, setExpandedEmpresas] = useState<Set<string>>(new Set());
   const [viewERPData, setViewERPData] = useState<Cadastro | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
-      const [teamsResult, vendedoresResult] = await Promise.all([
+      const [teamsResult, usersResult] = await Promise.all([
         supabase.from('teams').select('id, name').eq('is_active', true),
         supabase
           .from('profiles')
-          .select('id, name, team_id, external_id')
-          .eq('role', 'VENDEDOR')
+          .select('id, name, team_id')
           .eq('is_active', true),
       ]);
 
       if (teamsResult.data) setTeams(teamsResult.data);
-      if (vendedoresResult.data) setVendedores(vendedoresResult.data);
+      if (usersResult.data) setUsers(usersResult.data);
     };
 
     fetchData();
@@ -68,21 +66,21 @@ export function CadastrosGerenteView({ cadastros, onSelect, statusFilter }: Prop
     const equipesMap = new Map<string, Map<string, Map<string, Cadastro[]>>>();
 
     cadastrosFiltrados.forEach((cadastro) => {
-      const vendedor = vendedores.find((v) => v.id === cadastro.vendedor_id);
-      const equipeId = vendedor?.team_id || 'sem_equipe';
-      const vendedorKey = cadastro.vendedor_id || 'sem_vendedor';
+      const user = users.find((u) => u.id === cadastro.created_by);
+      const equipeId = user?.team_id || 'sem_equipe';
+      const userKey = cadastro.created_by || 'sem_usuario';
       const empresaKey = cadastro.empresa_id !== null ? `empresa_${cadastro.empresa_id}` : 'sem_empresa';
 
       if (!equipesMap.has(equipeId)) {
         equipesMap.set(equipeId, new Map());
       }
 
-      const vendedoresMap = equipesMap.get(equipeId)!;
-      if (!vendedoresMap.has(vendedorKey)) {
-        vendedoresMap.set(vendedorKey, new Map());
+      const usersMap = equipesMap.get(equipeId)!;
+      if (!usersMap.has(userKey)) {
+        usersMap.set(userKey, new Map());
       }
 
-      const empresasMap = vendedoresMap.get(vendedorKey)!;
+      const empresasMap = usersMap.get(userKey)!;
       if (!empresasMap.has(empresaKey)) {
         empresasMap.set(empresaKey, []);
       }
@@ -92,12 +90,13 @@ export function CadastrosGerenteView({ cadastros, onSelect, statusFilter }: Prop
 
     const result: EquipeGroup[] = [];
 
-    equipesMap.forEach((vendedoresMap, equipeId) => {
+    equipesMap.forEach((usersMap, equipeId) => {
       const equipe = teams.find((t) => t.id === equipeId);
-      const vendedoresArray: VendedorGroup[] = [];
+      const usersArray: UserGroup[] = [];
 
-      vendedoresMap.forEach((empresasMap, vendedorKey) => {
+      usersMap.forEach((empresasMap, userKey) => {
         const firstCadastro = Array.from(empresasMap.values())[0][0];
+        const user = users.find((u) => u.id === firstCadastro.created_by);
         const empresas: EmpresaGroup[] = [];
 
         empresasMap.forEach((cads, empresaKey) => {
@@ -115,24 +114,23 @@ export function CadastrosGerenteView({ cadastros, onSelect, statusFilter }: Prop
           return a.empresaNome.localeCompare(b.empresaNome);
         });
 
-        vendedoresArray.push({
-          vendedorId: firstCadastro.vendedor_id,
-          vendedorNome: firstCadastro.vendedor_nome || 'Vendedor não informado',
-          vendedorCodigo: firstCadastro.vendedor_codigo,
+        usersArray.push({
+          userId: firstCadastro.created_by,
+          userName: user?.name || 'Usuário não identificado',
           empresas,
         });
       });
 
-      vendedoresArray.sort((a, b) => {
-        if (!a.vendedorId) return 1;
-        if (!b.vendedorId) return -1;
-        return a.vendedorNome.localeCompare(b.vendedorNome);
+      usersArray.sort((a, b) => {
+        if (!a.userId) return 1;
+        if (!b.userId) return -1;
+        return a.userName.localeCompare(b.userName);
       });
 
       result.push({
         equipeId,
         equipeNome: equipe?.name || 'Equipe não informada',
-        vendedores: vendedoresArray,
+        users: usersArray,
       });
     });
 
@@ -143,7 +141,7 @@ export function CadastrosGerenteView({ cadastros, onSelect, statusFilter }: Prop
     });
 
     return result;
-  }, [cadastrosFiltrados, teams, vendedores]);
+  }, [cadastrosFiltrados, teams, users]);
 
   const toggleEquipe = (equipeKey: string) => {
     const newExpanded = new Set(expandedEquipes);
@@ -155,14 +153,14 @@ export function CadastrosGerenteView({ cadastros, onSelect, statusFilter }: Prop
     setExpandedEquipes(newExpanded);
   };
 
-  const toggleVendedor = (vendedorKey: string) => {
-    const newExpanded = new Set(expandedVendedores);
-    if (newExpanded.has(vendedorKey)) {
-      newExpanded.delete(vendedorKey);
+  const toggleUser = (userKey: string) => {
+    const newExpanded = new Set(expandedUsers);
+    if (newExpanded.has(userKey)) {
+      newExpanded.delete(userKey);
     } else {
-      newExpanded.add(vendedorKey);
+      newExpanded.add(userKey);
     }
-    setExpandedVendedores(newExpanded);
+    setExpandedUsers(newExpanded);
   };
 
   const toggleEmpresa = (empresaKey: string) => {
@@ -192,8 +190,8 @@ export function CadastrosGerenteView({ cadastros, onSelect, statusFilter }: Prop
         {equipesGrouped.map((equipe) => {
           const equipeKey = equipe.equipeId || 'sem_equipe';
           const isEquipeExpanded = expandedEquipes.has(equipeKey);
-          const totalCadastros = equipe.vendedores.reduce(
-            (sum, vend) => sum + vend.empresas.reduce((s, emp) => s + emp.cadastros.length, 0),
+          const totalCadastros = equipe.users.reduce(
+            (sum, user) => sum + user.empresas.reduce((s, emp) => s + emp.cadastros.length, 0),
             0
           );
 
@@ -207,7 +205,7 @@ export function CadastrosGerenteView({ cadastros, onSelect, statusFilter }: Prop
                   <Briefcase className="w-5 h-5 text-purple-600" />
                   <div className="text-left">
                     <h3 className="font-semibold text-slate-800">{equipe.equipeNome}</h3>
-                    <p className="text-xs text-slate-500">{equipe.vendedores.length} vendedores</p>
+                    <p className="text-xs text-slate-500">{equipe.users.length} usuários</p>
                   </div>
                   <span className={`ml-2 px-2 py-1 ${statusFilter === 'incompleto' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'} text-xs font-semibold rounded-full`}>
                     {totalCadastros}
@@ -222,40 +220,37 @@ export function CadastrosGerenteView({ cadastros, onSelect, statusFilter }: Prop
 
               {isEquipeExpanded && (
                 <div className="border-t border-slate-200 p-4 space-y-3">
-                  {equipe.vendedores.map((vendedor) => {
-                    const vendedorKey = `${equipeKey}_${vendedor.vendedorId || 'sem_vendedor'}`;
-                    const isVendedorExpanded = expandedVendedores.has(vendedorKey);
-                    const totalVendedorCadastros = vendedor.empresas.reduce((sum, emp) => sum + emp.cadastros.length, 0);
+                  {equipe.users.map((user) => {
+                    const userKey = `${equipeKey}_${user.userId || 'sem_usuario'}`;
+                    const isUserExpanded = expandedUsers.has(userKey);
+                    const totalUserCadastros = user.empresas.reduce((sum, emp) => sum + emp.cadastros.length, 0);
 
                     return (
-                      <div key={vendedorKey} className="border border-slate-200 rounded-lg">
+                      <div key={userKey} className="border border-slate-200 rounded-lg">
                         <button
-                          onClick={() => toggleVendedor(vendedorKey)}
+                          onClick={() => toggleUser(userKey)}
                           className="w-full p-3 flex items-center justify-between hover:bg-slate-50 transition-colors rounded-lg"
                         >
                           <div className="flex items-center gap-2">
                             <Users className="w-4 h-4 text-blue-600" />
                             <div className="text-left">
-                              <h4 className="font-medium text-slate-800 text-sm">{vendedor.vendedorNome}</h4>
-                              {vendedor.vendedorCodigo && (
-                                <p className="text-xs text-slate-500">Código: {vendedor.vendedorCodigo}</p>
-                              )}
+                              <h4 className="font-medium text-slate-800 text-sm">{user.userName}</h4>
                             </div>
                             <span className={`ml-2 px-1.5 py-0.5 ${statusFilter === 'incompleto' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'} text-xs font-semibold rounded-full`}>
-                              {totalVendedorCadastros}
+                              {totalUserCadastros}
                             </span>
                           </div>
-                          {isVendedorExpanded ? (
+                          {isUserExpanded ? (
                             <ChevronDown className="w-4 h-4 text-slate-400" />
                           ) : (
                             <ChevronRight className="w-4 h-4 text-slate-400" />
                           )}
                         </button>
 
-                        {isVendedorExpanded && (
+                        {isUserExpanded && (
                           <div className="border-t border-slate-200 p-3 space-y-2 bg-slate-50">
-                            {vendedor.empresas.map((empresa) => {
-                              const empresaKey = `${vendedorKey}_${empresa.empresaId !== null ? empresa.empresaId : 'sem_empresa'}`;
+                            {user.empresas.map((empresa) => {
+                              const empresaKey = `${userKey}_${empresa.empresaId !== null ? empresa.empresaId : 'sem_empresa'}`;
                               const isEmpresaExpanded = expandedEmpresas.has(empresaKey);
 
                               return (

@@ -41,30 +41,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    let mounted = true;
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       (async () => {
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          const profileData = await fetchProfile(session.user.id);
-          setProfile(profileData);
+        if (!mounted) return;
+
+        const newUser = session?.user ?? null;
+        setUser(newUser);
+
+        if (newUser) {
+          const profileData = await fetchProfile(newUser.id);
+          if (mounted) {
+            setProfile(profileData);
+          }
         }
-        setLoading(false);
+
+        if (mounted) {
+          setLoading(false);
+        }
       })();
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       (async () => {
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          const profileData = await fetchProfile(session.user.id);
-          setProfile(profileData);
+        if (!mounted) return;
+
+        const newUser = session?.user ?? null;
+        setUser(prev => {
+          if (prev?.id === newUser?.id) return prev;
+          return newUser;
+        });
+
+        if (newUser) {
+          const profileData = await fetchProfile(newUser.id);
+          if (mounted) {
+            setProfile(prev => {
+              if (prev?.id === profileData?.id && prev?.role === profileData?.role) return prev;
+              return profileData;
+            });
+          }
         } else {
-          setProfile(null);
+          if (mounted) {
+            setProfile(null);
+          }
         }
       })();
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signIn = async (email: string, password: string) => {
