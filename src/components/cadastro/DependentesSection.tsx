@@ -447,7 +447,7 @@ export function DependentesSection({
               onChange={(e) => setFormData({ ...formData, sexo: e.target.value })}
               required
             >
-              <option value="">Selecione</option>
+              <option value="-1">Selecione</option>
               <option value="1">Masculino</option>
               <option value="0">Feminino</option>
             </Select>

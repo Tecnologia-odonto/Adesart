@@ -1148,7 +1148,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
               onChange={(e) => setFormData({ ...formData, sexo: parseInt(e.target.value) })}
               required
             >
-              <option value="">Selecione</option>
+              <option value="-1">Selecione</option>
               <option value="1">Masculino</option>
               <option value="0">Feminino</option>
             </Select>

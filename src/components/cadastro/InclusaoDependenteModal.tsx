@@ -372,7 +372,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       return;
     }
 
-    if (dep.sexo === null || dep.sexo === undefined || dep.sexo === 0) {
+    if (dep.sexo === null || dep.sexo === undefined || dep.sexo < 0) {
       setError(`Dependente ${index + 1}: Sexo é obrigatório`);
       return;
     }
@@ -448,7 +448,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
         cpf: cpfLimpo || '',
         nome: dep.nome || '',
         data_nascimento: dep.dataNascimento ? normalizeToISO(dep.dataNascimento) : null,
-        sexo: dep.sexo === 1 ? 'Masculino' : dep.sexo === 2 ? 'Feminino' : null,
+        sexo: dep.sexo === 1 ? 'Masculino' : dep.sexo === 0 ? 'Feminino' : null,
         parentesco: dep.tipo || null,
         plano_codigo: dep.plano || null,
         nome_mae: dep.nomeMae || null,
@@ -973,7 +973,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
         setError(`Dependente ${i + 1}: Data de nascimento é obrigatória`);
         return;
       }
-      if (dep.sexo === null || dep.sexo === undefined) {
+      if (dep.sexo === null || dep.sexo === undefined || dep.sexo < 0) {
         setError(`Dependente ${i + 1}: Sexo é obrigatório`);
         return;
       }
@@ -1477,7 +1477,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                             required={!isMenorDeIdade(dep.dataNascimento)}
                             disabled={dep.saved}
                           >
-                            <option value="">Selecione</option>
+                            <option value="-1">Selecione</option>
                             <option value="1">Masculino</option>
                             <option value="0">Feminino</option>
                           </Select>

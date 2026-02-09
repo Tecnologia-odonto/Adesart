@@ -117,7 +117,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
         nome: dep.nome || '',
         cpf: dep.cpf || '',
         dataNascimento: dep.data_nascimento || '',
-        sexo: dep.sexo === 'Masculino' ? 1 : dep.sexo === 'Feminino' ? 2 : 0,
+        sexo: dep.sexo === 'Masculino' ? 1 : dep.sexo === 'Feminino' ? 0 : -1,
         parentesco: dep.parentesco || 0,
         plano: dep.plano_codigo || 0,
         planoValor: '0.00',
@@ -134,7 +134,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
       nome: cadastro.nome || '',
       cpf: cadastro.cpf || '',
       dataNascimento: cadastro.data_nascimento || '',
-      sexo: cadastro.sexo === 'Masculino' ? 1 : cadastro.sexo === 'Feminino' ? 2 : 0,
+      sexo: cadastro.sexo === 'Masculino' ? 1 : cadastro.sexo === 'Feminino' ? 0 : -1,
       parentesco: cadastro.parentesco || 0,
       plano: cadastro.plano_codigo || 0,
       planoValor: '0.00',
@@ -669,7 +669,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
         nome: dep.nome,
         cpf: dep.cpf,
         data_nascimento: dep.dataNascimento,
-        sexo: dep.sexo === 1 ? 'Masculino' : dep.sexo === 2 ? 'Feminino' : null,
+        sexo: dep.sexo === 1 ? 'Masculino' : dep.sexo === 0 ? 'Feminino' : null,
         parentesco: dep.parentesco,
         plano_codigo: dep.plano,
         nome_mae: dep.nomeMae,
@@ -751,7 +751,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
         return;
       }
 
-      if (dep.sexo === 0) {
+      if (dep.sexo < 0) {
         setError(`Dependente ${i + 1}: Sexo é obrigatório`);
         return;
       }
@@ -1216,9 +1216,9 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
                     onChange={(e) => updateDependente(index, 'sexo', parseInt(e.target.value))}
                     required
                   >
-                    <option value="0">Selecione</option>
+                    <option value="-1">Selecione</option>
                     <option value="1">Masculino</option>
-                    <option value="2">Feminino</option>
+                    <option value="0">Feminino</option>
                   </Select>
 
                   <Select
