@@ -111,7 +111,7 @@ export function normalizeToISO(date: string): string {
 
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(date)) {
     const [dd, mm, yyyy] = date.split('/');
-    return `${yyyy}-${mm}-${dd}`;
+    return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
   }
 
   return '';

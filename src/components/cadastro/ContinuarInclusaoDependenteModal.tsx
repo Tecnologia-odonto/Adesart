@@ -13,6 +13,7 @@ import { useCadastros } from '../../hooks/useCadastros';
 import { EmpresaSearchCard } from './EmpresaSearchCard';
 import { LemmitLimitModal } from './LemmitLimitModal';
 import { SelectStatusModal } from './SelectStatusModal';
+import { EmpresaNaoIdentificadaModal } from './EmpresaNaoIdentificadaModal';
 
 interface ContinuarInclusaoDependenteModalProps {
   cadastro: Cadastro;
@@ -103,7 +104,6 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
   const { config, planos, parentescos } = useConfigCadastro();
   const { searchEmpresa } = useCadastros();
 
-  const [showEmpresaSearch, setShowEmpresaSearch] = useState(false);
   const [empresaCodigo, setEmpresaCodigo] = useState(cadastro.empresa_codigo);
   const [empresaNome, setEmpresaNome] = useState(cadastro.empresa_nome);
   const [empresaObservacao, setEmpresaObservacao] = useState('');
@@ -158,6 +158,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
   } | null>(null);
   const [showSelectStatusModal, setShowSelectStatusModal] = useState(false);
   const [pendingClose, setPendingClose] = useState(false);
+  const [showEmpresaModal, setShowEmpresaModal] = useState(false);
 
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [selectedVendedor, setSelectedVendedor] = useState<string>(cadastro.vendedor_id || '');
@@ -196,22 +197,48 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
   }, [profile]);
 
   useEffect(() => {
-    if (!empresaCodigo) {
-      setShowEmpresaSearch(true);
+    if (cadastro.empresa_raw && cadastro.empresa_raw.precoPlano) {
+      setPlanosEmpresa(cadastro.empresa_raw.precoPlano || []);
+      setEmpresaObservacao(cadastro.empresa_raw.observacao || cadastro.empresa_raw.observacoes || '');
+
+      if (cadastro.plano_codigo && cadastro.empresa_raw.precoPlano) {
+        const planoEncontrado = cadastro.empresa_raw.precoPlano.find((p: any) => p.Plano === cadastro.plano_codigo);
+        if (planoEncontrado) {
+          const planoMap = planos.find((pm) => pm.plano_id === planoEncontrado.Plano);
+          const valor = planoMap?.regra_valor === 'titular'
+            ? planoEncontrado.ValorTitular
+            : planoMap?.regra_valor === 'agregado'
+            ? planoEncontrado.ValorAgregado
+            : planoEncontrado.ValorDependente;
+
+          setDependentes(prev => prev.map((dep, idx) =>
+            idx === 0 ? { ...dep, planoValor: valor?.toString() || '0.00' } : dep
+          ));
+        }
+      }
+    } else if (!empresaCodigo || !empresaNome || empresaNome.trim() === '') {
+      setShowEmpresaModal(true);
     } else {
       fetchEmpresaPlanos();
     }
-  }, [empresaCodigo]);
+  }, []);
 
   useEffect(() => {
     if (planosEmpresa.length > 0) {
       setDependentes(prev => prev.map(dep => {
         if (dep.plano && dep.plano !== 0) {
-          const planoEncontrado = planosEmpresa.find((p: any) => p.codigoPlano === dep.plano);
+          const planoEncontrado = planosEmpresa.find((p: any) => p.Plano === dep.plano);
           if (planoEncontrado) {
+            const planoMap = planos.find((pm) => pm.plano_id === planoEncontrado.Plano);
+            const valor = planoMap?.regra_valor === 'titular'
+              ? planoEncontrado.ValorTitular
+              : planoMap?.regra_valor === 'agregado'
+              ? planoEncontrado.ValorAgregado
+              : planoEncontrado.ValorDependente;
+
             return {
               ...dep,
-              planoValor: planoEncontrado.valorPlano?.toString() || '0.00'
+              planoValor: valor?.toString() || '0.00'
             };
           }
         }
@@ -221,7 +248,10 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
   }, [planosEmpresa]);
 
   const fetchEmpresaPlanos = async () => {
-    if (!empresaCodigo) return;
+    if (!empresaCodigo) {
+      setShowEmpresaModal(true);
+      return;
+    }
 
     setLoadingEmpresa(true);
     try {
@@ -232,44 +262,49 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
         setPlanosEmpresa(empresa.precoPlano || []);
         setEmpresaObservacao(empresa.observacao || '');
 
+        const updateData: any = {};
+
+        if (!empresaNome || empresaNome.trim() === '') {
+          const nomeEmpresa = empresa.nomeFantasia || empresa.razaoSocial || '';
+          setEmpresaNome(nomeEmpresa);
+          updateData.empresa_nome = nomeEmpresa;
+        }
+
+        if (!cadastro.empresa_raw) {
+          updateData.empresa_raw = empresa;
+        }
+
+        if (Object.keys(updateData).length > 0) {
+          await supabase
+            .from('cadastros')
+            .update(updateData)
+            .eq('id', cadastro.id);
+        }
+
         if (cadastro.plano_codigo && empresa.precoPlano) {
-          const planoEncontrado = empresa.precoPlano.find((p: any) => p.codigoPlano === cadastro.plano_codigo);
+          const planoEncontrado = empresa.precoPlano.find((p: any) => p.Plano === cadastro.plano_codigo);
           if (planoEncontrado) {
+            const planoMap = planos.find((pm) => pm.plano_id === planoEncontrado.Plano);
+            const valor = planoMap?.regra_valor === 'titular'
+              ? planoEncontrado.ValorTitular
+              : planoMap?.regra_valor === 'agregado'
+              ? planoEncontrado.ValorAgregado
+              : planoEncontrado.ValorDependente;
+
             setDependentes(prev => prev.map((dep, idx) =>
-              idx === 0 ? { ...dep, planoValor: planoEncontrado.valorPlano?.toString() || '0.00' } : dep
+              idx === 0 ? { ...dep, planoValor: valor?.toString() || '0.00' } : dep
             ));
           }
         }
+      } else {
+        console.error('Empresa não encontrada');
+        setShowEmpresaModal(true);
       }
     } catch (err) {
       console.error('Erro ao buscar planos:', err);
+      setShowEmpresaModal(true);
     } finally {
       setLoadingEmpresa(false);
-    }
-  };
-
-  const handleEmpresaSelected = async (codigo: number, nomeFantasia: string) => {
-    setEmpresaCodigo(codigo);
-    setEmpresaNome(nomeFantasia);
-    setShowEmpresaSearch(false);
-
-    const { error: updateError } = await supabase
-      .from('cadastros')
-      .update({
-        empresa_codigo: codigo,
-        empresa_nome: nomeFantasia
-      })
-      .eq('id', cadastro.id);
-
-    if (updateError) {
-      console.error('Erro ao atualizar cadastro:', updateError);
-    }
-
-    const result = await searchEmpresa(codigo.toString(), 'id');
-    if (result.ok && result.empresas && result.empresas.length > 0) {
-      const empresa = result.empresas[0];
-      setPlanosEmpresa(empresa.precoPlano || []);
-      setEmpresaObservacao(empresa.observacao || '');
     }
   };
 
@@ -411,7 +446,15 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
       if (lemitData.success && lemitData.data) {
         const lemmitInfo = lemitData.data;
         const nomeCompleto = `${lemmitInfo.nome || ''} ${lemmitInfo.sobrenome || ''}`.trim();
-        const dataNascimento = lemmitInfo.dataNascimento ? lemmitInfo.dataNascimento.split('T')[0] : '';
+
+        let dataNascimento = '';
+        if (lemmitInfo.dataNascimento) {
+          const dataStr = lemmitInfo.dataNascimento.split('T')[0];
+          if (/^\d{4}-\d{2}-\d{2}$/.test(dataStr)) {
+            dataNascimento = dataStr;
+          }
+        }
+
         const nomeMae = lemmitInfo.nomeMae || '';
 
         setDependentes(prev => prev.map((dep, idx) => {
@@ -441,13 +484,20 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
   };
 
   const handlePlanoChange = (index: number, planoId: number) => {
-    const planoEncontrado = planosEmpresa.find((p: any) => p.codigoPlano === planoId);
+    const planoEncontrado = planosEmpresa.find((p: any) => p.Plano === planoId);
+    const planoMap = planos.find((pm) => pm.plano_id === planoId);
+    const valor = planoMap?.regra_valor === 'titular'
+      ? planoEncontrado?.ValorTitular
+      : planoMap?.regra_valor === 'agregado'
+      ? planoEncontrado?.ValorAgregado
+      : planoEncontrado?.ValorDependente;
+
     setDependentes(prev => prev.map((dep, idx) => {
       if (idx === index) {
         return {
           ...dep,
           plano: planoId,
-          planoValor: planoEncontrado?.valorPlano?.toString() || '0.00'
+          planoValor: valor?.toString() || '0.00'
         };
       }
       return dep;
@@ -966,28 +1016,55 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
     }
   };
 
-  if (showEmpresaSearch) {
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-          <div className="sticky top-0 bg-amber-600 text-white px-6 py-4 flex items-center justify-between rounded-t-xl z-10">
-            <div>
-              <h2 className="text-xl font-bold">Empresa não identificada</h2>
-              <p className="text-sm text-amber-100">Busque e selecione a empresa antes de continuar</p>
-            </div>
-            <button
-              onClick={handleRequestClose}
-              className="text-white hover:bg-amber-700 p-2 rounded-lg transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+  const handleEmpresaModalSelected = async (codigo: number, nome: string, planos: any[]) => {
+    setEmpresaCodigo(codigo);
+    setEmpresaNome(nome);
+    setPlanosEmpresa(planos);
+    setShowEmpresaModal(false);
 
-          <div className="p-6">
-            <EmpresaSearchCard onEmpresaSelected={handleEmpresaSelected} />
-          </div>
-        </div>
-      </div>
+    try {
+      const result = await searchEmpresa(codigo.toString(), 'id');
+      let empresaCompleta = null;
+
+      if (result.ok && result.empresas && result.empresas.length > 0) {
+        empresaCompleta = result.empresas[0];
+      }
+
+      const { error: updateError } = await supabase
+        .from('cadastros')
+        .update({
+          empresa_codigo: codigo,
+          empresa_nome: nome,
+          empresa_raw: empresaCompleta
+        })
+        .eq('id', cadastro.id);
+
+      if (updateError) {
+        console.error('Erro ao atualizar cadastro:', updateError);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar empresa completa:', err);
+      const { error: updateError } = await supabase
+        .from('cadastros')
+        .update({
+          empresa_codigo: codigo,
+          empresa_nome: nome
+        })
+        .eq('id', cadastro.id);
+
+      if (updateError) {
+        console.error('Erro ao atualizar cadastro:', updateError);
+      }
+    }
+  };
+
+  if (showEmpresaModal) {
+    return (
+      <EmpresaNaoIdentificadaModal
+        onEmpresaSelected={handleEmpresaModalSelected}
+        onClose={() => {}}
+        required={true}
+      />
     );
   }
 
@@ -1149,13 +1226,16 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
                     value={dep.parentesco || 0}
                     onChange={(e) => updateDependente(index, 'parentesco', parseInt(e.target.value))}
                     required
+                    disabled={loading || parentescos.length === 0}
                   >
-                    <option value={0}>Selecione</option>
+                    <option value={0}>
+                      {parentescos.length === 0 ? 'Carregando...' : 'Selecione'}
+                    </option>
                     {parentescos
                       .filter(p => p.ativo && p.parentesco_id !== 1)
                       .map(p => (
-                        <option key={p.parentesco_id} value={p.parentesco_id}>
-                          {p.nome_exibicao}
+                        <option key={p.id} value={p.parentesco_id}>
+                          {p.label}
                         </option>
                       ))}
                   </Select>
@@ -1171,12 +1251,21 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
                       {loadingEmpresa ? 'Carregando planos...' : 'Selecione'}
                     </option>
                     {planosEmpresa
-                      .filter((p: any) => !config?.planos_ocultos?.includes(p.codigoPlano?.toString()))
-                      .map((p: any) => (
-                        <option key={p.codigoPlano} value={p.codigoPlano}>
-                          {p.nomePlano} - R$ {p.valorPlano?.toFixed(2)}
-                        </option>
-                      ))}
+                      .filter((p: any) => !config?.planos_ocultos?.includes(p.Plano?.toString()))
+                      .map((p: any, idx: number) => {
+                        const planoMap = planos.find((pm) => pm.plano_id === p.Plano);
+                        const valor = planoMap?.regra_valor === 'titular'
+                          ? p.ValorTitular
+                          : planoMap?.regra_valor === 'agregado'
+                          ? p.ValorAgregado
+                          : p.ValorDependente;
+
+                        return (
+                          <option key={`${p.Plano}-${idx}`} value={p.Plano}>
+                            {planoMap?.nome_exibicao || `Plano ${p.Plano}`} - R$ {valor?.toFixed(2) || '0.00'}
+                          </option>
+                        );
+                      })}
                   </Select>
 
                   <div className="md:col-span-2">

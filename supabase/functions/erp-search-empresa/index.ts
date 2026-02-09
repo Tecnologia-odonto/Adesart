@@ -293,6 +293,7 @@ Deno.serve(async (req: Request) => {
 
     const empresas = (erpResponse.dados || []).map((empresa: ERPEmpresa) => ({
       id: empresa.Id,
+      codigo: empresa.Id,
       razaoSocial: empresa.RazaoSocial,
       nomeFantasia: empresa.NomeFantazia,
       cnpj: empresa.Cnpj,
@@ -310,6 +311,7 @@ Deno.serve(async (req: Request) => {
       },
       exigeMatricula: empresa.ExigeMatricula || 0,
       observacoes: empresa.ObservacaoComercial || '',
+      observacao: empresa.ObservacaoComercial || '',
       precoPlano: empresa.PrecoPlano || [],
       raw: empresa,
     }));

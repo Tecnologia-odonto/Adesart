@@ -12,6 +12,7 @@ import { supabase } from '../../lib/supabase';
 import { LemmitLimitModal } from './LemmitLimitModal';
 import { ParceiroInvalidoModal } from './ParceiroInvalidoModal';
 import { SelectStatusModal } from './SelectStatusModal';
+import { EmpresaNaoIdentificadaModal } from './EmpresaNaoIdentificadaModal';
 
 interface InclusaoDependenteModalProps {
   onClose: () => void;
@@ -129,6 +130,9 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
   const [autoSavingIndex, setAutoSavingIndex] = useState<number | null>(null);
   const [showSelectStatusModal, setShowSelectStatusModal] = useState(false);
   const [pendingSaveDependentes, setPendingSaveDependentes] = useState(false);
+  const [showEmpresaModal, setShowEmpresaModal] = useState(false);
+  const [empresaCodigo, setEmpresaCodigo] = useState<number | null>(null);
+  const [empresaNome, setEmpresaNome] = useState<string>('');
 
   const funcionarioCadastroId = profile?.external_id ? parseInt(profile.external_id) : null;
 
@@ -267,6 +271,8 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
     setError('');
     setPlanosEmpresa([]);
     setEmpresaCompleta(null);
+    setEmpresaCodigo(responsavel.codigoEmpresa);
+    setEmpresaNome(responsavel.empresa);
 
     if (responsavel.codigoEmpresa) {
       setLoadingEmpresa(true);
@@ -277,14 +283,49 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
           const empresa = result.empresas[0];
           setEmpresaCompleta(empresa);
           setPlanosEmpresa(empresa.precoPlano || []);
+          setEmpresaCodigo(empresa.codigo || responsavel.codigoEmpresa);
+          setEmpresaNome(empresa.nomeFantasia || empresa.razaoSocial || responsavel.empresa);
         } else {
           setError('Não foi possível carregar os planos da empresa');
+          setShowEmpresaModal(true);
         }
       } catch (err) {
         console.error('Erro ao buscar empresa:', err);
         setError('Erro ao carregar planos da empresa');
+        setShowEmpresaModal(true);
       } finally {
         setLoadingEmpresa(false);
+      }
+    } else {
+      setShowEmpresaModal(true);
+    }
+  };
+
+  const handleEmpresaModalSelected = async (codigo: number, nome: string, planos: any[]) => {
+    setEmpresaCodigo(codigo);
+    setEmpresaNome(nome);
+    setPlanosEmpresa(planos);
+    setShowEmpresaModal(false);
+
+    if (responsavelSelecionado) {
+      try {
+        const result = await searchEmpresa(codigo.toString(), 'id');
+        if (result.ok && result.empresas && result.empresas.length > 0) {
+          setEmpresaCompleta(result.empresas[0]);
+        } else {
+          setEmpresaCompleta({
+            codigo: codigo,
+            nomeFantasia: nome,
+            precoPlano: planos
+          });
+        }
+      } catch (err) {
+        console.error('Erro ao buscar empresa completa:', err);
+        setEmpresaCompleta({
+          codigo: codigo,
+          nomeFantasia: nome,
+          precoPlano: planos
+        });
       }
     }
   };
@@ -401,8 +442,9 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
         responsavel_financeiro_codigo: responsavelSelecionado.codigo,
         responsavel_financeiro_nome: responsavelSelecionado.nome,
         responsavel_financeiro_cpf: responsavelSelecionado.cpf,
-        empresa_nome: empresaCompleta?.nomeFantasia || responsavelSelecionado.empresa,
-        empresa_codigo: responsavelSelecionado.codigoEmpresa,
+        empresa_nome: empresaNome || empresaCompleta?.nomeFantasia || responsavelSelecionado.empresa,
+        empresa_codigo: empresaCodigo || responsavelSelecionado.codigoEmpresa,
+        empresa_raw: empresaCompleta || null,
         cpf: cpfLimpo || '',
         nome: dep.nome || '',
         data_nascimento: dep.dataNascimento ? normalizeToISO(dep.dataNascimento) : null,
@@ -571,7 +613,10 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
           let dataNascimentoFormatada = depAtual.dataNascimento;
           if (lemitData.pessoa.data_nascimento && typeof lemitData.pessoa.data_nascimento === 'string') {
             try {
-              dataNascimentoFormatada = lemitData.pessoa.data_nascimento.split('T')[0];
+              const dataStr = lemitData.pessoa.data_nascimento.split('T')[0];
+              if (/^\d{4}-\d{2}-\d{2}$/.test(dataStr)) {
+                dataNascimentoFormatada = dataStr;
+              }
             } catch (e) {
               console.warn('Erro ao formatar data de nascimento:', e);
             }
@@ -796,6 +841,14 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
     setSalvandoPendente(true);
 
     try {
+      const dependentesSalvos = dependentes.filter(d => d.saved);
+
+      if (dependentesSalvos.length === 0) {
+        setError('Nenhum dependente salvo para enviar');
+        setSalvandoPendente(false);
+        return;
+      }
+
       const vendedorSelecionado = vendedores.find(v => v.id === selectedVendedor);
       const adesionistaSelecionado = adesionistas.find(a => a.id === selectedAdesionista);
 
@@ -817,7 +870,8 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
           responsavel_financeiro_nome: responsavelSelecionado.nome,
           responsavel_financeiro_cpf: responsavelSelecionado.cpf,
           empresa_nome: empresaCompleta?.nomeFantasia || responsavelSelecionado.empresa,
-          empresa_codigo: responsavelSelecionado.codigoEmpresa,
+          empresa_codigo: empresaCodigo || responsavelSelecionado.codigoEmpresa,
+          empresa_raw: empresaCompleta || null,
           nome: dep.nome,
           cpf: (() => {
           const cpfLimpo = removeCPFMask(dep.cpf || '').trim();
@@ -1156,6 +1210,16 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
     }
   };
 
+  if (showEmpresaModal) {
+    return (
+      <EmpresaNaoIdentificadaModal
+        onEmpresaSelected={handleEmpresaModalSelected}
+        onClose={() => setShowEmpresaModal(false)}
+        required={false}
+      />
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
       <div className="bg-white rounded-xl shadow-xl max-w-5xl w-full my-8 max-h-[90vh] overflow-y-auto">
@@ -1420,12 +1484,12 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
 
                           <Select
                             label="Parentesco"
-                            value={dep.tipo.toString()}
+                            value={dep.tipo || 0}
                             onChange={(e) => handleAtualizarDependente(index, 'tipo', parseInt(e.target.value))}
                             required={!isMenorDeIdade(dep.dataNascimento)}
                             disabled={dep.saved}
                           >
-                            <option value="0">Selecione</option>
+                            <option value={0}>Selecione</option>
                             {parentescos
                               .filter(p => p.ativo && p.parentesco_id !== 1)
                               .map((p) => (
@@ -1437,7 +1501,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
 
                           <Select
                             label="Plano"
-                            value={String(dep.plano)}
+                            value={dep.plano || 0}
                             onChange={(e) => {
                               const planoSelecionado = parseInt(e.target.value, 10);
 
@@ -1452,7 +1516,6 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                                 planoEmpresaSelecionado?.NomeANS ||
                                 `Plano ${planoSelecionado}`;
 
-                              // CORREÇÃO: usar SEMPRE ValorTitular
                               const valorTitular = Number(planoEmpresaSelecionado?.ValorTitular ?? 0);
                               const valorFormatado = valorTitular.toFixed(2);
 
@@ -1469,16 +1532,16 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                             required
                             disabled={dep.saved || loadingEmpresa}
                           >
-                            <option value="0">
+                            <option value={0}>
                               {loadingEmpresa ? "Carregando planos..." : "Selecione um plano"}
                             </option>
 
                             {planosEmpresa
                               .filter((p) => !config?.planos_ocultos?.includes(p.Plano?.toString()))
-                              .map((planoEmpresa) => {
+                              .map((planoEmpresa, idx) => {
                                 const planoMap = planos.find((pm) => pm.plano_id === planoEmpresa.Plano);
                                 return (
-                                  <option key={planoEmpresa.Plano} value={planoEmpresa.Plano}>
+                                  <option key={`${planoEmpresa.Plano}-${idx}`} value={planoEmpresa.Plano}>
                                     {planoMap?.nome_exibicao ||
                                       planoEmpresa.NomeANS ||
                                       `Plano ${planoEmpresa.Plano}`}
