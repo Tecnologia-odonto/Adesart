@@ -219,7 +219,7 @@ export function CadastrosSupervisorView({ cadastros, onSelect, statusFilter }: P
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                                         <h5 className="font-medium text-slate-800 text-sm truncate">
-                                          {cadastro.nome || formatCPF(cadastro.cpf)}
+                                          {cadastro.nome || (cadastro.cpf ? formatCPF(cadastro.cpf) : 'Sem identificação')}
                                         </h5>
                                         {cadastro.tipo_cadastro === 'inclusao_dependente' && (
                                           <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600">
@@ -240,7 +240,7 @@ export function CadastrosSupervisorView({ cadastros, onSelect, statusFilter }: P
                                         )}
                                       </div>
                                       <div className="space-y-0.5 text-xs text-slate-600">
-                                        <p>CPF: {formatCPF(cadastro.cpf)}</p>
+                                        <p>CPF: {cadastro.cpf ? formatCPF(cadastro.cpf) : 'CPF não informado'}</p>
                                         {cadastro.data_nascimento && (
                                           <p>Nascimento: {formatDate(cadastro.data_nascimento)}</p>
                                         )}

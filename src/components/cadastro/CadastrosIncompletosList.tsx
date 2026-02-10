@@ -166,7 +166,7 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
       if (buscaClienteAplicada) {
         matchCliente =
           cadastro.nome?.toLowerCase().includes(buscaClienteLower) ||
-          cadastro.cpf.includes(buscaClienteNumeros) ||
+          (cadastro.cpf && cadastro.cpf.includes(buscaClienteNumeros)) ||
           false;
 
         if (!matchCliente && cadastro.dependentes) {
@@ -219,17 +219,18 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
     const clientesMap = new Map<string, Cadastro[]>();
 
     cadastrosFiltrados.forEach((cadastro) => {
-      const cpf = cadastro.cpf;
-      if (!clientesMap.has(cpf)) {
-        clientesMap.set(cpf, []);
+      // Use CPF como chave, ou o ID do cadastro se CPF for null (para inclusões de dependente)
+      const chave = cadastro.cpf || cadastro.id;
+      if (!clientesMap.has(chave)) {
+        clientesMap.set(chave, []);
       }
-      clientesMap.get(cpf)!.push(cadastro);
+      clientesMap.get(chave)!.push(cadastro);
     });
 
     const groups: ClienteGroup[] = [];
-    clientesMap.forEach((cads, cpf) => {
+    clientesMap.forEach((cads, chave) => {
       groups.push({
-        cpf,
+        cpf: chave, // Pode ser CPF ou ID
         nome: cads[0].nome,
         cadastros: cads,
       });
@@ -410,7 +411,11 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
                   <h3 className="font-semibold text-slate-800">
                     {cliente.nome || 'Nome não informado'}
                   </h3>
-                  <p className="text-sm text-slate-600">CPF: {formatCPF(cliente.cpf)}</p>
+                  {/* Exibe CPF apenas se não for um UUID (cadastros normais) */}
+                  {cliente.cpf && !cliente.cpf.includes('-') && (
+                    <p className="text-sm text-slate-600">CPF: {formatCPF(cliente.cpf)}</p>
+                  )}
+                  {/* Para inclusão de dependente sem CPF, não exibe nada */}
                 </div>
                 <span className="ml-auto px-2 py-1 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full">
                   {cliente.cadastros.length} {cliente.cadastros.length === 1 ? 'adesão' : 'adesões'}
@@ -539,7 +544,7 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
 
       {viewERPData && viewERPData.erp_dados_associado && (
         <AlreadyExistsModal
-          cpf={formatCPF(viewERPData.cpf)}
+          cpf={viewERPData.cpf ? formatCPF(viewERPData.cpf) : 'Sem CPF'}
           summary={(viewERPData.erp_dados_associado as any).summary || {
             empresa: null,
             codigo: null,

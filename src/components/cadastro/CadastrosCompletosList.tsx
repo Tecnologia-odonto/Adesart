@@ -84,7 +84,7 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
       if (buscaClienteAplicada) {
         matchCliente =
           cadastro.nome?.toLowerCase().includes(buscaClienteLower) ||
-          cadastro.cpf.includes(buscaClienteNumeros) ||
+          (cadastro.cpf && cadastro.cpf.includes(buscaClienteNumeros)) ||
           false;
 
         if (!matchCliente && cadastro.dependentes) {
@@ -326,10 +326,10 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
                         >
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-slate-800 truncate">
-                              {cadastro.nome || formatCPF(cadastro.cpf)}
+                              {cadastro.nome || (cadastro.cpf ? formatCPF(cadastro.cpf) : 'Sem identificação')}
                             </p>
                             <p className="text-xs text-slate-500">
-                              {formatCPF(cadastro.cpf)}
+                              {cadastro.cpf ? formatCPF(cadastro.cpf) : 'CPF não informado'}
                             </p>
                           </div>
                           <button
@@ -407,7 +407,7 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
 
               <div>
                 <p className="text-sm font-medium text-slate-600">CPF</p>
-                <p className="text-slate-800">{formatCPF(viewDetails.cpf)}</p>
+                <p className="text-slate-800">{viewDetails.cpf ? formatCPF(viewDetails.cpf) : 'CPF não informado'}</p>
               </div>
 
               {viewDetails.data_nascimento && (

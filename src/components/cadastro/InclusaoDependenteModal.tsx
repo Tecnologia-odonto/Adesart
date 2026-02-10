@@ -127,7 +127,6 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
   const [consultingLemmitIndex, setConsultingLemmitIndex] = useState<number | null>(null);
   const [cpfValidationErrors, setCpfValidationErrors] = useState<Record<number, string>>({});
   const [showParceiroInvalidoModal, setShowParceiroInvalidoModal] = useState(false);
-  const [autoSavingIndex, setAutoSavingIndex] = useState<number | null>(null);
   const [showSelectStatusModal, setShowSelectStatusModal] = useState(false);
   const [pendingSaveDependentes, setPendingSaveDependentes] = useState(false);
   const [showEmpresaModal, setShowEmpresaModal] = useState(false);
@@ -415,72 +414,6 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
     setDependentes(dependentes.filter((_, i) => i !== index));
   };
 
-  const autoSaveDependente = async (index: number) => {
-    if (!responsavelSelecionado || !profile?.id) {
-      return;
-    }
-
-    const dep = dependentes[index];
-
-    if (!dep.cpf) {
-      return;
-    }
-
-    setAutoSavingIndex(index);
-
-    try {
-      const vendedorSelecionado = vendedores.find(v => v.id === selectedVendedor);
-      const adesionistaSelecionado = adesionistas.find(a => a.id === selectedAdesionista);
-
-      const cpfLimpo = removeCPFMask(dep.cpf || '').trim();
-
-      const cadastroData: any = {
-        created_by: profile.id,
-        team_id: profile.team_id || null,
-        status: 'incompleto',
-        tipo_cadastro: 'inclusao_dependente',
-        responsavel_financeiro_codigo: responsavelSelecionado.codigo,
-        responsavel_financeiro_nome: responsavelSelecionado.nome,
-        responsavel_financeiro_cpf: responsavelSelecionado.cpf,
-        empresa_nome: empresaNome || empresaCompleta?.nomeFantasia || responsavelSelecionado.empresa,
-        empresa_codigo: empresaCodigo || responsavelSelecionado.codigoEmpresa,
-        empresa_raw: empresaCompleta || null,
-        cpf: cpfLimpo || '',
-        nome: dep.nome || '',
-        data_nascimento: dep.dataNascimento ? normalizeToISO(dep.dataNascimento) : null,
-        sexo: dep.sexo === 1 ? 'Masculino' : dep.sexo === 0 ? 'Feminino' : null,
-        parentesco: dep.tipo || null,
-        plano_codigo: dep.plano || null,
-        nome_mae: dep.nomeMae || null,
-      };
-
-      if (vendedorSelecionado) {
-        cadastroData.vendedor_id = vendedorSelecionado.id;
-        cadastroData.vendedor_codigo = vendedorSelecionado.external_id;
-        cadastroData.vendedor_nome = vendedorSelecionado.name;
-      }
-
-      if (adesionistaSelecionado) {
-        cadastroData.adesionista_id = adesionistaSelecionado.id;
-        cadastroData.adesionista_codigo = adesionistaSelecionado.external_id;
-        cadastroData.adesionista_nome = adesionistaSelecionado.name;
-      }
-
-      const { error: insertError } = await supabase
-        .from('cadastros')
-        .insert([cadastroData]);
-
-      if (insertError) {
-        console.error('Erro ao auto-salvar:', insertError);
-      } else {
-        console.log('Cadastro auto-salvo com sucesso');
-      }
-    } catch (err: any) {
-      console.error('Erro ao auto-salvar dependente:', err);
-    } finally {
-      setAutoSavingIndex(null);
-    }
-  };
 
   const handleAtualizarDependente = async (index: number, campo: string, valor: any) => {
     setDependentes((prev) => {
@@ -509,10 +442,6 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
         });
 
         await consultarLemmitDependente(index, cpfLimpo);
-
-        setTimeout(() => {
-          autoSaveDependente(index);
-        }, 500);
       } else {
         setCpfValidationErrors(prev => {
           const next = { ...prev };
@@ -852,59 +781,59 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       const vendedorSelecionado = vendedores.find(v => v.id === selectedVendedor);
       const adesionistaSelecionado = adesionistas.find(a => a.id === selectedAdesionista);
 
-      for (const dep of dependentesSalvos) {
+      const dependentesData = dependentesSalvos.map(dep => {
         const dataNascimentoISO = normalizeToISO(dep.dataNascimento);
         if (!dataNascimentoISO) {
           throw new Error(`Data de nascimento inválida para dependente ${dep.nome}`);
         }
 
-        const planoMap = planos.find(pm => pm.plano_id === dep.plano);
+        const cpfLimpo = removeCPFMask(dep.cpf || '').trim();
 
-        const cadastroData: any = {
-          created_by: profile.id,
-          team_id: profile.team_id || null,
-          status: 'incompleto',
-          status_adesao_id: statusId,
-          tipo_cadastro: 'inclusao_dependente',
-          responsavel_financeiro_codigo: responsavelSelecionado.codigo,
-          responsavel_financeiro_nome: responsavelSelecionado.nome,
-          responsavel_financeiro_cpf: responsavelSelecionado.cpf,
-          empresa_nome: empresaCompleta?.nomeFantasia || responsavelSelecionado.empresa,
-          empresa_codigo: empresaCodigo || responsavelSelecionado.codigoEmpresa,
-          empresa_raw: empresaCompleta || null,
+        return {
           nome: dep.nome,
-          cpf: (() => {
-          const cpfLimpo = removeCPFMask(dep.cpf || '').trim();
-          return cpfLimpo ? cpfLimpo : '';
-        })(),
+          cpf: cpfLimpo || '',
           data_nascimento: dataNascimentoISO,
           sexo: dep.sexo === 1 ? 'Masculino' : 'Feminino',
           parentesco: dep.tipo,
           plano_codigo: dep.plano,
-          plano_nome: planoMap?.nome_exibicao || `Plano ${dep.plano}`,
           nome_mae: dep.nomeMae,
-          arquivo_path: dep.arquivo?.path || null,
+          arquivo_path: dep.arquivo?.path || null
         };
+      });
 
-        if (vendedorSelecionado) {
-          cadastroData.vendedor_id = vendedorSelecionado.id;
-          cadastroData.vendedor_codigo = vendedorSelecionado.external_id;
-          cadastroData.vendedor_nome = vendedorSelecionado.name;
-        }
+      const cadastroData: any = {
+        created_by: profile.id,
+        team_id: profile.team_id || null,
+        status: 'incompleto',
+        status_adesao_id: statusId,
+        tipo_cadastro: 'inclusao_dependente',
+        responsavel_financeiro_codigo: responsavelSelecionado.codigo,
+        responsavel_financeiro_nome: responsavelSelecionado.nome,
+        responsavel_financeiro_cpf: responsavelSelecionado.cpf,
+        empresa_nome: empresaCompleta?.nomeFantasia || responsavelSelecionado.empresa,
+        empresa_codigo: empresaCodigo || responsavelSelecionado.codigoEmpresa,
+        empresa_raw: empresaCompleta || null,
+        dependentes: dependentesData
+      };
 
-        if (adesionistaSelecionado) {
-          cadastroData.adesionista_id = adesionistaSelecionado.id;
-          cadastroData.adesionista_codigo = adesionistaSelecionado.external_id;
-          cadastroData.adesionista_nome = adesionistaSelecionado.name;
-        }
+      if (vendedorSelecionado) {
+        cadastroData.vendedor_id = vendedorSelecionado.id;
+        cadastroData.vendedor_codigo = vendedorSelecionado.external_id;
+        cadastroData.vendedor_nome = vendedorSelecionado.name;
+      }
 
-        const { error: insertError } = await supabase
-          .from('cadastros')
-          .insert([cadastroData]);
+      if (adesionistaSelecionado) {
+        cadastroData.adesionista_id = adesionistaSelecionado.id;
+        cadastroData.adesionista_codigo = adesionistaSelecionado.external_id;
+        cadastroData.adesionista_nome = adesionistaSelecionado.name;
+      }
 
-        if (insertError) {
-          throw insertError;
-        }
+      const { error: insertError } = await supabase
+        .from('cadastros')
+        .insert([cadastroData]);
+
+      if (insertError) {
+        throw insertError;
       }
 
       setSuccess('Dependente(s) salvo(s) como pendente com sucesso!');
@@ -1422,7 +1351,6 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                               value={dep.nome}
                               onChange={(e) => handleAtualizarDependente(index, 'nome', e.target.value)}
                               required
-                              disabled={dep.saved}
                             />
                           </div>
 
@@ -1432,21 +1360,12 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                               value={dep.cpf}
                               onChange={(e) => handleAtualizarDependente(index, 'cpf', e.target.value)}
                               required={!isMenorDeIdade(dep.dataNascimento)}
-                              disabled={dep.saved}
                             />
                             {consultingLemmitIndex === index && (
                               <div className="absolute right-3 top-9 flex items-center gap-2">
                                 <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
                                 <span className="text-xs text-emerald-600 font-medium">
                                   Consultando...
-                                </span>
-                              </div>
-                            )}
-                            {autoSavingIndex === index && (
-                              <div className="absolute right-3 top-9 flex items-center gap-2">
-                                <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
-                                <span className="text-xs text-blue-600 font-medium">
-                                  Salvando...
                                 </span>
                               </div>
                             )}
@@ -1467,7 +1386,6 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                             value={dep.dataNascimento}
                             onChange={(e) => handleAtualizarDependente(index, 'dataNascimento', e.target.value)}
                             required={!isMenorDeIdade(dep.dataNascimento)}
-                            disabled={dep.saved}
                           />
 
                           <Select
@@ -1475,7 +1393,6 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                             value={dep.sexo.toString()}
                             onChange={(e) => handleAtualizarDependente(index, 'sexo', parseInt(e.target.value))}
                             required={!isMenorDeIdade(dep.dataNascimento)}
-                            disabled={dep.saved}
                           >
                             <option value="-1">Selecione</option>
                             <option value="1">Masculino</option>
@@ -1487,7 +1404,6 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                             value={dep.tipo || 0}
                             onChange={(e) => handleAtualizarDependente(index, 'tipo', parseInt(e.target.value))}
                             required={!isMenorDeIdade(dep.dataNascimento)}
-                            disabled={dep.saved}
                           >
                             <option value={0}>Selecione</option>
                             {parentescos
@@ -1560,7 +1476,6 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                               value={dep.nomeMae}
                               onChange={(e) => handleAtualizarDependente(index, 'nomeMae', e.target.value)}
                               required
-                              disabled={dep.saved}
                             />
                           </div>
 
@@ -1572,7 +1487,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                               type="file"
                               accept=".pdf,.jpg,.jpeg,.png"
                               onChange={(e) => handleArquivoChange(index, e)}
-                              disabled={uploadingFileIndex === index || dep.saved}
+                              disabled={uploadingFileIndex === index}
                               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                             />
                             <p className="text-xs text-slate-500 mt-1">

@@ -262,7 +262,9 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
         setPlanosEmpresa(empresa.precoPlano || []);
         setEmpresaObservacao(empresa.observacao || '');
 
-        const updateData: any = {};
+        const updateData: any = {
+          tipo_cadastro: 'inclusao_dependente'
+        };
 
         if (!empresaNome || empresaNome.trim() === '') {
           const nomeEmpresa = empresa.nomeFantasia || empresa.razaoSocial || '';
@@ -274,12 +276,10 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
           updateData.empresa_raw = empresa;
         }
 
-        if (Object.keys(updateData).length > 0) {
-          await supabase
-            .from('cadastros')
-            .update(updateData)
-            .eq('id', cadastro.id);
-        }
+        await supabase
+          .from('cadastros')
+          .update(updateData)
+          .eq('id', cadastro.id);
 
         if (cadastro.plano_codigo && empresa.precoPlano) {
           const planoEncontrado = empresa.precoPlano.find((p: any) => p.Plano === cadastro.plano_codigo);
@@ -442,20 +442,32 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
       }
 
       const lemitData = await response.json();
+      console.log('Lemmit response:', lemitData);
 
       if (lemitData.success && lemitData.data) {
         const lemmitInfo = lemitData.data;
+        console.log('Lemmit data:', lemmitInfo);
+
         const nomeCompleto = `${lemmitInfo.nome || ''} ${lemmitInfo.sobrenome || ''}`.trim();
 
         let dataNascimento = '';
         if (lemmitInfo.dataNascimento) {
           const dataStr = lemmitInfo.dataNascimento.split('T')[0];
           if (/^\d{4}-\d{2}-\d{2}$/.test(dataStr)) {
-            dataNascimento = dataStr;
+            const [ano, mes, dia] = dataStr.split('-');
+            dataNascimento = `${dia}/${mes}/${ano}`;
           }
         }
 
         const nomeMae = lemmitInfo.nomeMae || '';
+        const sexoValue = lemmitInfo.sexo === 'M' ? 1 : lemmitInfo.sexo === 'F' ? 0 : -1;
+
+        console.log('Preenchendo dependente:', {
+          nome: nomeCompleto,
+          dataNascimento,
+          nomeMae,
+          sexo: sexoValue
+        });
 
         setDependentes(prev => prev.map((dep, idx) => {
           if (idx === index) {
@@ -464,13 +476,14 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
               nome: nomeCompleto || dep.nome,
               dataNascimento: dataNascimento || dep.dataNascimento,
               nomeMae: nomeMae || dep.nomeMae,
-              sexo: lemmitInfo.sexo === 'M' ? 1 : lemmitInfo.sexo === 'F' ? 2 : dep.sexo,
+              sexo: sexoValue >= 0 ? sexoValue : dep.sexo,
               consultingLemmit: false
             };
           }
           return dep;
         }));
       } else {
+        console.warn('Lemmit não retornou dados válidos:', lemitData);
         setDependentes(prev => prev.map((dep, idx) =>
           idx === index ? { ...dep, consultingLemmit: false } : dep
         ));
@@ -678,6 +691,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
 
       const updateData: any = {
         dependentes: dependentesData,
+        tipo_cadastro: 'inclusao_dependente',
         updated_at: new Date().toISOString()
       };
 
@@ -997,10 +1011,16 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
 
       const { error: updateError } = await supabase
         .from('cadastros')
-        .update({ status: 'enviado' })
+        .update({
+          status: 'enviado',
+          tipo_cadastro: 'inclusao_dependente'
+        })
         .eq('id', cadastro.id);
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error('Erro ao atualizar status do cadastro:', updateError);
+        throw updateError;
+      }
 
       setSuccess('Dependentes incluídos com sucesso!');
       setTimeout(() => {
@@ -1011,6 +1031,15 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
     } catch (err: any) {
       console.error('Erro ao incluir dependente:', err);
       setError(err.message || 'Erro ao incluir dependentes');
+
+      const { error: rollbackError } = await supabase
+        .from('cadastros')
+        .update({ status: 'incompleto' })
+        .eq('id', cadastro.id);
+
+      if (rollbackError) {
+        console.error('Erro ao reverter status do cadastro:', rollbackError);
+      }
     } finally {
       setLoading(false);
     }
@@ -1035,7 +1064,8 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
         .update({
           empresa_codigo: codigo,
           empresa_nome: nome,
-          empresa_raw: empresaCompleta
+          empresa_raw: empresaCompleta,
+          tipo_cadastro: 'inclusao_dependente'
         })
         .eq('id', cadastro.id);
 
@@ -1048,7 +1078,8 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
         .from('cadastros')
         .update({
           empresa_codigo: codigo,
-          empresa_nome: nome
+          empresa_nome: nome,
+          tipo_cadastro: 'inclusao_dependente'
         })
         .eq('id', cadastro.id);
 

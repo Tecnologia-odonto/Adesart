@@ -293,7 +293,7 @@ export function CadastrosGerenteView({ cadastros, onSelect, statusFilter }: Prop
                                               <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2 mb-1 flex-wrap">
                                                   <h6 className="font-medium text-slate-800 text-xs truncate">
-                                                    {cadastro.nome || formatCPF(cadastro.cpf)}
+                                                    {cadastro.nome || (cadastro.cpf ? formatCPF(cadastro.cpf) : 'Sem identificação')}
                                                   </h6>
                                                   {cadastro.tipo_cadastro === 'inclusao_dependente' && (
                                                     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600">
@@ -314,7 +314,7 @@ export function CadastrosGerenteView({ cadastros, onSelect, statusFilter }: Prop
                                                   )}
                                                 </div>
                                                 <div className="space-y-0.5 text-xs text-slate-600">
-                                                  <p>CPF: {formatCPF(cadastro.cpf)}</p>
+                                                  <p>CPF: {cadastro.cpf ? formatCPF(cadastro.cpf) : 'CPF não informado'}</p>
                                                   {cadastro.data_nascimento && (
                                                     <p>Nasc: {formatDate(cadastro.data_nascimento)}</p>
                                                   )}

@@ -385,7 +385,7 @@ export function useCadastros() {
       await fetchCadastros();
       return updated;
     } else {
-      const { data: created, error } = await supabase
+      const { data: created, error} = await supabase
         .from('cadastros')
         .insert({
           ...data,
