@@ -36,7 +36,7 @@ export function Login() {
           <div className="inline-flex items-center justify-center w-12 h-12 sm:w-16 sm:h-16 bg-emerald-600 rounded-2xl mb-3 sm:mb-4 shadow-lg">
             <Briefcase className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 mb-1 sm:mb-2">Adesao+</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 mb-1 sm:mb-2">Venda+</h1>
           <p className="text-slate-600 text-xs sm:text-base">Sistema de Gestão ERP</p>
         </div>
 

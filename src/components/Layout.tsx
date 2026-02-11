@@ -70,7 +70,7 @@ export function Layout({ children }: LayoutProps) {
               </button>
               <div className="flex items-center">
                 <Briefcase className="w-5 h-5 sm:w-7 sm:h-7 text-emerald-600" />
-                <span className="ml-1.5 sm:ml-2 text-base sm:text-xl font-bold text-slate-800">Adesao+</span>
+                <span className="ml-1.5 sm:ml-2 text-base sm:text-xl font-bold text-slate-800">Venda+</span>
               </div>
               <div className="hidden md:flex space-x-1">
                 {mainMenuItems.map((item) => item.show && (
