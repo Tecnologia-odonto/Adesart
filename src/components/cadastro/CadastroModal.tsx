@@ -986,7 +986,27 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       return;
     }
 
-    const valorLimpo = removeCPFMask(novoContato.valor);
+    let valorLimpo = novoContato.valor.trim();
+
+    // Validação específica por tipo
+    if (novoContato.tipo === 'email') {
+      // Validação de email com regex
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(valorLimpo)) {
+        setError('Email inválido. Digite um email válido (exemplo@email.com)');
+        return;
+      }
+      // Para email, mantém o valor original (sem remover caracteres)
+    } else {
+      // Para telefones (celular, whatsapp, fixo), remove máscara
+      valorLimpo = removeCPFMask(novoContato.valor);
+
+      // Validação de quantidade de dígitos para telefones
+      if (valorLimpo.length < 10 || valorLimpo.length > 11) {
+        setError('Telefone inválido. Digite um telefone com 10 ou 11 dígitos');
+        return;
+      }
+    }
 
     const contatoExiste = formData.contatos.some(
       c => c.tipo === novoContato.tipo && c.valor === valorLimpo
@@ -1199,9 +1219,15 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
                 <div className="md:col-span-7">
                   <Input
                     label=""
-                    value={novoContato.valor}
-                    onChange={(e) => setNovoContato({ ...novoContato, valor: e.target.value })}
+                    value={novoContato.tipo === 'email' ? novoContato.valor : formatPhone(novoContato.valor)}
+                    onChange={(e) => {
+                      const valor = e.target.value;
+                      // Se for email, permite qualquer caractere
+                      // Se for telefone, formata automaticamente
+                      setNovoContato({ ...novoContato, valor });
+                    }}
                     placeholder={novoContato.tipo === 'email' ? 'exemplo@email.com' : '(11) 98888-7777'}
+                    maxLength={novoContato.tipo === 'email' ? undefined : 15}
                   />
                 </div>
                 <div className="md:col-span-2 flex items-end">
