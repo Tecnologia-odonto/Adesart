@@ -13,12 +13,25 @@ import { useConfigCadastro } from '../../contexts/ConfigCadastroContext';
 import { DependenteAtivoModal } from './DependenteAtivoModal';
 import { SelectStatusModal } from './SelectStatusModal';
 import { ParceiroInvalidoModal } from './ParceiroInvalidoModal';
+import { EmpresaSearchCard } from './EmpresaSearchCard';
 import { supabase } from '../../lib/supabase';
 
 interface CadastroModalProps {
   cadastro: Cadastro;
   onClose: () => void;
   onSuccess: () => void;
+}
+
+interface Empresa {
+  id: number;
+  razaoSocial: string;
+  nomeFantasia: string;
+  cnpj: string;
+  enderecoEmpresa: any;
+  precoPlano: any[];
+  exigeMatricula?: number;
+  observacoes?: string;
+  raw: any;
 }
 
 export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalProps) {
@@ -43,6 +56,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   const [showDependentesAtivosModal, setShowDependentesAtivosModal] = useState(false);
   const [showSelectStatusModal, setShowSelectStatusModal] = useState(false);
   const [showParceiroInvalidoModal, setShowParceiroInvalidoModal] = useState(false);
+  const [selectedEmpresa, setSelectedEmpresa] = useState<Empresa | null>(null);
   const [arquivo, setArquivo] = useState<{
     base64: string;
     nome: string;
@@ -178,6 +192,22 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       console.error('[CadastroModal] Erro ao processar lemit_raw:', err);
     }
   }, [cadastroAtual?.lemit_raw, cadastroAtual?.nome_mae]);
+
+  useEffect(() => {
+    if (cadastroAtual && cadastroAtual.empresa_id && cadastroAtual.empresa_nome) {
+      setSelectedEmpresa({
+        id: cadastroAtual.empresa_id,
+        razaoSocial: cadastroAtual.empresa_nome || '',
+        nomeFantasia: cadastroAtual.empresa_nome || '',
+        cnpj: cadastroAtual.empresa_cnpj || '',
+        enderecoEmpresa: null,
+        precoPlano: cadastroAtual.planos_raw || [],
+        exigeMatricula: cadastroAtual.empresa_exige_matricula,
+        observacoes: '',
+        raw: null,
+      });
+    }
+  }, [cadastroAtual?.empresa_id, cadastroAtual?.empresa_nome]);
 
   useEffect(() => {
     const enrichPlanos = (planos: any[]) => {
@@ -316,6 +346,34 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     if (!dateStr) return true;
     const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
     return isoDateRegex.test(dateStr);
+  };
+
+  const handleEmpresaSelected = async (empresa: Empresa) => {
+    setSelectedEmpresa(empresa);
+    setError('');
+
+    try {
+      await updateCadastro(cadastroAtual.id, {
+        empresa_id: empresa.id,
+        empresa_nome: empresa.nomeFantasia,
+        empresa_cnpj: empresa.cnpj,
+        empresa_exige_matricula: empresa.exigeMatricula || 0,
+        planos_raw: empresa.precoPlano,
+      });
+
+      const { data, error } = await supabase
+        .from('cadastros')
+        .select('*')
+        .eq('id', cadastroAtual.id)
+        .maybeSingle();
+
+      if (!error && data) {
+        setCadastroFresh(data as Cadastro);
+      }
+    } catch (err) {
+      console.error('Error updating empresa:', err);
+      setError('Erro ao atualizar empresa do cadastro');
+    }
   };
 
   const handleSave = async () => {
@@ -621,8 +679,8 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       return;
     }
 
-    if (!cadastroAtual.empresa_id) {
-      setError('ID da empresa não encontrado. Por favor, busque a empresa novamente.');
+    if (!selectedEmpresa || !selectedEmpresa.id) {
+      setError('Selecione uma empresa antes de continuar');
       return;
     }
 
@@ -661,7 +719,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
       const payload = buildERPPayload(
         cadastroCompleto,
-        cadastroAtual.empresa_id,
+        selectedEmpresa.id,
         cadastroAtual.vendedor_codigo,
         funcionarioCadastroId,
         profile?.role,
@@ -824,7 +882,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
       const payload = buildERPPayload(
         cadastroCompleto,
-        cadastroAtual.empresa_id,
+        selectedEmpresa?.id || cadastroAtual.empresa_id,
         vendedorCodigo,
         funcionarioCadastroId,
         profile?.role,
@@ -1145,6 +1203,11 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         </div>
 
         <div className="p-6 space-y-6">
+          <EmpresaSearchCard
+            onEmpresaSelected={handleEmpresaSelected}
+            selectedEmpresa={selectedEmpresa}
+          />
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2">
               <Input
