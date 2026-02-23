@@ -71,9 +71,114 @@ Deno.serve(async (req: Request) => {
 
     requestBody = await req.json();
 
-    if (!requestBody.idFuncionario || !requestBody.idDependente || !requestBody.arquivo || !requestBody.arquivoNome) {
+    if (!requestBody.idFuncionario || !requestBody.idDependente) {
       statusCode = 400;
-      errorMessage = "Campos obrigatórios: idFuncionario, idDependente, arquivo, arquivoNome";
+      errorMessage = "Campos obrigatórios: idFuncionario, idDependente";
+      responseBody = { error: errorMessage };
+
+      await saveLog(supabase, {
+        user_id: userId,
+        user_email: userEmail,
+        endpoint: "erp-upload-documento",
+        method: "POST",
+        request_body: requestBody,
+        response_body: responseBody,
+        status_code: statusCode,
+        success: false,
+        error_message: errorMessage,
+        duration_ms: Date.now() - startTime,
+      });
+
+      return new Response(
+        JSON.stringify(responseBody),
+        {
+          status: statusCode,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    let arquivoBase64: string;
+    let arquivoNome: string;
+
+    if (requestBody.arquivoPath) {
+      const bucket = requestBody.bucket || 'cadastros-temp-files';
+      const { data: fileData, error: downloadError } = await supabase.storage
+        .from(bucket)
+        .download(requestBody.arquivoPath);
+
+      if (downloadError || !fileData) {
+        statusCode = 400;
+        errorMessage = `Erro ao baixar arquivo do storage: ${downloadError?.message || 'Arquivo não encontrado'}`;
+        responseBody = { error: errorMessage };
+
+        await saveLog(supabase, {
+          user_id: userId,
+          user_email: userEmail,
+          endpoint: "erp-upload-documento",
+          method: "POST",
+          request_body: requestBody,
+          response_body: responseBody,
+          status_code: statusCode,
+          success: false,
+          error_message: errorMessage,
+          duration_ms: Date.now() - startTime,
+        });
+
+        return new Response(
+          JSON.stringify(responseBody),
+          {
+            status: statusCode,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      const arrayBuffer = await fileData.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+
+      let binaryString = '';
+      const chunkSize = 8192;
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
+        binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+
+      arquivoBase64 = btoa(binaryString);
+      arquivoNome = requestBody.arquivoNome || requestBody.arquivoPath.split('/').pop() || 'documento.pdf';
+    } else if (requestBody.arquivo) {
+      arquivoBase64 = requestBody.arquivo;
+      arquivoNome = requestBody.arquivoNome;
+
+      if (!arquivoNome) {
+        statusCode = 400;
+        errorMessage = "Campo obrigatório: arquivoNome (quando usar arquivo base64)";
+        responseBody = { error: errorMessage };
+
+        await saveLog(supabase, {
+          user_id: userId,
+          user_email: userEmail,
+          endpoint: "erp-upload-documento",
+          method: "POST",
+          request_body: requestBody,
+          response_body: responseBody,
+          status_code: statusCode,
+          success: false,
+          error_message: errorMessage,
+          duration_ms: Date.now() - startTime,
+        });
+
+        return new Response(
+          JSON.stringify(responseBody),
+          {
+            status: statusCode,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+    } else {
+      statusCode = 400;
+      errorMessage = "É necessário fornecer 'arquivo' (base64) ou 'arquivoPath' (storage path)";
       responseBody = { error: errorMessage };
 
       await saveLog(supabase, {
@@ -101,8 +206,8 @@ Deno.serve(async (req: Request) => {
     const erpPayload = {
       idFuncionario: requestBody.idFuncionario,
       idDependente: requestBody.idDependente,
-      arquivo: requestBody.arquivo,
-      arquivoNome: requestBody.arquivoNome,
+      arquivo: arquivoBase64,
+      arquivoNome: arquivoNome,
     };
 
     const erpResponse = await fetch(ERP_URL, {

@@ -13,6 +13,8 @@ import { LemmitLimitModal } from './LemmitLimitModal';
 import { ParceiroInvalidoModal } from './ParceiroInvalidoModal';
 import { SelectStatusModal } from './SelectStatusModal';
 import { EmpresaNaoIdentificadaModal } from './EmpresaNaoIdentificadaModal';
+import { uploadToStorage, UploadedFile, validateFile } from '../../utils/uploadFile';
+import { saveDraft, loadDraft, clearDraft, setupAutosave } from '../../utils/draftStorage';
 
 interface InclusaoDependenteModalProps {
   onClose: () => void;
@@ -60,11 +62,7 @@ interface DependenteForm {
   nomeMae: string;
   dataNascimento: string;
   carenciaAtendimento: number;
-  arquivo?: {
-    base64: string;
-    nome: string;
-    path: string;
-  };
+  arquivo?: UploadedFile;
   saved: boolean;
 }
 
@@ -160,6 +158,44 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       fetchAdesionistas();
     }
   }, [profile]);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+
+    const draft = loadDraft('inclusao-dependente-modal', profile.id);
+    if (draft) {
+      const shouldRestore = window.confirm('Deseja restaurar o rascunho salvo anteriormente?');
+      if (shouldRestore) {
+        if (draft.responsavelSelecionado) {
+          setResponsavelSelecionado(draft.responsavelSelecionado);
+        }
+        if (draft.dependentes && Array.isArray(draft.dependentes)) {
+          setDependentes(draft.dependentes);
+        }
+        if (draft.selectedVendedor) {
+          setSelectedVendedor(draft.selectedVendedor);
+        }
+        if (draft.selectedAdesionista) {
+          setSelectedAdesionista(draft.selectedAdesionista);
+        }
+      } else {
+        clearDraft('inclusao-dependente-modal', profile.id);
+      }
+    }
+
+    const cleanup = setupAutosave(
+      'inclusao-dependente-modal',
+      () => ({
+        responsavelSelecionado,
+        dependentes,
+        selectedVendedor,
+        selectedAdesionista
+      }),
+      profile.id
+    );
+
+    return cleanup;
+  }, []);
 
   const fetchVendedores = async () => {
     try {
@@ -633,10 +669,10 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
     }
 
     const file = files[0];
-    const maxSize = 10 * 1024 * 1024;
 
-    if (file.size > maxSize) {
-      setError('O arquivo deve ter no máximo 10MB');
+    const validation = validateFile(file);
+    if (!validation.valid) {
+      setError(validation.error || 'Arquivo inválido');
       e.target.value = '';
       return;
     }
@@ -646,7 +682,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
 
     try {
       const dependente = dependentes[index];
-      if (dependente.arquivo) {
+      if (dependente.arquivo?.path) {
         try {
           await supabase.storage
             .from('cadastros-temp-files')
@@ -656,65 +692,34 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
         }
       }
 
-      const fileExtension = file.name.split('.').pop();
-      const cpfLimpo = removeCPFMask(dependente.cpf);
-      const cpfArquivo = cpfLimpo && cpfLimpo.trim() ? cpfLimpo : '0';
-      const fileName = `dependente_${cpfArquivo}_${Date.now()}.${fileExtension}`;
-      const filePath = `dependentes-temp/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('cadastros-temp-files')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: true
-        });
-
-      if (uploadError) {
-        throw uploadError;
+      if (!profile?.id) {
+        throw new Error('Usuário não autenticado');
       }
 
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
+      const cpfLimpo = removeCPFMask(dependente.cpf);
+      const cpfArquivo = cpfLimpo && cpfLimpo.trim() ? cpfLimpo : '0';
+      const prefix = `dependentes-temp/${cpfArquivo}`;
 
-        const timeout = setTimeout(() => {
-          reader.abort();
-          reject(new Error('Tempo limite excedido ao processar arquivo'));
-        }, 30000);
-
-        reader.onload = () => {
-          clearTimeout(timeout);
-          try {
-            const base64String = reader.result as string;
-            const base64Puro = base64String.split(',')[1];
-            resolve(base64Puro);
-          } catch (err) {
-            reject(err);
-          }
-        };
-
-        reader.onerror = () => {
-          clearTimeout(timeout);
-          reject(new Error('Erro ao ler arquivo'));
-        };
-
-        reader.onabort = () => {
-          clearTimeout(timeout);
-          reject(new Error('Leitura do arquivo cancelada'));
-        };
-
-        reader.readAsDataURL(file);
-      });
+      const uploadedFile = await uploadToStorage(
+        file,
+        profile.id,
+        'cadastros-temp-files',
+        prefix
+      );
 
       const novosDependentes = [...dependentes];
       novosDependentes[index] = {
         ...novosDependentes[index],
-        arquivo: {
-          base64,
-          nome: fileName,
-          path: filePath
-        }
+        arquivo: uploadedFile
       };
       setDependentes(novosDependentes);
+
+      saveDraft('inclusao-dependente-modal', {
+        responsavelSelecionado,
+        dependentes: novosDependentes,
+        selectedVendedor,
+        selectedAdesionista
+      }, profile.id);
 
       setSuccess('Arquivo carregado com sucesso!');
       setTimeout(() => setSuccess(''), 3000);
@@ -838,6 +843,9 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
 
       setSuccess('Dependente(s) salvo(s) como pendente com sucesso!');
       setTimeout(() => {
+        if (profile?.id) {
+          clearDraft('inclusao-dependente-modal', profile.id);
+        }
         onSuccess();
         onClose();
       }, 2000);
@@ -1030,8 +1038,9 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
             const uploadPayload = {
               idFuncionario: funcionarioCadastroId,
               idDependente: parseInt(dependenteCodigo),
-              arquivo: dep.arquivo.base64,
+              arquivoPath: dep.arquivo.path,
               arquivoNome: dep.arquivo.nome,
+              bucket: 'cadastros-temp-files'
             };
 
             const uploadResponse = await fetch(
@@ -1122,6 +1131,9 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
 
       setSuccess('Dependente(s) incluído(s) com sucesso! Arquivos em fila de envio.');
       setTimeout(() => {
+        if (profile?.id) {
+          clearDraft('inclusao-dependente-modal', profile.id);
+        }
         onSuccess();
         onClose();
       }, 2000);

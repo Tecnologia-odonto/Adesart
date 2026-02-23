@@ -14,6 +14,8 @@ import { EmpresaSearchCard } from './EmpresaSearchCard';
 import { LemmitLimitModal } from './LemmitLimitModal';
 import { SelectStatusModal } from './SelectStatusModal';
 import { EmpresaNaoIdentificadaModal } from './EmpresaNaoIdentificadaModal';
+import { uploadToStorage, UploadedFile, validateFile } from '../../utils/uploadFile';
+import { saveDraft, loadDraft, clearDraft, setupAutosave } from '../../utils/draftStorage';
 
 interface ContinuarInclusaoDependenteModalProps {
   cadastro: Cadastro;
@@ -43,10 +45,22 @@ interface DependenteForm {
   plano: number;
   planoValor: string;
   nomeMae: string;
-  arquivo: { base64: string; nome: string; path: string } | null;
+  arquivo: UploadedFile | null;
   cpfValidationError: string;
   uploadingFile: boolean;
   consultingLemmit: boolean;
+}
+
+interface Empresa {
+  id: number;
+  razaoSocial: string;
+  nomeFantasia: string;
+  cnpj: string;
+  enderecoEmpresa: any;
+  precoPlano: any[];
+  exigeMatricula?: number;
+  observacoes?: string;
+  raw: any;
 }
 
 const normalizeToISO = (dateStr: string): string | null => {
@@ -107,6 +121,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
   const [empresaCodigo, setEmpresaCodigo] = useState(cadastro.empresa_codigo);
   const [empresaNome, setEmpresaNome] = useState(cadastro.empresa_nome);
   const [empresaObservacao, setEmpresaObservacao] = useState('');
+  const [selectedEmpresa, setSelectedEmpresa] = useState<Empresa | null>(null);
 
   const [dependentes, setDependentes] = useState<DependenteForm[]>(() => {
     const dependentesExistentes = cadastro.dependentes as any[] || [];
@@ -122,7 +137,12 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
         plano: dep.plano_codigo || 0,
         planoValor: '0.00',
         nomeMae: dep.nome_mae || '',
-        arquivo: dep.arquivo_path ? { base64: '', nome: 'Arquivo existente', path: dep.arquivo_path } : null,
+        arquivo: dep.arquivo_path ? {
+          nome: dep.arquivo_path.split('/').pop() || 'Arquivo existente',
+          path: dep.arquivo_path,
+          mime: 'application/octet-stream',
+          size: 0
+        } : null,
         cpfValidationError: '',
         uploadingFile: false,
         consultingLemmit: false
@@ -200,6 +220,18 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
     if (cadastro.empresa_raw && cadastro.empresa_raw.precoPlano) {
       setPlanosEmpresa(cadastro.empresa_raw.precoPlano || []);
       setEmpresaObservacao(cadastro.empresa_raw.observacao || cadastro.empresa_raw.observacoes || '');
+
+      setSelectedEmpresa({
+        id: cadastro.empresa_codigo || cadastro.empresa_raw.id,
+        razaoSocial: cadastro.empresa_raw.razaoSocial || cadastro.empresa_nome || '',
+        nomeFantasia: cadastro.empresa_raw.nomeFantasia || cadastro.empresa_nome || '',
+        cnpj: cadastro.empresa_raw.cnpj || '',
+        enderecoEmpresa: cadastro.empresa_raw.enderecoEmpresa || null,
+        precoPlano: cadastro.empresa_raw.precoPlano || [],
+        exigeMatricula: cadastro.empresa_raw.exigeMatricula || 0,
+        observacoes: cadastro.empresa_raw.observacao || cadastro.empresa_raw.observacoes || '',
+        raw: cadastro.empresa_raw,
+      });
 
       if (cadastro.plano_codigo && cadastro.empresa_raw.precoPlano) {
         const planoEncontrado = cadastro.empresa_raw.precoPlano.find((p: any) => p.Plano === cadastro.plano_codigo);
@@ -521,16 +553,9 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
-    if (!allowedTypes.includes(file.type)) {
-      setError('Apenas arquivos JPG, PNG ou PDF são permitidos');
-      e.target.value = '';
-      return;
-    }
-
-    const maxSize = 5 * 1024 * 1024;
-    if (file.size > maxSize) {
-      setError('Arquivo muito grande. Tamanho máximo: 5MB');
+    const validation = validateFile(file);
+    if (!validation.valid) {
+      setError(validation.error || 'Arquivo inválido');
       e.target.value = '';
       return;
     }
@@ -541,61 +566,38 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
     setError('');
 
     try {
-      const fileName = `${Date.now()}_${file.name}`;
-      const filePath = `${profile?.id}/${fileName}`;
+      if (!profile?.id) {
+        throw new Error('Usuário não autenticado');
+      }
 
-      const { error: uploadError } = await supabase.storage
-        .from('cadastros-temp-files')
-        .upload(filePath, file);
+      const dependente = dependentes[index];
+      const cpfLimpo = removeCPFMask(dependente.cpf);
+      const cpfArquivo = cpfLimpo && cpfLimpo.trim() ? cpfLimpo : cadastro.id;
+      const prefix = `dependentes-continuar/${cpfArquivo}`;
 
-      if (uploadError) throw uploadError;
-
-      const base64Data = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-
-        const timeout = setTimeout(() => {
-          reader.abort();
-          reject(new Error('Tempo limite excedido ao processar arquivo'));
-        }, 30000);
-
-        reader.onloadend = () => {
-          clearTimeout(timeout);
-          try {
-            const base64 = reader.result as string;
-            const base64Puro = base64.split(',')[1];
-            resolve(base64Puro);
-          } catch (err) {
-            reject(err);
-          }
-        };
-
-        reader.onerror = () => {
-          clearTimeout(timeout);
-          reject(new Error('Erro ao ler arquivo'));
-        };
-
-        reader.onabort = () => {
-          clearTimeout(timeout);
-          reject(new Error('Leitura do arquivo cancelada'));
-        };
-
-        reader.readAsDataURL(file);
-      });
+      const uploadedFile = await uploadToStorage(
+        file,
+        profile.id,
+        'cadastros-temp-files',
+        prefix
+      );
 
       setDependentes(prev => prev.map((dep, idx) => {
         if (idx === index) {
           return {
             ...dep,
-            arquivo: {
-              base64: base64Data,
-              nome: file.name,
-              path: filePath
-            },
+            arquivo: uploadedFile,
             uploadingFile: false
           };
         }
         return dep;
       }));
+
+      saveDraft('continuar-inclusao-dependente-modal', {
+        dependentes,
+        selectedVendedor,
+        selectedAdesionista
+      }, profile.id);
 
       setSuccess('Arquivo carregado com sucesso!');
       setTimeout(() => setSuccess(''), 3000);
@@ -906,8 +908,9 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
               const uploadPayload = {
                 idFuncionario: funcionarioCadastroId,
                 idDependente: parseInt(dependenteCodigo),
-                arquivo: dep.arquivo.base64,
+                arquivoPath: dep.arquivo.path,
                 arquivoNome: dep.arquivo.nome,
+                bucket: 'cadastros-temp-files'
               };
 
               console.log(`Tentando enviar arquivo do dependente ${i + 1} diretamente para o ERP...`);
@@ -1045,6 +1048,44 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
     }
   };
 
+  const handleEmpresaSelected = async (empresa: Empresa) => {
+    setSelectedEmpresa(empresa);
+    setEmpresaCodigo(empresa.id);
+    setEmpresaNome(empresa.nomeFantasia);
+    setPlanosEmpresa(empresa.precoPlano || []);
+    setEmpresaObservacao(empresa.observacoes || '');
+    setError('');
+
+    setDependentes(prev => prev.map(dep => ({
+      ...dep,
+      plano: 0,
+      planoValor: '0.00'
+    })));
+
+    try {
+      const { error: updateError } = await supabase
+        .from('cadastros')
+        .update({
+          empresa_id: empresa.id,
+          empresa_codigo: empresa.id,
+          empresa_nome: empresa.nomeFantasia,
+          empresa_cnpj: empresa.cnpj,
+          empresa_raw: empresa.raw || empresa,
+          planos_raw: empresa.precoPlano,
+          tipo_cadastro: 'inclusao_dependente'
+        })
+        .eq('id', cadastro.id);
+
+      if (updateError) {
+        console.error('Erro ao atualizar cadastro:', updateError);
+        setError('Erro ao atualizar empresa do cadastro');
+      }
+    } catch (err) {
+      console.error('Erro ao atualizar empresa:', err);
+      setError('Erro ao atualizar empresa do cadastro');
+    }
+  };
+
   const handleEmpresaModalSelected = async (codigo: number, nome: string, planos: any[]) => {
     setEmpresaCodigo(codigo);
     setEmpresaNome(nome);
@@ -1057,6 +1098,8 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
 
       if (result.ok && result.empresas && result.empresas.length > 0) {
         empresaCompleta = result.empresas[0];
+        setSelectedEmpresa(empresaCompleta);
+        setEmpresaObservacao(empresaCompleta.observacoes || '');
       }
 
       const { error: updateError } = await supabase
@@ -1126,6 +1169,11 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
               <p className="text-sm text-emerald-800">{success}</p>
             </div>
           )}
+
+          <EmpresaSearchCard
+            onEmpresaSelected={handleEmpresaSelected}
+            selectedEmpresa={selectedEmpresa}
+          />
 
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <h3 className="font-semibold text-blue-900 mb-2">Responsável Financeiro</h3>

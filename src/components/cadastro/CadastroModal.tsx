@@ -15,6 +15,8 @@ import { SelectStatusModal } from './SelectStatusModal';
 import { ParceiroInvalidoModal } from './ParceiroInvalidoModal';
 import { EmpresaSearchCard } from './EmpresaSearchCard';
 import { supabase } from '../../lib/supabase';
+import { uploadToStorage, UploadedFile, validateFile } from '../../utils/uploadFile';
+import { saveDraft, loadDraft, clearDraft, setupAutosave } from '../../utils/draftStorage';
 
 interface CadastroModalProps {
   cadastro: Cadastro;
@@ -57,11 +59,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   const [showSelectStatusModal, setShowSelectStatusModal] = useState(false);
   const [showParceiroInvalidoModal, setShowParceiroInvalidoModal] = useState(false);
   const [selectedEmpresa, setSelectedEmpresa] = useState<Empresa | null>(null);
-  const [arquivo, setArquivo] = useState<{
-    base64: string;
-    nome: string;
-    path: string;
-  } | null>(null);
+  const [arquivo, setArquivo] = useState<UploadedFile | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
 
   const funcionarioCadastroId = profile?.external_id ? parseInt(profile.external_id) : null;
@@ -146,33 +144,12 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
       if (cadastroAtual.arquivo_path) {
         const fileName = cadastroAtual.arquivo_path.split('/').pop() || 'arquivo';
-
-        supabase.storage
-          .from('cadastros-temp-files')
-          .download(cadastroAtual.arquivo_path)
-          .then(({ data, error }) => {
-            if (error) {
-              console.error('Erro ao baixar arquivo do bucket:', error);
-              return;
-            }
-
-            if (data) {
-              const reader = new FileReader();
-              reader.onload = () => {
-                const base64 = reader.result as string;
-                const base64Puro = base64.split(',')[1];
-                setArquivo({
-                  base64: base64Puro,
-                  nome: fileName,
-                  path: cadastroAtual.arquivo_path
-                });
-              };
-              reader.readAsDataURL(data);
-            }
-          })
-          .catch(err => {
-            console.error('Erro ao processar arquivo:', err);
-          });
+        setArquivo({
+          nome: fileName,
+          path: cadastroAtual.arquivo_path,
+          mime: 'application/octet-stream',
+          size: 0
+        });
       }
     } catch (err) {
       console.error('[CadastroModal] Erro ao inicializar dependentes:', err);
@@ -195,19 +172,22 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
   useEffect(() => {
     if (cadastroAtual && cadastroAtual.empresa_id && cadastroAtual.empresa_nome) {
+      const empresaRaw = cadastroAtual.empresa_raw as any;
+      const observacoes = empresaRaw?.observacoes || empresaRaw?.observacao || '';
+
       setSelectedEmpresa({
         id: cadastroAtual.empresa_id,
-        razaoSocial: cadastroAtual.empresa_nome || '',
-        nomeFantasia: cadastroAtual.empresa_nome || '',
-        cnpj: cadastroAtual.empresa_cnpj || '',
-        enderecoEmpresa: null,
-        precoPlano: cadastroAtual.planos_raw || [],
-        exigeMatricula: cadastroAtual.empresa_exige_matricula,
-        observacoes: '',
-        raw: null,
+        razaoSocial: empresaRaw?.razaoSocial || cadastroAtual.empresa_nome || '',
+        nomeFantasia: empresaRaw?.nomeFantasia || cadastroAtual.empresa_nome || '',
+        cnpj: empresaRaw?.cnpj || cadastroAtual.empresa_cnpj || '',
+        enderecoEmpresa: empresaRaw?.enderecoEmpresa || null,
+        precoPlano: empresaRaw?.precoPlano || cadastroAtual.planos_raw || [],
+        exigeMatricula: empresaRaw?.exigeMatricula || cadastroAtual.empresa_exige_matricula,
+        observacoes: observacoes,
+        raw: empresaRaw || null,
       });
     }
-  }, [cadastroAtual?.empresa_id, cadastroAtual?.empresa_nome]);
+  }, [cadastroAtual?.empresa_id, cadastroAtual?.empresa_nome, cadastroAtual?.empresa_raw]);
 
   useEffect(() => {
     const enrichPlanos = (planos: any[]) => {
@@ -342,6 +322,44 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     }
   }, [formData.nome, formData.dataNascimento, formData.sexo, formData.nomeMae]);
 
+  useEffect(() => {
+    if (!profile?.id) return;
+
+    const draft = loadDraft('cadastro-modal', profile.id);
+    if (draft) {
+      const shouldRestore = window.confirm('Deseja restaurar o rascunho salvo anteriormente?');
+      if (shouldRestore) {
+        if (draft.formData) {
+          setFormData(draft.formData);
+        }
+        if (draft.arquivo) {
+          setArquivo(draft.arquivo);
+        }
+        if (draft.dependentes && Array.isArray(draft.dependentes)) {
+          setDependentes(draft.dependentes);
+        }
+        if (draft.selectedEmpresa) {
+          setSelectedEmpresa(draft.selectedEmpresa);
+        }
+      } else {
+        clearDraft('cadastro-modal', profile.id);
+      }
+    }
+
+    const cleanup = setupAutosave(
+      'cadastro-modal',
+      () => ({
+        formData,
+        arquivo,
+        dependentes,
+        selectedEmpresa
+      }),
+      profile.id
+    );
+
+    return cleanup;
+  }, []);
+
   const isValidISODate = (dateStr: string): boolean => {
     if (!dateStr) return true;
     const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
@@ -355,9 +373,11 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     try {
       await updateCadastro(cadastroAtual.id, {
         empresa_id: empresa.id,
+        empresa_codigo: empresa.id,
         empresa_nome: empresa.nomeFantasia,
         empresa_cnpj: empresa.cnpj,
         empresa_exige_matricula: empresa.exigeMatricula || 0,
+        empresa_raw: empresa.raw || empresa,
         planos_raw: empresa.precoPlano,
       });
 
@@ -488,6 +508,9 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
   const handleStatusCancel = () => {
     setShowSelectStatusModal(false);
+    if (profile?.id) {
+      clearDraft('cadastro-modal', profile.id);
+    }
     onSuccess();
     onClose();
   };
@@ -502,10 +525,10 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     }
 
     const file = files[0];
-    const maxSize = 10 * 1024 * 1024;
 
-    if (file.size > maxSize) {
-      setError('O arquivo deve ter no máximo 10MB');
+    const validation = validateFile(file);
+    if (!validation.valid) {
+      setError(validation.error || 'Arquivo inválido');
       e.target.value = '';
       return;
     }
@@ -514,7 +537,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     setError('');
 
     try {
-      if (arquivo) {
+      if (arquivo?.path) {
         try {
           await supabase.storage
             .from('cadastros-temp-files')
@@ -524,58 +547,29 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         }
       }
 
-      const fileExtension = file.name.split('.').pop();
-      const fileName = `${formData.nome || 'arquivo'}_${removeCPFMask(cadastroAtual.cpf)}_${Date.now()}.${fileExtension}`;
-      const filePath = `cadastros/${cadastroAtual.id}/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('cadastros-temp-files')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: true
-        });
-
-      if (uploadError) {
-        throw uploadError;
+      if (!profile?.id) {
+        throw new Error('Usuário não autenticado');
       }
 
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
+      const uploadedFile = await uploadToStorage(
+        file,
+        profile.id,
+        'cadastros-temp-files',
+        `cadastros/${cadastroAtual.id}`
+      );
 
-        const timeout = setTimeout(() => {
-          reader.abort();
-          reject(new Error('Tempo limite excedido ao processar arquivo'));
-        }, 30000);
+      setArquivo(uploadedFile);
 
-        reader.onload = () => {
-          clearTimeout(timeout);
-          try {
-            const base64String = reader.result as string;
-            const base64Puro = base64String.split(',')[1];
-            resolve(base64Puro);
-          } catch (err) {
-            reject(err);
-          }
-        };
-
-        reader.onerror = () => {
-          clearTimeout(timeout);
-          reject(new Error('Erro ao ler arquivo'));
-        };
-
-        reader.onabort = () => {
-          clearTimeout(timeout);
-          reject(new Error('Leitura do arquivo cancelada'));
-        };
-
-        reader.readAsDataURL(file);
+      await updateCadastro(cadastroAtual.id, {
+        arquivo_path: uploadedFile.path
       });
 
-      setArquivo({
-        base64,
-        nome: fileName,
-        path: filePath
-      });
+      saveDraft('cadastro-modal', {
+        formData,
+        arquivo: uploadedFile,
+        dependentes,
+        selectedEmpresa
+      }, profile.id);
 
       setSuccess('Arquivo carregado com sucesso!');
       setTimeout(() => setSuccess(''), 3000);
@@ -741,8 +735,9 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
           const uploadPayload = {
             idFuncionario: funcionarioCadastroId,
             idDependente: parseInt(primeiroDepCodigo),
-            arquivo: arquivo.base64,
+            arquivoPath: arquivo.path,
             arquivoNome: arquivo.nome,
+            bucket: 'cadastros-temp-files'
           };
 
           const uploadResponse = await fetch(
@@ -836,6 +831,9 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
       setSuccess('Cadastro enviado com sucesso! Arquivo em fila de envio ao ERP.');
       setTimeout(() => {
+        if (profile?.id) {
+          clearDraft('cadastro-modal', profile.id);
+        }
         onSuccess();
         onClose();
       }, 2000);
@@ -904,8 +902,9 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
           const uploadPayload = {
             idFuncionario: funcionarioCadastroId,
             idDependente: parseInt(primeiroDepCodigo),
-            arquivo: arquivo.base64,
+            arquivoPath: arquivo.path,
             arquivoNome: arquivo.nome,
+            bucket: 'cadastros-temp-files'
           };
 
           const uploadResponse = await fetch(
@@ -999,6 +998,9 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
       setSuccess('Cadastro enviado com sucesso com o novo vendedor!');
       setTimeout(() => {
+        if (profile?.id) {
+          clearDraft('cadastro-modal', profile.id);
+        }
         onSuccess();
         onClose();
       }, 2000);
