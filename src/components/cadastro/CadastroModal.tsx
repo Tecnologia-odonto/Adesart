@@ -16,7 +16,7 @@ import { ParceiroInvalidoModal } from './ParceiroInvalidoModal';
 import { EmpresaSearchCard } from './EmpresaSearchCard';
 import { supabase } from '../../lib/supabase';
 import { uploadToStorage, UploadedFile, validateFile } from '../../utils/uploadFile';
-import { saveDraft, loadDraft, clearDraft, setupAutosave } from '../../utils/draftStorage';
+import { saveDraft, loadDraft, clearDraft, setupAutosave, saveBeforeFilePicker } from '../../utils/draftStorage';
 
 interface CadastroModalProps {
   cadastro: Cadastro;
@@ -1483,6 +1483,18 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
                   type="file"
                   accept=".pdf,.jpg,.jpeg,.png"
                   onChange={handleArquivoChange}
+                  onPointerDown={() => {
+                    if (profile?.id) {
+                      saveBeforeFilePicker('cadastro-modal', () => ({
+                        formData,
+                        arquivo,
+                        dependentes,
+                        selectedEmpresa,
+                        step: cadastroFresh?.status === 'INCOMPLETO' ? 2 : 1,
+                        currentTab: 0
+                      }), profile.id);
+                    }
+                  }}
                   disabled={uploadingFile}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 />

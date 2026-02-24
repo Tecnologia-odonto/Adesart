@@ -14,7 +14,7 @@ import { ParceiroInvalidoModal } from './ParceiroInvalidoModal';
 import { SelectStatusModal } from './SelectStatusModal';
 import { EmpresaNaoIdentificadaModal } from './EmpresaNaoIdentificadaModal';
 import { uploadToStorage, UploadedFile, validateFile } from '../../utils/uploadFile';
-import { saveDraft, loadDraft, clearDraft, setupAutosave } from '../../utils/draftStorage';
+import { saveDraft, loadDraft, clearDraft, setupAutosave, saveBeforeFilePicker } from '../../utils/draftStorage';
 
 interface InclusaoDependenteModalProps {
   onClose: () => void;
@@ -1499,6 +1499,16 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                               type="file"
                               accept=".pdf,.jpg,.jpeg,.png"
                               onChange={(e) => handleArquivoChange(index, e)}
+                              onPointerDown={() => {
+                                if (profile?.id) {
+                                  saveBeforeFilePicker('inclusao-dependente-modal', () => ({
+                                    responsavelSelecionado,
+                                    dependentes,
+                                    selectedVendedor,
+                                    selectedAdesionista
+                                  }), profile.id);
+                                }
+                              }}
                               disabled={uploadingFileIndex === index}
                               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                             />
@@ -1531,6 +1541,15 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                                       const novosDependentes = [...dependentes];
                                       delete novosDependentes[index].arquivo;
                                       setDependentes(novosDependentes);
+
+                                      if (profile?.id) {
+                                        saveDraft('inclusao-dependente-modal', {
+                                          responsavelSelecionado,
+                                          dependentes: novosDependentes,
+                                          selectedVendedor,
+                                          selectedAdesionista
+                                        }, profile.id);
+                                      }
                                     }}
                                     className="p-1 text-red-600 hover:bg-red-100 rounded transition-colors"
                                     title="Remover arquivo"

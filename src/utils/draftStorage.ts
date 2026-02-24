@@ -1,124 +1,266 @@
+/**
+ * Draft Storage V2 - Zustand-backed implementation
+ *
+ * Drop-in replacement for old draftStorage.ts but using Zustand store
+ * Maintains same API for backward compatibility
+ *
+ * CRITICAL: Only stores file metadata (path, nome, size, mime).
+ * NEVER stores base64 or file content.
+ */
+
+import { useDraftStore, ModalDraft, FileMetadata } from '../state/draftStore';
+import { ModalName } from '../utils/draftKey';
 import { UploadedFile } from './uploadFile';
 
 export interface DraftData {
   timestamp: number;
   formData?: any;
-  arquivo?: UploadedFile | null;
+  arquivo?: UploadedFile | FileMetadata | null;
   dependentes?: any[];
   selectedEmpresa?: any;
+  responsavelSelecionado?: any;
+  selectedVendedor?: string;
+  selectedAdesionista?: string;
+  step?: number;
+  currentTab?: number;
   [key: string]: any;
 }
 
-const DRAFT_PREFIX = 'draft_';
 const DRAFT_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
-function getDraftKey(modalName: string, userId?: string): string {
-  return `${DRAFT_PREFIX}${modalName}${userId ? `_${userId}` : ''}`;
+/**
+ * Map modal names to ModalName type
+ */
+function normalizeModalName(modalName: string): ModalName {
+  if (modalName === 'cadastro-modal') return 'cadastro-modal';
+  if (modalName === 'inclusao-dependente-modal') return 'inclusao-dependente-modal';
+  if (modalName === 'continuar-inclusao-dependente-modal') return 'continuar-inclusao-dependente-modal';
+  return modalName as ModalName;
 }
 
+/**
+ * Convert UploadedFile to FileMetadata (remove base64 if present)
+ */
+function sanitizeFile(arquivo: any): FileMetadata | null {
+  if (!arquivo) return null;
+
+  return {
+    path: arquivo.path,
+    nome: arquivo.nome,
+    size: arquivo.size || 0,
+    mime: arquivo.mime || arquivo.type || 'application/octet-stream'
+  };
+}
+
+/**
+ * Sanitize draft data to remove any base64
+ */
+function sanitizeDraftData(data: DraftData): DraftData {
+  const sanitized = { ...data };
+
+  // Remove base64 from arquivo
+  if (sanitized.arquivo) {
+    sanitized.arquivo = sanitizeFile(sanitized.arquivo);
+  }
+
+  // Remove base64 from dependentes
+  if (sanitized.dependentes && Array.isArray(sanitized.dependentes)) {
+    sanitized.dependentes = sanitized.dependentes.map(dep => {
+      if (dep.arquivo) {
+        return {
+          ...dep,
+          arquivo: sanitizeFile(dep.arquivo)
+        };
+      }
+      return dep;
+    });
+  }
+
+  return sanitized;
+}
+
+/**
+ * Save draft (backward compatible API)
+ */
 export function saveDraft(modalName: string, data: Omit<DraftData, 'timestamp'>, userId?: string): void {
   try {
-    const draftData: DraftData = {
+    if (!userId) {
+      console.warn('No userId provided, draft not saved');
+      return;
+    }
+
+    const sanitized = sanitizeDraftData({
       ...data,
       timestamp: Date.now()
-    };
+    });
 
-    const key = getDraftKey(modalName, userId);
-    localStorage.setItem(key, JSON.stringify(draftData));
-    console.log(`Draft saved for ${modalName}`, { hasArquivo: !!data.arquivo?.path });
+    const store = useDraftStore.getState();
+    const normalizedName = normalizeModalName(modalName);
+
+    store.upsertDraft(userId, normalizedName, sanitized as Partial<ModalDraft>);
+
+    console.log(`✅ Draft saved for ${modalName}`, {
+      userId,
+      hasArquivo: !!sanitized.arquivo,
+      hasDependentes: !!sanitized.dependentes?.length
+    });
   } catch (error) {
     console.warn('Failed to save draft:', error);
   }
 }
 
-export function loadDraft(modalName: string, userId?: string): DraftData | null {
+/**
+ * Load draft (backward compatible API)
+ */
+export function loadDraft(modalName: string, userId?: string, cadastroId?: string): DraftData | null {
   try {
-    const key = getDraftKey(modalName, userId);
-    const stored = localStorage.getItem(key);
-
-    if (!stored) {
+    if (!userId) {
       return null;
     }
 
-    const draft: DraftData = JSON.parse(stored);
+    const store = useDraftStore.getState();
+    const normalizedName = normalizeModalName(modalName);
 
+    const draft = store.loadDraft(userId, normalizedName, cadastroId);
+
+    if (!draft) {
+      return null;
+    }
+
+    // Check expiry
     if (Date.now() - draft.timestamp > DRAFT_EXPIRY_MS) {
       console.log(`Draft expired for ${modalName}, removing...`);
-      clearDraft(modalName, userId);
+      clearDraft(modalName, userId, cadastroId);
       return null;
     }
 
-    console.log(`Draft loaded for ${modalName}`, {
+    console.log(`✅ Draft loaded for ${modalName}`, {
+      userId,
       age: Math.round((Date.now() - draft.timestamp) / 1000 / 60),
-      hasArquivo: !!draft.arquivo?.path
+      hasArquivo: !!(draft as any).arquivo,
+      hasDependentes: !!(draft as any).dependentes?.length
     });
 
-    return draft;
+    return draft as unknown as DraftData;
   } catch (error) {
     console.warn('Failed to load draft:', error);
     return null;
   }
 }
 
-export function clearDraft(modalName: string, userId?: string): void {
+/**
+ * Clear draft (backward compatible API)
+ */
+export function clearDraft(modalName: string, userId?: string, cadastroId?: string): void {
   try {
-    const key = getDraftKey(modalName, userId);
-    localStorage.removeItem(key);
-    console.log(`Draft cleared for ${modalName}`);
+    if (!userId) {
+      return;
+    }
+
+    const store = useDraftStore.getState();
+    const normalizedName = normalizeModalName(modalName);
+
+    store.clearDraft(userId, normalizedName, cadastroId);
+
+    console.log(`🗑️ Draft cleared for ${modalName}`, { userId, cadastroId });
   } catch (error) {
     console.warn('Failed to clear draft:', error);
   }
 }
 
-export function clearAllDrafts(): void {
+/**
+ * Clear all drafts (backward compatible API)
+ */
+export function clearAllDrafts(userId?: string): void {
   try {
-    const keys = Object.keys(localStorage);
-    keys.forEach(key => {
-      if (key.startsWith(DRAFT_PREFIX)) {
-        localStorage.removeItem(key);
-      }
-    });
-    console.log('All drafts cleared');
+    if (!userId) {
+      console.warn('No userId provided for clearAllDrafts');
+      return;
+    }
+
+    const store = useDraftStore.getState();
+    store.clearAllUserDrafts(userId);
+
+    console.log('🗑️ All drafts cleared for user', userId);
   } catch (error) {
     console.warn('Failed to clear all drafts:', error);
   }
 }
 
+/**
+ * Setup auto-save with enhanced listeners
+ * Now includes pagehide and saves before file picker opens
+ */
 export function setupAutosave(
   modalName: string,
   getData: () => Omit<DraftData, 'timestamp'>,
   userId?: string
 ): () => void {
+  if (!userId) {
+    console.warn('No userId provided for setupAutosave');
+    return () => {};
+  }
+
+  const saveNow = () => {
+    const data = getData();
+    if (data && Object.keys(data).length > 0) {
+      saveDraft(modalName, data, userId);
+    }
+  };
+
+  // visibilitychange - when tab is hidden
   const handleVisibilityChange = () => {
-    if (document.visibilityState === 'hidden') {
-      const data = getData();
-      if (data && Object.keys(data).length > 0) {
-        saveDraft(modalName, data, userId);
-      }
+    if (document.hidden) {
+      console.log('📱 Visibility changed (hidden), saving draft...');
+      saveNow();
     }
   };
 
-  const handlePageHide = () => {
-    const data = getData();
-    if (data && Object.keys(data).length > 0) {
-      saveDraft(modalName, data, userId);
-    }
+  // pagehide - when page is being unloaded (critical for mobile!)
+  const handlePageHide = (e: PageTransitionEvent) => {
+    console.log('📱 Page hide event, saving draft...');
+    saveNow();
   };
 
+  // beforeunload - when page is about to unload
   const handleBeforeUnload = () => {
-    const data = getData();
-    if (data && Object.keys(data).length > 0) {
-      saveDraft(modalName, data, userId);
-    }
+    console.log('📱 Before unload, saving draft...');
+    saveNow();
   };
 
+  // Register all listeners
   document.addEventListener('visibilitychange', handleVisibilityChange);
   window.addEventListener('pagehide', handlePageHide);
   window.addEventListener('beforeunload', handleBeforeUnload);
 
+  console.log(`📡 Auto-save listeners registered for ${modalName}`);
+
+  // Return cleanup function
   return () => {
     document.removeEventListener('visibilitychange', handleVisibilityChange);
     window.removeEventListener('pagehide', handlePageHide);
     window.removeEventListener('beforeunload', handleBeforeUnload);
+    console.log(`🔌 Auto-save listeners cleaned up for ${modalName}`);
   };
+}
+
+/**
+ * Helper to save draft before file picker opens
+ * Call this onPointerDown or onClick of file input trigger
+ */
+export function saveBeforeFilePicker(
+  modalName: string,
+  getData: () => Omit<DraftData, 'timestamp'>,
+  userId?: string
+): void {
+  if (!userId) {
+    console.warn('No userId provided for saveBeforeFilePicker');
+    return;
+  }
+
+  console.log('💾 Saving draft before file picker opens...');
+  const data = getData();
+  if (data && Object.keys(data).length > 0) {
+    saveDraft(modalName, data, userId);
+  }
 }
