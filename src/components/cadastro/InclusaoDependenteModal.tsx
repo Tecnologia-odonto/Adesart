@@ -14,7 +14,6 @@ import { ParceiroInvalidoModal } from './ParceiroInvalidoModal';
 import { SelectStatusModal } from './SelectStatusModal';
 import { EmpresaNaoIdentificadaModal } from './EmpresaNaoIdentificadaModal';
 import { uploadToStorage, UploadedFile, validateFile } from '../../utils/uploadFile';
-import { saveDraft, loadDraft, clearDraft, setupAutosave, saveBeforeFilePicker } from '../../utils/draftStorage';
 
 interface InclusaoDependenteModalProps {
   onClose: () => void;
@@ -159,43 +158,6 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
     }
   }, [profile]);
 
-  useEffect(() => {
-    if (!profile?.id) return;
-
-    const draft = loadDraft('inclusao-dependente-modal', profile.id);
-    if (draft) {
-      const shouldRestore = window.confirm('Deseja restaurar o rascunho salvo anteriormente?');
-      if (shouldRestore) {
-        if (draft.responsavelSelecionado) {
-          setResponsavelSelecionado(draft.responsavelSelecionado);
-        }
-        if (draft.dependentes && Array.isArray(draft.dependentes)) {
-          setDependentes(draft.dependentes);
-        }
-        if (draft.selectedVendedor) {
-          setSelectedVendedor(draft.selectedVendedor);
-        }
-        if (draft.selectedAdesionista) {
-          setSelectedAdesionista(draft.selectedAdesionista);
-        }
-      } else {
-        clearDraft('inclusao-dependente-modal', profile.id);
-      }
-    }
-
-    const cleanup = setupAutosave(
-      'inclusao-dependente-modal',
-      () => ({
-        responsavelSelecionado,
-        dependentes,
-        selectedVendedor,
-        selectedAdesionista
-      }),
-      profile.id
-    );
-
-    return cleanup;
-  }, []);
 
   const fetchVendedores = async () => {
     try {
@@ -714,13 +676,6 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       };
       setDependentes(novosDependentes);
 
-      saveDraft('inclusao-dependente-modal', {
-        responsavelSelecionado,
-        dependentes: novosDependentes,
-        selectedVendedor,
-        selectedAdesionista
-      }, profile.id);
-
       setSuccess('Arquivo carregado com sucesso!');
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
@@ -843,9 +798,6 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
 
       setSuccess('Dependente(s) salvo(s) como pendente com sucesso!');
       setTimeout(() => {
-        if (profile?.id) {
-          clearDraft('inclusao-dependente-modal', profile.id);
-        }
         onSuccess();
         onClose();
       }, 2000);
@@ -1131,9 +1083,6 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
 
       setSuccess('Dependente(s) incluído(s) com sucesso! Arquivos em fila de envio.');
       setTimeout(() => {
-        if (profile?.id) {
-          clearDraft('inclusao-dependente-modal', profile.id);
-        }
         onSuccess();
         onClose();
       }, 2000);
@@ -1499,16 +1448,6 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                               type="file"
                               accept=".pdf,.jpg,.jpeg,.png"
                               onChange={(e) => handleArquivoChange(index, e)}
-                              onPointerDown={() => {
-                                if (profile?.id) {
-                                  saveBeforeFilePicker('inclusao-dependente-modal', () => ({
-                                    responsavelSelecionado,
-                                    dependentes,
-                                    selectedVendedor,
-                                    selectedAdesionista
-                                  }), profile.id);
-                                }
-                              }}
                               disabled={uploadingFileIndex === index}
                               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                             />
@@ -1541,15 +1480,6 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                                       const novosDependentes = [...dependentes];
                                       delete novosDependentes[index].arquivo;
                                       setDependentes(novosDependentes);
-
-                                      if (profile?.id) {
-                                        saveDraft('inclusao-dependente-modal', {
-                                          responsavelSelecionado,
-                                          dependentes: novosDependentes,
-                                          selectedVendedor,
-                                          selectedAdesionista
-                                        }, profile.id);
-                                      }
                                     }}
                                     className="p-1 text-red-600 hover:bg-red-100 rounded transition-colors"
                                     title="Remover arquivo"

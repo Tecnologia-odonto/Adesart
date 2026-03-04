@@ -16,7 +16,6 @@ import { ParceiroInvalidoModal } from './ParceiroInvalidoModal';
 import { EmpresaSearchCard } from './EmpresaSearchCard';
 import { supabase } from '../../lib/supabase';
 import { uploadToStorage, UploadedFile, validateFile } from '../../utils/uploadFile';
-import { saveDraft, loadDraft, clearDraft, setupAutosave, saveBeforeFilePicker } from '../../utils/draftStorage';
 
 interface CadastroModalProps {
   cadastro: Cadastro;
@@ -322,43 +321,6 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     }
   }, [formData.nome, formData.dataNascimento, formData.sexo, formData.nomeMae]);
 
-  useEffect(() => {
-    if (!profile?.id) return;
-
-    const draft = loadDraft('cadastro-modal', profile.id);
-    if (draft) {
-      const shouldRestore = window.confirm('Deseja restaurar o rascunho salvo anteriormente?');
-      if (shouldRestore) {
-        if (draft.formData) {
-          setFormData(draft.formData);
-        }
-        if (draft.arquivo) {
-          setArquivo(draft.arquivo);
-        }
-        if (draft.dependentes && Array.isArray(draft.dependentes)) {
-          setDependentes(draft.dependentes);
-        }
-        if (draft.selectedEmpresa) {
-          setSelectedEmpresa(draft.selectedEmpresa);
-        }
-      } else {
-        clearDraft('cadastro-modal', profile.id);
-      }
-    }
-
-    const cleanup = setupAutosave(
-      'cadastro-modal',
-      () => ({
-        formData,
-        arquivo,
-        dependentes,
-        selectedEmpresa
-      }),
-      profile.id
-    );
-
-    return cleanup;
-  }, []);
 
   const isValidISODate = (dateStr: string): boolean => {
     if (!dateStr) return true;
@@ -508,9 +470,6 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
   const handleStatusCancel = () => {
     setShowSelectStatusModal(false);
-    if (profile?.id) {
-      clearDraft('cadastro-modal', profile.id);
-    }
     onSuccess();
     onClose();
   };
@@ -563,13 +522,6 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       await updateCadastro(cadastroAtual.id, {
         arquivo_path: uploadedFile.path
       });
-
-      saveDraft('cadastro-modal', {
-        formData,
-        arquivo: uploadedFile,
-        dependentes,
-        selectedEmpresa
-      }, profile.id);
 
       setSuccess('Arquivo carregado com sucesso!');
       setTimeout(() => setSuccess(''), 3000);
@@ -831,9 +783,6 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
       setSuccess('Cadastro enviado com sucesso! Arquivo em fila de envio ao ERP.');
       setTimeout(() => {
-        if (profile?.id) {
-          clearDraft('cadastro-modal', profile.id);
-        }
         onSuccess();
         onClose();
       }, 2000);
@@ -998,9 +947,6 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
       setSuccess('Cadastro enviado com sucesso com o novo vendedor!');
       setTimeout(() => {
-        if (profile?.id) {
-          clearDraft('cadastro-modal', profile.id);
-        }
         onSuccess();
         onClose();
       }, 2000);
@@ -1483,18 +1429,6 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
                   type="file"
                   accept=".pdf,.jpg,.jpeg,.png"
                   onChange={handleArquivoChange}
-                  onPointerDown={() => {
-                    if (profile?.id) {
-                      saveBeforeFilePicker('cadastro-modal', () => ({
-                        formData,
-                        arquivo,
-                        dependentes,
-                        selectedEmpresa,
-                        step: cadastroFresh?.status === 'INCOMPLETO' ? 2 : 1,
-                        currentTab: 0
-                      }), profile.id);
-                    }
-                  }}
                   disabled={uploadingFile}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 />

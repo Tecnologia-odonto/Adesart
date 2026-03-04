@@ -15,7 +15,6 @@ import { LemmitLimitModal } from './LemmitLimitModal';
 import { SelectStatusModal } from './SelectStatusModal';
 import { EmpresaNaoIdentificadaModal } from './EmpresaNaoIdentificadaModal';
 import { uploadToStorage, UploadedFile, validateFile } from '../../utils/uploadFile';
-import { saveDraft, loadDraft, clearDraft, setupAutosave, saveBeforeFilePicker } from '../../utils/draftStorage';
 
 interface ContinuarInclusaoDependenteModalProps {
   cadastro: Cadastro;
@@ -592,12 +591,6 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
         }
         return dep;
       }));
-
-      saveDraft('continuar-inclusao-dependente-modal', {
-        dependentes,
-        selectedVendedor,
-        selectedAdesionista
-      }, profile.id);
 
       setSuccess('Arquivo carregado com sucesso!');
       setTimeout(() => setSuccess(''), 3000);
@@ -1379,13 +1372,6 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
                               setDependentes(prev => prev.map((d, idx) =>
                                 idx === index ? { ...d, arquivo: null } : d
                               ));
-                              saveDraft('continuar-inclusao-dependente-modal', {
-                                dependentes: dependentes.map((d, idx) =>
-                                  idx === index ? { ...d, arquivo: null } : d
-                                ),
-                                selectedVendedor,
-                                selectedAdesionista
-                              }, profile!.id);
                             }}
                             className="p-1 text-red-600 hover:bg-red-100 rounded transition-colors"
                             title="Remover arquivo"
@@ -1406,15 +1392,6 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
                         />
                         <label
                           htmlFor={`file-upload-${index}`}
-                          onPointerDown={() => {
-                            if (profile?.id) {
-                              saveBeforeFilePicker('continuar-inclusao-dependente-modal', () => ({
-                                dependentes,
-                                selectedVendedor,
-                                selectedAdesionista
-                              }), profile.id);
-                            }
-                          }}
                           className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-slate-300 rounded-lg hover:border-emerald-400 hover:bg-emerald-50 transition-colors cursor-pointer"
                         >
                           {dep.uploadingFile ? (
