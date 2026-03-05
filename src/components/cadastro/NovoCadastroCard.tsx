@@ -376,6 +376,19 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         };
       }
 
+      // Criar array de dependentes com o titular
+      const dependentes = [{
+        cpf: cpfLimpo,
+        nome: cadastroData.nome,
+        dataNascimento: cadastroData.dataNascimento,
+        sexo: cadastroData.sexoCodigo,
+        parentesco: 1, // Titular
+        plano: null,
+        codigoPlano: null,
+        valorPlano: null,
+        nomeMae: cadastroData.nomeMae || '',
+      }];
+
       const rascunho = await createOrUpdateRascunho({
         cpf: cpfLimpo,
         nome: cadastroData.nome,
@@ -385,6 +398,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         sexo_codigo: cadastroData.sexoCodigo,
         contatos: cadastroData.contatos,
         endereco: cadastroData.endereco,
+        dependentes: dependentes,
         lemit_raw: lemitData,
         cliente_sera_usuario: true,
         empresa_id: selectedEmpresa?.id,
@@ -489,6 +503,19 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         };
       }
 
+      // Criar array de dependentes com o titular
+      const dependentes = [{
+        cpf: removeCPFMask(cpf),
+        nome: cadastroData.nome,
+        dataNascimento: cadastroData.dataNascimento,
+        sexo: cadastroData.sexoCodigo,
+        parentesco: 1, // Titular
+        plano: null,
+        codigoPlano: null,
+        valorPlano: null,
+        nomeMae: cadastroData.nomeMae || '',
+      }];
+
       const rascunho = await createOrUpdateRascunho({
         cpf,
         nome: cadastroData.nome,
@@ -498,6 +525,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         sexo_codigo: cadastroData.sexoCodigo,
         contatos: cadastroData.contatos,
         endereco: cadastroData.endereco,
+        dependentes: dependentes,
         lemit_raw: null,
         cliente_sera_usuario: true,
         empresa_id: selectedEmpresa?.id,
@@ -588,6 +616,19 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         };
       }
 
+      // Criar array de dependentes com o titular
+      const dependentes = [{
+        cpf: cpfLimpo,
+        nome: cadastroData.nome,
+        dataNascimento: cadastroData.dataNascimento,
+        sexo: cadastroData.sexoCodigo,
+        parentesco: 1, // Titular
+        plano: null,
+        codigoPlano: null,
+        valorPlano: null,
+        nomeMae: cadastroData.nomeMae || '',
+      }];
+
       const rascunho = await createOrUpdateRascunho({
         cpf: cpfLimpo,
         nome: cadastroData.nome,
@@ -597,6 +638,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         sexo_codigo: cadastroData.sexoCodigo,
         contatos: cadastroData.contatos,
         endereco: cadastroData.endereco,
+        dependentes: dependentes,
         lemit_raw: null,
         cliente_sera_usuario: true,
         empresa_id: selectedEmpresa?.id,

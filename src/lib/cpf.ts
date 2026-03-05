@@ -72,13 +72,18 @@ export function formatCEP(cep: string): string {
 export function formatDate(date: string | Date): string {
   if (!date) return '';
 
+  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const [year, month, day] = date.split('-');
+    return `${day}/${month}/${year}`;
+  }
+
   const d = typeof date === 'string' ? new Date(date) : date;
 
   if (isNaN(d.getTime())) return '';
 
-  const day = String(d.getDate()).padStart(2, '0');
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const year = d.getFullYear();
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const year = d.getUTCFullYear();
 
   return `${day}/${month}/${year}`;
 }

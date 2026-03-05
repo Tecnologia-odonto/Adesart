@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Layout } from '../components/Layout';
 import { NovoCadastroCard } from '../components/cadastro/NovoCadastroCard';
 import { CadastrosIncompletosList } from '../components/cadastro/CadastrosIncompletosList';
@@ -10,10 +10,22 @@ import { useCadastros, Cadastro as CadastroType } from '../hooks/useCadastros';
 import { Plus, FileText, Loader2, CheckCircle, UserPlus } from 'lucide-react';
 
 export function Cadastro() {
-  const { cadastros, stats, loading, refresh } = useCadastros();
+  console.log('[Cadastro] 🔄 Componente renderizado');
+
+  const { cadastros, stats, loading, loadCadastros, loadStats, refresh } = useCadastros();
   const [activeTab, setActiveTab] = useState<'novo' | 'dependente' | 'incompletos' | 'completos'>('novo');
   const [selectedCadastro, setSelectedCadastro] = useState<CadastroType | null>(null);
   const [showInclusaoDependente, setShowInclusaoDependente] = useState(false);
+
+  console.log('[Cadastro] 📊 Stats:', stats);
+  console.log('[Cadastro] 📋 Cadastros length:', cadastros.length);
+  console.log('[Cadastro] ⏳ Loading:', loading);
+
+  // Carrega stats apenas quando abrir as abas que precisam dos badges
+  useEffect(() => {
+    console.log('[Cadastro] 🔄 useEffect loadStats iniciado');
+    loadStats();
+  }, []);
 
   const handleNewCadastroSuccess = async (cadastro: CadastroType, isBlocked: boolean = false) => {
     await refresh();
@@ -22,6 +34,21 @@ export function Cadastro() {
       setSelectedCadastro(cadastro);
     } else {
       setActiveTab('incompletos');
+    }
+  };
+
+  const handleTabChange = async (tab: 'novo' | 'dependente' | 'incompletos' | 'completos') => {
+    console.log('[Cadastro] 🔄 handleTabChange para tab:', tab);
+    console.log('[Cadastro] 📋 Cadastros length atual:', cadastros.length);
+
+    setActiveTab(tab);
+
+    // Carrega cadastros apenas quando abrir abas que precisam deles
+    if ((tab === 'incompletos' || tab === 'completos') && cadastros.length === 0) {
+      console.log('[Cadastro] 📥 Chamando loadCadastros...');
+      await loadCadastros();
+    } else {
+      console.log('[Cadastro] ⏭️ Pulando loadCadastros');
     }
   };
 
@@ -51,7 +78,7 @@ export function Cadastro() {
 
         <div className="flex border-b border-slate-200 -mx-3 sm:mx-0 px-3 sm:px-0 overflow-x-auto">
           <button
-            onClick={() => setActiveTab('novo')}
+            onClick={() => handleTabChange('novo')}
             className={`flex-1 sm:flex-none flex items-center justify-center px-4 sm:px-4 py-2.5 sm:py-3 font-medium text-xs sm:text-sm transition-colors relative whitespace-nowrap ${
               activeTab === 'novo'
                 ? 'text-emerald-700 border-b-2 border-emerald-600 bg-emerald-50'
@@ -64,7 +91,7 @@ export function Cadastro() {
           </button>
           <button
             onClick={() => {
-              setActiveTab('dependente');
+              handleTabChange('dependente');
               setShowInclusaoDependente(true);
             }}
             className={`flex-1 sm:flex-none flex items-center justify-center px-4 sm:px-4 py-2.5 sm:py-3 font-medium text-xs sm:text-sm transition-colors relative whitespace-nowrap ${
@@ -78,7 +105,7 @@ export function Cadastro() {
             <span className="xs:hidden">Incluir Dep.</span>
           </button>
           <button
-            onClick={() => setActiveTab('incompletos')}
+            onClick={() => handleTabChange('incompletos')}
             className={`flex-1 sm:flex-none flex items-center justify-center px-4 sm:px-4 py-2.5 sm:py-3 font-medium text-xs sm:text-sm transition-colors relative whitespace-nowrap ${
               activeTab === 'incompletos'
                 ? 'text-emerald-700 border-b-2 border-emerald-600 bg-emerald-50'
@@ -95,7 +122,7 @@ export function Cadastro() {
             )}
           </button>
           <button
-            onClick={() => setActiveTab('completos')}
+            onClick={() => handleTabChange('completos')}
             className={`flex-1 sm:flex-none flex items-center justify-center px-4 sm:px-4 py-2.5 sm:py-3 font-medium text-xs sm:text-sm transition-colors relative whitespace-nowrap ${
               activeTab === 'completos'
                 ? 'text-emerald-700 border-b-2 border-emerald-600 bg-emerald-50'

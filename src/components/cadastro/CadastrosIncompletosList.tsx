@@ -1,4 +1,4 @@
-import { FileText, Clock, AlertCircle, CheckCircle2, Eye, Ban, User, Search, X, Filter, Tag } from 'lucide-react';
+import { FileText, Clock, AlertCircle, CheckCircle2, Eye, Ban, User, Search, X, Filter, Tag, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
 import { Cadastro } from '../../hooks/useCadastros';
 import { formatCPF, formatDate } from '../../lib/cpf';
@@ -38,10 +38,16 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
   const { profile } = useAuth();
   const [viewERPData, setViewERPData] = useState<Cadastro | null>(null);
   const [statusList, setStatusList] = useState<StatusAdesao[]>([]);
-  const [buscaCliente, setBuscaCliente] = useState('');
-  const [buscaClienteAplicada, setBuscaClienteAplicada] = useState('');
-  const [buscaEmpresa, setBuscaEmpresa] = useState('');
-  const [buscaEmpresaAplicada, setBuscaEmpresaAplicada] = useState('');
+  const [tipoBusca, setTipoBusca] = useState<'associado' | 'empresa'>('associado');
+  const [tipoBuscaAplicada, setTipoBuscaAplicada] = useState<'associado' | 'empresa'>('associado');
+  const [buscaNome, setBuscaNome] = useState('');
+  const [buscaNomeAplicada, setBuscaNomeAplicada] = useState('');
+  const [buscaCPF, setBuscaCPF] = useState('');
+  const [buscaCPFAplicada, setBuscaCPFAplicada] = useState('');
+  const [buscaCNPJ, setBuscaCNPJ] = useState('');
+  const [buscaCNPJAplicada, setBuscaCNPJAplicada] = useState('');
+  const [buscaCodigo, setBuscaCodigo] = useState('');
+  const [buscaCodigoAplicada, setBuscaCodigoAplicada] = useState('');
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState('');
   const [dataInicioAplicada, setDataInicioAplicada] = useState('');
@@ -53,7 +59,9 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
   const [vendedorFiltro, setVendedorFiltro] = useState('');
   const [vendedorFiltroAplicado, setVendedorFiltroAplicado] = useState('');
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
 
+  const ITEMS_PER_PAGE = 12;
   const incompletos = cadastros.filter((c) => c.status === 'incompleto');
 
   const vendedoresUnicos = useMemo(() => {
@@ -82,6 +90,7 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
     const now = new Date();
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
     const firstDayStr = firstDay.toISOString().split('T')[0];
+
     setDataInicio(firstDayStr);
     setDataInicioAplicada(firstDayStr);
   };
@@ -122,13 +131,17 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
   };
 
   const handleAplicarFiltros = () => {
-    setBuscaClienteAplicada(buscaCliente);
-    setBuscaEmpresaAplicada(buscaEmpresa);
+    setTipoBuscaAplicada(tipoBusca);
+    setBuscaNomeAplicada(buscaNome);
+    setBuscaCPFAplicada(buscaCPF);
+    setBuscaCNPJAplicada(buscaCNPJ);
+    setBuscaCodigoAplicada(buscaCodigo);
     setDataInicioAplicada(dataInicio);
     setDataFimAplicada(dataFim);
     setTipoFiltroAplicado(tipoFiltro);
     setStatusAdesaoFiltroAplicado(statusAdesaoFiltro);
     setVendedorFiltroAplicado(vendedorFiltro);
+    setCurrentPage(1);
   };
 
   const handleChangeStatus = async (cadastroId: string, statusId: string) => {
@@ -157,39 +170,51 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
     return <CadastrosGerenteView cadastros={cadastros} onSelect={onSelect} statusFilter="incompleto" />;
   }
 
+  // Total apenas com filtro de data (para o denominador do contador)
+  const cadastrosPorPeriodo = useMemo(() => {
+    return incompletos.filter((cadastro) => {
+      const dataCadastro = new Date(cadastro.created_at);
+      const matchDataInicio = !dataInicioAplicada || dataCadastro >= new Date(dataInicioAplicada);
+      const matchDataFim = !dataFimAplicada || dataCadastro <= new Date(dataFimAplicada + 'T23:59:59');
+      return matchDataInicio && matchDataFim;
+    });
+  }, [incompletos, dataInicioAplicada, dataFimAplicada]);
+
   const cadastrosFiltrados = useMemo(() => {
     return incompletos.filter((cadastro) => {
-      const buscaClienteLower = buscaClienteAplicada.toLowerCase().trim();
-      const buscaClienteNumeros = buscaClienteAplicada.replace(/\D/g, '');
+      let matchBusca = true;
 
-      let matchCliente = true;
-      if (buscaClienteAplicada) {
-        matchCliente =
-          cadastro.nome?.toLowerCase().includes(buscaClienteLower) ||
-          (cadastro.cpf && cadastro.cpf.includes(buscaClienteNumeros)) ||
-          false;
+      if (tipoBuscaAplicada === 'associado') {
+        if (buscaNomeAplicada || buscaCPFAplicada) {
+          const nomeLower = buscaNomeAplicada.toLowerCase().trim();
+          const cpfNumeros = buscaCPFAplicada.replace(/\D/g, '');
 
-        if (!matchCliente && cadastro.dependentes) {
-          const dependentesArray = Array.isArray(cadastro.dependentes) ? cadastro.dependentes : [];
-          matchCliente = dependentesArray.some((dep: any) => {
-            return (
-              dep.nome?.toLowerCase().includes(buscaClienteLower) ||
-              (dep.cpf && dep.cpf.replace(/\D/g, '').includes(buscaClienteNumeros))
-            );
-          });
+          let matchNome = !buscaNomeAplicada || cadastro.nome?.toLowerCase().includes(nomeLower) || false;
+          let matchCPF = !buscaCPFAplicada || (cadastro.cpf && cadastro.cpf.includes(cpfNumeros)) || false;
+
+          matchBusca = matchNome && matchCPF;
+
+          if (!matchBusca && cadastro.dependentes) {
+            const dependentesArray = Array.isArray(cadastro.dependentes) ? cadastro.dependentes : [];
+            matchBusca = dependentesArray.some((dep: any) => {
+              const matchDepNome = !buscaNomeAplicada || dep.nome?.toLowerCase().includes(nomeLower) || false;
+              const matchDepCPF = !buscaCPFAplicada || (dep.cpf && dep.cpf.replace(/\D/g, '').includes(cpfNumeros)) || false;
+              return matchDepNome && matchDepCPF;
+            });
+          }
         }
-      }
+      } else {
+        if (buscaNomeAplicada || buscaCNPJAplicada || buscaCodigoAplicada) {
+          const nomeLower = buscaNomeAplicada.toLowerCase().trim();
+          const cnpjNumeros = buscaCNPJAplicada.replace(/\D/g, '');
+          const codigoStr = buscaCodigoAplicada.trim();
 
-      const buscaEmpresaLower = buscaEmpresaAplicada.toLowerCase().trim();
-      const buscaEmpresaNumeros = buscaEmpresaAplicada.replace(/\D/g, '');
+          const matchNome = !buscaNomeAplicada || cadastro.empresa_nome?.toLowerCase().includes(nomeLower) || false;
+          const matchCNPJ = !buscaCNPJAplicada || cadastro.empresa_cnpj?.replace(/\D/g, '').includes(cnpjNumeros) || false;
+          const matchCodigo = !buscaCodigoAplicada || (cadastro.empresa_codigo && cadastro.empresa_codigo.toString().includes(codigoStr)) || false;
 
-      let matchEmpresa = true;
-      if (buscaEmpresaAplicada) {
-        matchEmpresa =
-          cadastro.empresa_nome?.toLowerCase().includes(buscaEmpresaLower) ||
-          cadastro.empresa_cnpj?.replace(/\D/g, '').includes(buscaEmpresaNumeros) ||
-          (cadastro.empresa_codigo && cadastro.empresa_codigo.toString().includes(buscaEmpresaNumeros)) ||
-          false;
+          matchBusca = matchNome && matchCNPJ && matchCodigo;
+        }
       }
 
       const dataCadastro = new Date(cadastro.created_at);
@@ -211,9 +236,10 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
         matchVendedor = cadastro.vendedor_id === vendedorFiltroAplicado;
       }
 
-      return matchCliente && matchEmpresa && matchDataInicio && matchDataFim && matchTipo && matchStatusAdesao && matchVendedor;
+      return matchBusca && matchDataInicio && matchDataFim && matchTipo && matchStatusAdesao && matchVendedor;
     });
-  }, [incompletos, buscaClienteAplicada, buscaEmpresaAplicada, dataInicioAplicada, dataFimAplicada, tipoFiltroAplicado, statusAdesaoFiltroAplicado, vendedorFiltroAplicado]);
+  }, [incompletos, tipoBuscaAplicada, buscaNomeAplicada, buscaCPFAplicada, buscaCNPJAplicada, buscaCodigoAplicada, dataInicioAplicada, dataFimAplicada, tipoFiltroAplicado, statusAdesaoFiltroAplicado, vendedorFiltroAplicado]);
+
 
   const clientesGrouped: ClienteGroup[] = useMemo(() => {
     const clientesMap = new Map<string, Cadastro[]>();
@@ -243,6 +269,33 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
     });
   }, [cadastrosFiltrados]);
 
+  // Paginação
+  const totalPages = Math.ceil(clientesGrouped.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const clientesPaginados = clientesGrouped.slice(startIndex, endIndex);
+
+  // Calcular quais páginas mostrar (máximo 10 páginas visíveis)
+  const getVisiblePages = () => {
+    const maxVisible = 10;
+    if (totalPages <= maxVisible) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+
+    const halfVisible = Math.floor(maxVisible / 2);
+    let startPage = Math.max(1, currentPage - halfVisible);
+    let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+
+    // Ajustar se chegou no fim
+    if (endPage - startPage < maxVisible - 1) {
+      startPage = Math.max(1, endPage - maxVisible + 1);
+    }
+
+    return Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
+  };
+
+  const visiblePages = getVisiblePages();
+
   if (incompletos.length === 0) {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12">
@@ -255,10 +308,16 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
   }
 
   const limparFiltros = () => {
-    setBuscaCliente('');
-    setBuscaClienteAplicada('');
-    setBuscaEmpresa('');
-    setBuscaEmpresaAplicada('');
+    setTipoBusca('associado');
+    setTipoBuscaAplicada('associado');
+    setBuscaNome('');
+    setBuscaNomeAplicada('');
+    setBuscaCPF('');
+    setBuscaCPFAplicada('');
+    setBuscaCNPJ('');
+    setBuscaCNPJAplicada('');
+    setBuscaCodigo('');
+    setBuscaCodigoAplicada('');
     setDataInicio('');
     setDataFim('');
     setDataInicioAplicada('');
@@ -272,7 +331,7 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
     setDefaultDateFilter();
   };
 
-  const temFiltrosAtivos = buscaClienteAplicada || buscaEmpresaAplicada || dataInicioAplicada || dataFimAplicada || tipoFiltroAplicado !== 'todos' || statusAdesaoFiltroAplicado || vendedorFiltroAplicado;
+  const temFiltrosAtivos = buscaNomeAplicada || buscaCPFAplicada || buscaCNPJAplicada || buscaCodigoAplicada || dataInicioAplicada || dataFimAplicada || tipoFiltroAplicado !== 'todos' || statusAdesaoFiltroAplicado || vendedorFiltroAplicado;
 
   return (
     <>
@@ -292,39 +351,111 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-          <div className="relative">
-            <Input
-              label="Busca Cliente"
-              value={buscaCliente}
-              onChange={(e) => setBuscaCliente(e.target.value)}
-              placeholder="CPF ou Nome do cliente/dependente"
-            />
-            {buscaCliente && (
-              <button
-                onClick={() => setBuscaCliente('')}
-                className="absolute right-2 top-9 text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
+          <Select
+            label="Tipo de Busca"
+            value={tipoBusca}
+            onChange={(e) => {
+              setTipoBusca(e.target.value as 'associado' | 'empresa');
+              setBuscaNome('');
+              setBuscaCPF('');
+              setBuscaCNPJ('');
+              setBuscaCodigo('');
+            }}
+          >
+            <option value="associado">Associado</option>
+            <option value="empresa">Empresa</option>
+          </Select>
 
-          <div className="relative">
-            <Input
-              label="Busca Empresa"
-              value={buscaEmpresa}
-              onChange={(e) => setBuscaEmpresa(e.target.value)}
-              placeholder="Nome, CNPJ ou Código da empresa"
-            />
-            {buscaEmpresa && (
-              <button
-                onClick={() => setBuscaEmpresa('')}
-                className="absolute right-2 top-9 text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
+          {tipoBusca === 'associado' ? (
+            <>
+              <div className="relative">
+                <Input
+                  label="Nome"
+                  value={buscaNome}
+                  onChange={(e) => setBuscaNome(e.target.value)}
+                  placeholder="Nome do associado/dependente"
+                />
+                {buscaNome && (
+                  <button
+                    onClick={() => setBuscaNome('')}
+                    className="absolute right-2 top-9 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              <div className="relative">
+                <Input
+                  label="CPF"
+                  value={buscaCPF}
+                  onChange={(e) => setBuscaCPF(e.target.value)}
+                  placeholder="CPF"
+                />
+                {buscaCPF && (
+                  <button
+                    onClick={() => setBuscaCPF('')}
+                    className="absolute right-2 top-9 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="relative">
+                <Input
+                  label="Nome"
+                  value={buscaNome}
+                  onChange={(e) => setBuscaNome(e.target.value)}
+                  placeholder="Nome da empresa"
+                />
+                {buscaNome && (
+                  <button
+                    onClick={() => setBuscaNome('')}
+                    className="absolute right-2 top-9 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              <div className="relative">
+                <Input
+                  label="CNPJ"
+                  value={buscaCNPJ}
+                  onChange={(e) => setBuscaCNPJ(e.target.value)}
+                  placeholder="CNPJ"
+                />
+                {buscaCNPJ && (
+                  <button
+                    onClick={() => setBuscaCNPJ('')}
+                    className="absolute right-2 top-9 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              <div className="relative">
+                <Input
+                  label="Código"
+                  value={buscaCodigo}
+                  onChange={(e) => setBuscaCodigo(e.target.value)}
+                  placeholder="Código da empresa"
+                />
+                {buscaCodigo && (
+                  <button
+                    onClick={() => setBuscaCodigo('')}
+                    className="absolute right-2 top-9 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </>
+          )}
 
           <Select
             label="Tipo"
@@ -385,11 +516,9 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
             Filtrar
           </Button>
 
-          {temFiltrosAtivos && (
-            <div className="text-sm text-slate-600">
-              Mostrando {contarPessoas(cadastrosFiltrados)} pessoas de {contarPessoas(incompletos)} pessoas
-            </div>
-          )}
+          <div className="text-sm text-slate-600">
+            Mostrando {cadastrosFiltrados.length} de {cadastrosPorPeriodo.length} {cadastrosPorPeriodo.length === 1 ? 'adesão' : 'adesões'}
+          </div>
         </div>
       </div>
 
@@ -402,7 +531,7 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
         </div>
       ) : (
         <div className="space-y-4">
-        {clientesGrouped.map((cliente) => (
+        {clientesPaginados.map((cliente) => (
           <div key={cliente.cpf} className="bg-white rounded-xl shadow-sm border border-slate-200">
             <div className="p-4 border-b border-slate-200 bg-slate-50">
               <div className="flex items-center gap-3">
@@ -424,14 +553,14 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
             </div>
 
             <div className="p-4 space-y-3">
-              {cliente.cadastros.map((cadastro) => {
+              {cliente.cadastros.map((cadastro, idx) => {
                 const isBlocked = !!cadastro.motivo_bloqueio;
                 const hasERPData = cadastro.erp_dados_associado && Object.keys(cadastro.erp_dados_associado as object).length > 0;
                 const statusAdesao = statusList.find(s => s.id === cadastro.status_adesao_id);
 
                 return (
                   <div
-                    key={cadastro.id}
+                    key={`${cliente.cpf}-${cadastro.id}-${idx}`}
                     className="bg-slate-50 rounded-lg p-4"
                   >
                     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
@@ -539,6 +668,70 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
             </div>
           </div>
         ))}
+        </div>
+      )}
+
+      {totalPages > 1 && cadastrosFiltrados.length > 0 && (
+        <div className="flex items-center justify-center gap-4 mt-6">
+          <button
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+            className="p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+
+          <div className="flex items-center gap-2">
+            {visiblePages[0] > 1 && (
+              <>
+                <button
+                  onClick={() => setCurrentPage(1)}
+                  className="px-3 py-1.5 rounded-lg font-medium text-sm text-slate-600 hover:bg-slate-100 transition-colors"
+                >
+                  1
+                </button>
+                {visiblePages[0] > 2 && (
+                  <span className="text-slate-400 px-2">...</span>
+                )}
+              </>
+            )}
+
+            {visiblePages.map((page) => (
+              <button
+                key={page}
+                onClick={() => setCurrentPage(page)}
+                className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-colors ${
+                  currentPage === page
+                    ? 'bg-emerald-600 text-white'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                {page}
+              </button>
+            ))}
+
+            {visiblePages[visiblePages.length - 1] < totalPages && (
+              <>
+                {visiblePages[visiblePages.length - 1] < totalPages - 1 && (
+                  <span className="text-slate-400 px-2">...</span>
+                )}
+                <button
+                  onClick={() => setCurrentPage(totalPages)}
+                  className="px-3 py-1.5 rounded-lg font-medium text-sm text-slate-600 hover:bg-slate-100 transition-colors"
+                >
+                  {totalPages}
+                </button>
+              </>
+            )}
+          </div>
+
+          <button
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+            className="p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
         </div>
       )}
 

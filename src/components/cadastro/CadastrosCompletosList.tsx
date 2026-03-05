@@ -1,4 +1,4 @@
-import { FileText, CheckCircle2, Eye, Building2, Search, X, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { FileText, CheckCircle2, Eye, Building2, Search, X, Filter, ChevronLeft, ChevronRight, User } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
 import { Cadastro } from '../../hooks/useCadastros';
 import { formatCPF, formatDate } from '../../lib/cpf';
@@ -6,6 +6,7 @@ import { Input } from '../Input';
 import { Select } from '../Select';
 import { Button } from '../Button';
 import { useAuth } from '../../contexts/AuthContext';
+import { useConfigCadastro } from '../../contexts/ConfigCadastroContext';
 import { CadastrosSupervisorView } from './CadastrosSupervisorView';
 import { CadastrosGerenteView } from './CadastrosGerenteView';
 
@@ -24,11 +25,18 @@ const ITEMS_PER_PAGE = 12;
 
 export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProps) {
   const { profile } = useAuth();
+  const { parentescos } = useConfigCadastro();
   const [viewDetails, setViewDetails] = useState<Cadastro | null>(null);
-  const [buscaCliente, setBuscaCliente] = useState('');
-  const [buscaClienteAplicada, setBuscaClienteAplicada] = useState('');
-  const [buscaEmpresa, setBuscaEmpresa] = useState('');
-  const [buscaEmpresaAplicada, setBuscaEmpresaAplicada] = useState('');
+  const [tipoBusca, setTipoBusca] = useState<'associado' | 'empresa'>('associado');
+  const [tipoBuscaAplicada, setTipoBuscaAplicada] = useState<'associado' | 'empresa'>('associado');
+  const [buscaNome, setBuscaNome] = useState('');
+  const [buscaNomeAplicada, setBuscaNomeAplicada] = useState('');
+  const [buscaCPF, setBuscaCPF] = useState('');
+  const [buscaCPFAplicada, setBuscaCPFAplicada] = useState('');
+  const [buscaCNPJ, setBuscaCNPJ] = useState('');
+  const [buscaCNPJAplicada, setBuscaCNPJAplicada] = useState('');
+  const [buscaCodigo, setBuscaCodigo] = useState('');
+  const [buscaCodigoAplicada, setBuscaCodigoAplicada] = useState('');
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState('');
   const [dataInicioAplicada, setDataInicioAplicada] = useState('');
@@ -59,8 +67,11 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
   };
 
   const handleAplicarFiltros = () => {
-    setBuscaClienteAplicada(buscaCliente);
-    setBuscaEmpresaAplicada(buscaEmpresa);
+    setTipoBuscaAplicada(tipoBusca);
+    setBuscaNomeAplicada(buscaNome);
+    setBuscaCPFAplicada(buscaCPF);
+    setBuscaCNPJAplicada(buscaCNPJ);
+    setBuscaCodigoAplicada(buscaCodigo);
     setDataInicioAplicada(dataInicio);
     setDataFimAplicada(dataFim);
     setTipoFiltroAplicado(tipoFiltro);
@@ -75,39 +86,51 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
     return <CadastrosGerenteView cadastros={cadastros} statusFilter="enviado" />;
   }
 
+  // Total apenas com filtro de data (para o denominador do contador)
+  const cadastrosPorPeriodo = useMemo(() => {
+    return completos.filter((cadastro) => {
+      const dataEnvio = cadastro.data_envio ? new Date(cadastro.data_envio) : new Date(cadastro.updated_at);
+      const matchDataInicio = !dataInicioAplicada || dataEnvio >= new Date(dataInicioAplicada);
+      const matchDataFim = !dataFimAplicada || dataEnvio <= new Date(dataFimAplicada + 'T23:59:59');
+      return matchDataInicio && matchDataFim;
+    });
+  }, [completos, dataInicioAplicada, dataFimAplicada]);
+
   const cadastrosFiltrados = useMemo(() => {
     return completos.filter((cadastro) => {
-      const buscaClienteLower = buscaClienteAplicada.toLowerCase().trim();
-      const buscaClienteNumeros = buscaClienteAplicada.replace(/\D/g, '');
+      let matchBusca = true;
 
-      let matchCliente = true;
-      if (buscaClienteAplicada) {
-        matchCliente =
-          cadastro.nome?.toLowerCase().includes(buscaClienteLower) ||
-          (cadastro.cpf && cadastro.cpf.includes(buscaClienteNumeros)) ||
-          false;
+      if (tipoBuscaAplicada === 'associado') {
+        if (buscaNomeAplicada || buscaCPFAplicada) {
+          const nomeLower = buscaNomeAplicada.toLowerCase().trim();
+          const cpfNumeros = buscaCPFAplicada.replace(/\D/g, '');
 
-        if (!matchCliente && cadastro.dependentes) {
-          const dependentesArray = Array.isArray(cadastro.dependentes) ? cadastro.dependentes : [];
-          matchCliente = dependentesArray.some((dep: any) => {
-            return (
-              dep.nome?.toLowerCase().includes(buscaClienteLower) ||
-              (dep.cpf && dep.cpf.replace(/\D/g, '').includes(buscaClienteNumeros))
-            );
-          });
+          let matchNome = !buscaNomeAplicada || cadastro.nome?.toLowerCase().includes(nomeLower) || false;
+          let matchCPF = !buscaCPFAplicada || (cadastro.cpf && cadastro.cpf.includes(cpfNumeros)) || false;
+
+          matchBusca = matchNome && matchCPF;
+
+          if (!matchBusca && cadastro.dependentes) {
+            const dependentesArray = Array.isArray(cadastro.dependentes) ? cadastro.dependentes : [];
+            matchBusca = dependentesArray.some((dep: any) => {
+              const matchDepNome = !buscaNomeAplicada || dep.nome?.toLowerCase().includes(nomeLower) || false;
+              const matchDepCPF = !buscaCPFAplicada || (dep.cpf && dep.cpf.replace(/\D/g, '').includes(cpfNumeros)) || false;
+              return matchDepNome && matchDepCPF;
+            });
+          }
         }
-      }
+      } else {
+        if (buscaNomeAplicada || buscaCNPJAplicada || buscaCodigoAplicada) {
+          const nomeLower = buscaNomeAplicada.toLowerCase().trim();
+          const cnpjNumeros = buscaCNPJAplicada.replace(/\D/g, '');
+          const codigoStr = buscaCodigoAplicada.trim();
 
-      const buscaEmpresaLower = buscaEmpresaAplicada.toLowerCase().trim();
-      const buscaEmpresaNumeros = buscaEmpresaAplicada.replace(/\D/g, '');
+          const matchNome = !buscaNomeAplicada || cadastro.empresa_nome?.toLowerCase().includes(nomeLower) || false;
+          const matchCNPJ = !buscaCNPJAplicada || cadastro.empresa_cnpj?.replace(/\D/g, '').includes(cnpjNumeros) || false;
+          const matchCodigo = !buscaCodigoAplicada || (cadastro.empresa_codigo && cadastro.empresa_codigo.toString().includes(codigoStr)) || false;
 
-      let matchEmpresa = true;
-      if (buscaEmpresaAplicada) {
-        matchEmpresa =
-          cadastro.empresa_nome?.toLowerCase().includes(buscaEmpresaLower) ||
-          cadastro.empresa_cnpj?.replace(/\D/g, '').includes(buscaEmpresaNumeros) ||
-          (cadastro.empresa_codigo && cadastro.empresa_codigo.toString().includes(buscaEmpresaNumeros)) ||
-          false;
+          matchBusca = matchNome && matchCNPJ && matchCodigo;
+        }
       }
 
       const dataEnvio = cadastro.data_envio ? new Date(cadastro.data_envio) : new Date(cadastro.updated_at);
@@ -119,9 +142,9 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
         matchTipo = cadastro.tipo_cadastro === tipoFiltroAplicado;
       }
 
-      return matchCliente && matchEmpresa && matchDataInicio && matchDataFim && matchTipo;
+      return matchBusca && matchDataInicio && matchDataFim && matchTipo;
     });
-  }, [completos, buscaClienteAplicada, buscaEmpresaAplicada, dataInicioAplicada, dataFimAplicada, tipoFiltroAplicado]);
+  }, [completos, tipoBuscaAplicada, buscaNomeAplicada, buscaCPFAplicada, buscaCNPJAplicada, buscaCodigoAplicada, dataInicioAplicada, dataFimAplicada, tipoFiltroAplicado]);
 
   const empresasGrouped: EmpresaGroup[] = useMemo(() => {
     const cadastrosMap = new Map<string, Cadastro[]>();
@@ -157,6 +180,27 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
   const endIndex = startIndex + ITEMS_PER_PAGE;
   const empresasPaginadas = empresasGrouped.slice(startIndex, endIndex);
 
+  // Calcular quais páginas mostrar (máximo 10 páginas visíveis)
+  const getVisiblePages = () => {
+    const maxVisible = 10;
+    if (totalPages <= maxVisible) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+
+    const halfVisible = Math.floor(maxVisible / 2);
+    let startPage = Math.max(1, currentPage - halfVisible);
+    let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+
+    // Ajustar se chegou no fim
+    if (endPage - startPage < maxVisible - 1) {
+      startPage = Math.max(1, endPage - maxVisible + 1);
+    }
+
+    return Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
+  };
+
+  const visiblePages = getVisiblePages();
+
   if (completos.length === 0) {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12">
@@ -169,10 +213,16 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
   }
 
   const limparFiltros = () => {
-    setBuscaCliente('');
-    setBuscaClienteAplicada('');
-    setBuscaEmpresa('');
-    setBuscaEmpresaAplicada('');
+    setTipoBusca('associado');
+    setTipoBuscaAplicada('associado');
+    setBuscaNome('');
+    setBuscaNomeAplicada('');
+    setBuscaCPF('');
+    setBuscaCPFAplicada('');
+    setBuscaCNPJ('');
+    setBuscaCNPJAplicada('');
+    setBuscaCodigo('');
+    setBuscaCodigoAplicada('');
     setDataInicio('');
     setDataFim('');
     setDataInicioAplicada('');
@@ -183,7 +233,7 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
     setDefaultDateFilter();
   };
 
-  const temFiltrosAtivos = buscaClienteAplicada || buscaEmpresaAplicada || dataInicioAplicada || dataFimAplicada || tipoFiltroAplicado !== 'todos';
+  const temFiltrosAtivos = buscaNomeAplicada || buscaCPFAplicada || buscaCNPJAplicada || buscaCodigoAplicada || dataInicioAplicada || dataFimAplicada || tipoFiltroAplicado !== 'todos';
 
   return (
     <>
@@ -203,39 +253,111 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          <div className="relative">
-            <Input
-              label="Busca Cliente"
-              value={buscaCliente}
-              onChange={(e) => setBuscaCliente(e.target.value)}
-              placeholder="CPF ou Nome do cliente/dependente"
-            />
-            {buscaCliente && (
-              <button
-                onClick={() => setBuscaCliente('')}
-                className="absolute right-2 top-9 text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
+          <Select
+            label="Tipo de Busca"
+            value={tipoBusca}
+            onChange={(e) => {
+              setTipoBusca(e.target.value as 'associado' | 'empresa');
+              setBuscaNome('');
+              setBuscaCPF('');
+              setBuscaCNPJ('');
+              setBuscaCodigo('');
+            }}
+          >
+            <option value="associado">Associado</option>
+            <option value="empresa">Empresa</option>
+          </Select>
 
-          <div className="relative">
-            <Input
-              label="Busca Empresa"
-              value={buscaEmpresa}
-              onChange={(e) => setBuscaEmpresa(e.target.value)}
-              placeholder="Nome, CNPJ ou Código da empresa"
-            />
-            {buscaEmpresa && (
-              <button
-                onClick={() => setBuscaEmpresa('')}
-                className="absolute right-2 top-9 text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
+          {tipoBusca === 'associado' ? (
+            <>
+              <div className="relative">
+                <Input
+                  label="Nome"
+                  value={buscaNome}
+                  onChange={(e) => setBuscaNome(e.target.value)}
+                  placeholder="Nome do associado/dependente"
+                />
+                {buscaNome && (
+                  <button
+                    onClick={() => setBuscaNome('')}
+                    className="absolute right-2 top-9 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              <div className="relative">
+                <Input
+                  label="CPF"
+                  value={buscaCPF}
+                  onChange={(e) => setBuscaCPF(e.target.value)}
+                  placeholder="CPF"
+                />
+                {buscaCPF && (
+                  <button
+                    onClick={() => setBuscaCPF('')}
+                    className="absolute right-2 top-9 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="relative">
+                <Input
+                  label="Nome"
+                  value={buscaNome}
+                  onChange={(e) => setBuscaNome(e.target.value)}
+                  placeholder="Nome da empresa"
+                />
+                {buscaNome && (
+                  <button
+                    onClick={() => setBuscaNome('')}
+                    className="absolute right-2 top-9 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              <div className="relative">
+                <Input
+                  label="CNPJ"
+                  value={buscaCNPJ}
+                  onChange={(e) => setBuscaCNPJ(e.target.value)}
+                  placeholder="CNPJ"
+                />
+                {buscaCNPJ && (
+                  <button
+                    onClick={() => setBuscaCNPJ('')}
+                    className="absolute right-2 top-9 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              <div className="relative">
+                <Input
+                  label="Código"
+                  value={buscaCodigo}
+                  onChange={(e) => setBuscaCodigo(e.target.value)}
+                  placeholder="Código da empresa"
+                />
+                {buscaCodigo && (
+                  <button
+                    onClick={() => setBuscaCodigo('')}
+                    className="absolute right-2 top-9 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </>
+          )}
 
           <Select
             label="Tipo"
@@ -268,11 +390,9 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
             Filtrar
           </Button>
 
-          {temFiltrosAtivos && (
-            <div className="text-sm text-slate-600">
-              Mostrando {contarPessoas(cadastrosFiltrados)} pessoas de {contarPessoas(completos)} pessoas em {empresasGrouped.length} {empresasGrouped.length === 1 ? 'empresa' : 'empresas'}
-            </div>
-          )}
+          <div className="text-sm text-slate-600">
+            Mostrando {cadastrosFiltrados.length} de {cadastrosPorPeriodo.length} {cadastrosPorPeriodo.length === 1 ? 'cadastro' : 'cadastros'}
+          </div>
         </div>
       </div>
 
@@ -319,9 +439,9 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
                     </div>
 
                     <div className="space-y-2 max-h-48 overflow-y-auto">
-                      {empresa.cadastros.map((cadastro) => (
+                      {empresa.cadastros.map((cadastro, idx) => (
                         <div
-                          key={cadastro.id}
+                          key={`${empresaKey}-${cadastro.id}-${idx}`}
                           className="flex items-center justify-between p-2 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors"
                         >
                           <div className="flex-1 min-w-0">
@@ -359,7 +479,21 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
               </button>
 
               <div className="flex items-center gap-2">
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                {visiblePages[0] > 1 && (
+                  <>
+                    <button
+                      onClick={() => setCurrentPage(1)}
+                      className="px-3 py-1.5 rounded-lg font-medium text-sm text-slate-600 hover:bg-slate-100 transition-colors"
+                    >
+                      1
+                    </button>
+                    {visiblePages[0] > 2 && (
+                      <span className="text-slate-400 px-2">...</span>
+                    )}
+                  </>
+                )}
+
+                {visiblePages.map((page) => (
                   <button
                     key={page}
                     onClick={() => setCurrentPage(page)}
@@ -372,6 +506,20 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
                     {page}
                   </button>
                 ))}
+
+                {visiblePages[visiblePages.length - 1] < totalPages && (
+                  <>
+                    {visiblePages[visiblePages.length - 1] < totalPages - 1 && (
+                      <span className="text-slate-400 px-2">...</span>
+                    )}
+                    <button
+                      onClick={() => setCurrentPage(totalPages)}
+                      className="px-3 py-1.5 rounded-lg font-medium text-sm text-slate-600 hover:bg-slate-100 transition-colors"
+                    >
+                      {totalPages}
+                    </button>
+                  </>
+                )}
               </div>
 
               <button
@@ -388,9 +536,9 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
 
       {viewDetails && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-slate-800">Detalhes do Cadastro</h3>
+          <div className="bg-white rounded-xl shadow-xl max-w-6xl w-full p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-slate-800">Detalhes Completos do Cadastro</h3>
               <button
                 onClick={() => setViewDetails(null)}
                 className="text-slate-400 hover:text-slate-600"
@@ -399,49 +547,269 @@ export function CadastrosCompletosList({ cadastros }: CadastrosCompletosListProp
               </button>
             </div>
 
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm font-medium text-slate-600">Nome</p>
-                <p className="text-slate-800">{viewDetails.nome}</p>
+            <div className="space-y-6">
+              <div className="border-b border-slate-200 pb-4">
+                <h4 className="font-bold text-lg text-slate-800 mb-3">Dados do Titular</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Nome</p>
+                    <p className="text-slate-800">{viewDetails.nome || '-'}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">CPF</p>
+                    <p className="text-slate-800">{viewDetails.cpf ? formatCPF(viewDetails.cpf) : '-'}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Data de Nascimento</p>
+                    <p className="text-slate-800">{viewDetails.data_nascimento ? formatDate(viewDetails.data_nascimento) : '-'}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Sexo</p>
+                    <p className="text-slate-800">{viewDetails.sexo || '-'}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Nome da Mãe</p>
+                    <p className="text-slate-800">{viewDetails.nome_mae || '-'}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Telefone</p>
+                    <p className="text-slate-800">{viewDetails.telefone || '-'}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Email</p>
+                    <p className="text-slate-800">{viewDetails.email || '-'}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Matrícula</p>
+                    <p className="text-slate-800">{viewDetails.matricula || '-'}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Tipo</p>
+                    <p className="text-slate-800">{viewDetails.tipo_cadastro === 'cadastro' ? 'Cadastro' : 'Inclusão de Dependente'}</p>
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <p className="text-sm font-medium text-slate-600">CPF</p>
-                <p className="text-slate-800">{viewDetails.cpf ? formatCPF(viewDetails.cpf) : 'CPF não informado'}</p>
+              <div className="border-b border-slate-200 pb-4">
+                <h4 className="font-bold text-lg text-slate-800 mb-3">Endereço</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">CEP</p>
+                    <p className="text-slate-800">{viewDetails.cep || '-'}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Logradouro</p>
+                    <p className="text-slate-800">{viewDetails.logradouro || '-'}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Número</p>
+                    <p className="text-slate-800">{viewDetails.numero || '-'}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Complemento</p>
+                    <p className="text-slate-800">{viewDetails.complemento || '-'}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Bairro</p>
+                    <p className="text-slate-800">{viewDetails.bairro || '-'}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Cidade</p>
+                    <p className="text-slate-800">{viewDetails.cidade || '-'}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">UF</p>
+                    <p className="text-slate-800">{viewDetails.uf || '-'}</p>
+                  </div>
+                </div>
               </div>
 
-              {viewDetails.data_nascimento && (
-                <div>
-                  <p className="text-sm font-medium text-slate-600">Data de Nascimento</p>
-                  <p className="text-slate-800">{formatDate(viewDetails.data_nascimento)}</p>
-                </div>
-              )}
+              <div className="border-b border-slate-200 pb-4">
+                <h4 className="font-bold text-lg text-slate-800 mb-3">Empresa e Plano</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Empresa</p>
+                    <p className="text-slate-800">{viewDetails.empresa_nome || '-'}</p>
+                  </div>
 
-              {viewDetails.sexo && (
-                <div>
-                  <p className="text-sm font-medium text-slate-600">Sexo</p>
-                  <p className="text-slate-800">{viewDetails.sexo}</p>
-                </div>
-              )}
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">CNPJ da Empresa</p>
+                    <p className="text-slate-800">{viewDetails.empresa_cnpj || '-'}</p>
+                  </div>
 
-              {viewDetails.empresa_nome && (
-                <div>
-                  <p className="text-sm font-medium text-slate-600">Empresa</p>
-                  <p className="text-slate-800">{viewDetails.empresa_nome}</p>
-                </div>
-              )}
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Código da Empresa</p>
+                    <p className="text-slate-800">{viewDetails.empresa_codigo || '-'}</p>
+                  </div>
 
-              {viewDetails.plano_nome && (
-                <div>
-                  <p className="text-sm font-medium text-slate-600">Plano</p>
-                  <p className="text-slate-800">{viewDetails.plano_nome}</p>
-                </div>
-              )}
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Plano</p>
+                    <p className="text-slate-800">{viewDetails.plano_nome || '-'}</p>
+                  </div>
 
-              {viewDetails.data_envio && (
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Código do Plano</p>
+                    <p className="text-slate-800">{viewDetails.plano_codigo || '-'}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Código do Contrato</p>
+                    <p className="text-slate-800">{viewDetails.codigo_contrato || '-'}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-b border-slate-200 pb-4">
+                <h4 className="font-bold text-lg text-slate-800 mb-3">Responsável e Vendedor</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Responsável Financeiro</p>
+                    <p className="text-slate-800">{viewDetails.responsavel_financeiro || '-'}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Vendedor</p>
+                    <p className="text-slate-800">{viewDetails.vendedor_nome || '-'}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Adesionista</p>
+                    <p className="text-slate-800">{viewDetails.adesionista || '-'}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-b border-slate-200 pb-4">
+                <h4 className="font-bold text-lg text-slate-800 mb-3">Datas</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Data de Criação</p>
+                    <p className="text-slate-800">{new Date(viewDetails.created_at).toLocaleString('pt-BR')}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Data de Atualização</p>
+                    <p className="text-slate-800">{new Date(viewDetails.updated_at).toLocaleString('pt-BR')}</p>
+                  </div>
+
+                  {viewDetails.data_envio && (
+                    <div>
+                      <p className="text-sm font-medium text-slate-600">Data de Envio ao ERP</p>
+                      <p className="text-slate-800">{new Date(viewDetails.data_envio).toLocaleString('pt-BR')}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="border-b border-slate-200 pb-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="font-bold text-lg text-slate-800">
+                    Dependentes
+                  </h4>
+                  <span className="text-sm font-medium text-slate-600 bg-slate-100 px-3 py-1 rounded-full">
+                    {viewDetails.dependentes && Array.isArray(viewDetails.dependentes)
+                      ? `${viewDetails.dependentes.length} ${viewDetails.dependentes.length === 1 ? 'pessoa' : 'pessoas'}`
+                      : '0 pessoas'}
+                  </span>
+                </div>
+
+                {viewDetails.dependentes && Array.isArray(viewDetails.dependentes) && viewDetails.dependentes.length > 0 ? (
+                  <div className="space-y-3">
+                    {viewDetails.dependentes.map((dep: any, index: number) => {
+                      const isTitular = dep.tipo === 1;
+                      return (
+                        <div
+                          key={index}
+                          className={`rounded-lg p-4 border-2 transition-all ${
+                            isTitular
+                              ? 'bg-emerald-50 border-emerald-300 shadow-sm'
+                              : 'bg-blue-50 border-blue-200'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-3">
+                            <h5 className="font-semibold text-slate-800 text-base">
+                              {dep.nome || `Dependente ${index + 1}`}
+                            </h5>
+                            {isTitular && (
+                              <span className="text-xs bg-emerald-600 text-white px-2.5 py-0.5 rounded-full font-medium">
+                                TITULAR
+                              </span>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div>
+                              <p className="text-xs font-medium text-slate-500 mb-1">CPF</p>
+                              <p className="text-sm text-slate-800 font-medium">{dep.cpf ? formatCPF(dep.cpf) : '-'}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs font-medium text-slate-500 mb-1">Data de Nascimento</p>
+                              <p className="text-sm text-slate-800">{dep.dataNascimento ? formatDate(dep.dataNascimento) : '-'}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs font-medium text-slate-500 mb-1">Sexo</p>
+                              <p className="text-sm text-slate-800">
+                                {dep.sexoDescricao || (dep.sexo === 1 ? 'Masculino' : dep.sexo === 0 ? 'Feminino' : '-')}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs font-medium text-slate-500 mb-1">Parentesco</p>
+                              <p className="text-sm text-slate-800 font-medium">
+                                {(() => {
+                                  const parentesco = parentescos.find(p => p.parentesco_id === dep.tipo);
+                                  return parentesco?.label || dep.parentesco || (dep.tipo === 1 ? 'Titular' : `Tipo ${dep.tipo}`) || '-';
+                                })()}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs font-medium text-slate-500 mb-1">Nome da Mãe</p>
+                              <p className="text-sm text-slate-800">{dep.nomeMae || '-'}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs font-medium text-slate-500 mb-1">Plano</p>
+                              <p className="text-sm text-slate-800">
+                                {dep.plano ? `Plano ${dep.plano}${dep.planoValor ? ` - R$ ${dep.planoValor}` : ''}` : '-'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="bg-slate-50 rounded-lg p-6 text-center border-2 border-dashed border-slate-200">
+                    <User className="w-12 h-12 text-slate-300 mx-auto mb-2" />
+                    <p className="text-slate-500 font-medium">Nenhum dependente cadastrado</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {viewDetails.tipo_cadastro === 'cadastro'
+                        ? 'Este cadastro não possui dependentes'
+                        : 'Não há informações de dependentes disponíveis'}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {viewDetails.erp_response && (
                 <div>
-                  <p className="text-sm font-medium text-slate-600">Data de Envio</p>
-                  <p className="text-slate-800">{new Date(viewDetails.data_envio).toLocaleString('pt-BR')}</p>
+                  <h4 className="font-bold text-lg text-slate-800 mb-3">Resposta do ERP</h4>
+                  <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                    <pre className="text-xs text-slate-700 overflow-x-auto whitespace-pre-wrap">
+                      {JSON.stringify(viewDetails.erp_response, null, 2)}
+                    </pre>
+                  </div>
                 </div>
               )}
             </div>

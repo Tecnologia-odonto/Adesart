@@ -94,75 +94,101 @@ export function useCadastros() {
     inclusao_enviados_cadastros: 0,
     inclusao_enviados_dependentes: 0
   });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [loadingStats, setLoadingStats] = useState(true);
   const { profile } = useAuth();
 
   const fetchCadastros = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('cadastros')
-        .select('*')
-        .order('updated_at', { ascending: false });
 
-      if (error) throw error;
+      let allData: any[] = [];
+      let rangeStart = 0;
+      const rangeSize = 1000;
+      let hasMore = true;
 
-      setCadastros(data || []);
+      while (hasMore) {
+        const { data: chunk, error } = await supabase
+          .from('cadastros')
+          .select('*')
+          .order('updated_at', { ascending: false })
+          .range(rangeStart, rangeStart + rangeSize - 1);
+
+        if (error) {
+          console.error('Erro ao buscar cadastros:', error);
+          throw error;
+        }
+
+        if (chunk && chunk.length > 0) {
+          allData = [...allData, ...chunk];
+
+          if (chunk.length < rangeSize) {
+            hasMore = false;
+          } else {
+            rangeStart += rangeSize;
+          }
+        } else {
+          hasMore = false;
+        }
+      }
+
+      setCadastros(allData || []);
     } catch (error) {
-      console.error('Error fetching cadastros:', error);
+      console.error('Erro fatal ao buscar cadastros:', error);
     } finally {
       setLoading(false);
     }
   };
 
   const fetchStats = async () => {
-    if (!profile?.id) return;
+    if (!profile?.id) {
+      return;
+    }
 
     try {
       setLoadingStats(true);
+
       const { data, error } = await supabase.rpc('get_cadastros_stats', {
         p_user_id: profile.id,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Erro ao buscar stats:', error);
+        throw error;
+      }
 
-      setStats(data || {
-        cadastro_total: 0,
-        cadastro_cadastros: 0,
-        cadastro_dependentes: 0,
-        cadastro_incompletos: 0,
-        cadastro_incompletos_cadastros: 0,
-        cadastro_incompletos_dependentes: 0,
-        cadastro_enviados: 0,
-        cadastro_enviados_cadastros: 0,
-        cadastro_enviados_dependentes: 0,
-        inclusao_total: 0,
-        inclusao_cadastros: 0,
-        inclusao_dependentes: 0,
-        inclusao_incompletos: 0,
-        inclusao_incompletos_cadastros: 0,
-        inclusao_incompletos_dependentes: 0,
-        inclusao_enviados: 0,
-        inclusao_enviados_cadastros: 0,
-        inclusao_enviados_dependentes: 0
-      });
+      if (data) {
+        setStats(data);
+      } else {
+        setStats({
+          cadastro_total: 0,
+          cadastro_cadastros: 0,
+          cadastro_dependentes: 0,
+          cadastro_incompletos: 0,
+          cadastro_incompletos_cadastros: 0,
+          cadastro_incompletos_dependentes: 0,
+          cadastro_enviados: 0,
+          cadastro_enviados_cadastros: 0,
+          cadastro_enviados_dependentes: 0,
+          inclusao_total: 0,
+          inclusao_cadastros: 0,
+          inclusao_dependentes: 0,
+          inclusao_incompletos: 0,
+          inclusao_incompletos_cadastros: 0,
+          inclusao_incompletos_dependentes: 0,
+          inclusao_enviados: 0,
+          inclusao_enviados_cadastros: 0,
+          inclusao_enviados_dependentes: 0
+        });
+      }
     } catch (error) {
-      console.error('Error fetching cadastros stats:', error);
+      console.error('Erro fatal ao buscar stats:', error);
     } finally {
       setLoadingStats(false);
     }
   };
 
-  useEffect(() => {
-    fetchCadastros();
-  }, []);
-
-  useEffect(() => {
-    if (profile?.id) {
-      fetchStats();
-    }
-  }, [profile?.id]);
+  // Stats devem ser carregados sob demanda, não automaticamente
 
   const checkERPAssociado = async (cpf: string) => {
     const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-check-associado`;
@@ -479,10 +505,30 @@ export function useCadastros() {
         throw new Error(mensagemErro);
       }
 
+      const dados = payload.dados as any;
+      const dependentesPayload = dados?.dependente || [];
+
+      // Converter dependentes do formato ERP para o formato interno
+      const dependentesFormatados = dependentesPayload.map((dep: any) => ({
+        cpf: dep.cpf.replace(/\D/g, ''),
+        nome: dep.nome,
+        dataNascimento: dep.dataNascimento,
+        sexo: dep.sexo,
+        sexoDescricao: dep.sexoDescricao,
+        tipo: dep.tipo,
+        plano: dep.plano,
+        planoValor: dep.planoValor,
+        nomeMae: dep.nomeMae,
+        carenciaAtendimento: dep.carenciaAtendimento,
+        funcionarioCadastro: dep.funcionarioCadastro,
+      }));
+
       await updateCadastro(id, {
         status: 'enviado',
         payload_erp: payload,
         erp_response: result,
+        dependentes: dependentesFormatados,
+        data_envio: new Date().toISOString(),
       });
 
       return result;
@@ -564,6 +610,25 @@ export function useCadastros() {
 
   const canDelete = profile?.role === 'ADMINISTRADOR';
 
+  // Carrega cadastros sob demanda
+  const loadCadastros = async () => {
+    if (cadastros.length === 0) {
+      await fetchCadastros();
+    }
+  };
+
+  // Carrega stats automaticamente quando o profile está disponível
+  useEffect(() => {
+    if (profile?.id) {
+      fetchStats();
+    }
+  }, [profile?.id]);
+
+  // Carrega stats sob demanda
+  const loadStats = async () => {
+    await fetchStats();
+  };
+
   const refresh = async () => {
     await fetchCadastros();
     await fetchStats();
@@ -584,6 +649,8 @@ export function useCadastros() {
     updateCadastro,
     enviarParaERP,
     deleteCadastro,
+    loadCadastros,
+    loadStats,
     refresh,
   };
 }

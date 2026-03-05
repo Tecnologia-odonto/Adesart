@@ -64,6 +64,13 @@ export function StatsByVendedorModal({
     }
   };
 
+  // Ordenar do maior para o menor
+  const sortedStats = [...stats].sort((a, b) => {
+    const valueA = getValueByType(a);
+    const valueB = getValueByType(b);
+    return valueB - valueA;
+  });
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
@@ -85,7 +92,7 @@ export function StatsByVendedorModal({
             </div>
           ) : (
             <div className="space-y-3">
-              {stats.map((stat) => (
+              {sortedStats.map((stat) => (
                 <div
                   key={stat.vendedor_id}
                   className={`${getBgColorByType()} border border-slate-200 rounded-lg p-4 transition-all hover:shadow-md`}

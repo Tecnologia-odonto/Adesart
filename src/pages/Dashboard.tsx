@@ -17,7 +17,7 @@ interface VendedorStats {
 
 export function Dashboard() {
   const { profile } = useAuth();
-  const { stats: cadastroStats, loading: cadastroLoading } = useCadastros();
+  const { stats: cadastroStats, loading: cadastroLoading, loadStats } = useCadastros();
   const [stats, setStats] = useState({
     totalUsers: 0,
     totalTeams: 0,
@@ -62,7 +62,7 @@ export function Dashboard() {
           setTeam(teamData);
         }
       } catch (error) {
-        console.error('Error fetching stats:', error);
+        console.error('Erro ao buscar stats do dashboard:', error);
       } finally {
         setLoading(false);
       }
@@ -86,27 +86,32 @@ export function Dashboard() {
     type: 'total' | 'pendentes' | 'cadastrados',
     tipoCadastro: 'cadastro' | 'inclusao_dependente'
   ) => {
-    if (!canViewByVendedor || !profile?.id) return;
+    if (!canViewByVendedor || !profile?.id) {
+      return;
+    }
 
     try {
-      const { data, error } = await supabase.rpc('get_cadastros_stats_by_vendedor', {
+      const { data, error } = await supabase.rpc('get_stats_by_vendedor', {
         p_user_id: profile.id,
         p_tipo_cadastro: tipoCadastro,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Erro ao buscar stats por vendedor:', error);
+        throw error;
+      }
 
       setVendedorStats(data || []);
       setModalType(type);
       setModalTipoCadastro(tipoCadastro);
       setModalOpen(true);
     } catch (error) {
-      console.error('Error fetching stats by vendedor:', error);
+      console.error('Erro fatal em handleCardClick:', error);
     }
   };
 
   const getModalTitle = () => {
-    const tipoLabel = modalTipoCadastro === 'cadastro' ? 'Cadastro' : 'Inclusão de Dependente';
+    const tipoLabel = modalTipoCadastro === 'cadastro' ? 'Pessoas' : 'Dependentes Incluídos';
     switch (modalType) {
       case 'total':
         return `Total de ${tipoLabel} por Vendedor`;
@@ -124,7 +129,7 @@ export function Dashboard() {
       <div className="space-y-4 sm:space-y-6">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-800">Dashboard</h1>
-          <p className="text-slate-600 mt-1 text-sm sm:text-base">Bem-vindo ao Adesao+</p>
+          <p className="text-slate-600 mt-1 text-sm sm:text-base">Bem-vindo ao VENDA+</p>
         </div>
 
         <div>

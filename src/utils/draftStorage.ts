@@ -98,12 +98,6 @@ export function saveDraft(modalName: string, data: Omit<DraftData, 'timestamp'>,
     const normalizedName = normalizeModalName(modalName);
 
     store.upsertDraft(userId, normalizedName, sanitized as Partial<ModalDraft>);
-
-    console.log(`✅ Draft saved for ${modalName}`, {
-      userId,
-      hasArquivo: !!sanitized.arquivo,
-      hasDependentes: !!sanitized.dependentes?.length
-    });
   } catch (error) {
     console.warn('Failed to save draft:', error);
   }
@@ -129,17 +123,9 @@ export function loadDraft(modalName: string, userId?: string, cadastroId?: strin
 
     // Check expiry
     if (Date.now() - draft.timestamp > DRAFT_EXPIRY_MS) {
-      console.log(`Draft expired for ${modalName}, removing...`);
       clearDraft(modalName, userId, cadastroId);
       return null;
     }
-
-    console.log(`✅ Draft loaded for ${modalName}`, {
-      userId,
-      age: Math.round((Date.now() - draft.timestamp) / 1000 / 60),
-      hasArquivo: !!(draft as any).arquivo,
-      hasDependentes: !!(draft as any).dependentes?.length
-    });
 
     return draft as unknown as DraftData;
   } catch (error) {
@@ -161,8 +147,6 @@ export function clearDraft(modalName: string, userId?: string, cadastroId?: stri
     const normalizedName = normalizeModalName(modalName);
 
     store.clearDraft(userId, normalizedName, cadastroId);
-
-    console.log(`🗑️ Draft cleared for ${modalName}`, { userId, cadastroId });
   } catch (error) {
     console.warn('Failed to clear draft:', error);
   }
@@ -180,8 +164,6 @@ export function clearAllDrafts(userId?: string): void {
 
     const store = useDraftStore.getState();
     store.clearAllUserDrafts(userId);
-
-    console.log('🗑️ All drafts cleared for user', userId);
   } catch (error) {
     console.warn('Failed to clear all drafts:', error);
   }
@@ -211,20 +193,17 @@ export function setupAutosave(
   // visibilitychange - when tab is hidden
   const handleVisibilityChange = () => {
     if (document.hidden) {
-      console.log('📱 Visibility changed (hidden), saving draft...');
       saveNow();
     }
   };
 
   // pagehide - when page is being unloaded (critical for mobile!)
   const handlePageHide = (e: PageTransitionEvent) => {
-    console.log('📱 Page hide event, saving draft...');
     saveNow();
   };
 
   // beforeunload - when page is about to unload
   const handleBeforeUnload = () => {
-    console.log('📱 Before unload, saving draft...');
     saveNow();
   };
 
@@ -233,14 +212,11 @@ export function setupAutosave(
   window.addEventListener('pagehide', handlePageHide);
   window.addEventListener('beforeunload', handleBeforeUnload);
 
-  console.log(`📡 Auto-save listeners registered for ${modalName}`);
-
   // Return cleanup function
   return () => {
     document.removeEventListener('visibilitychange', handleVisibilityChange);
     window.removeEventListener('pagehide', handlePageHide);
     window.removeEventListener('beforeunload', handleBeforeUnload);
-    console.log(`🔌 Auto-save listeners cleaned up for ${modalName}`);
   };
 }
 
@@ -258,7 +234,6 @@ export function saveBeforeFilePicker(
     return;
   }
 
-  console.log('💾 Saving draft before file picker opens...');
   const data = getData();
   if (data && Object.keys(data).length > 0) {
     saveDraft(modalName, data, userId);
