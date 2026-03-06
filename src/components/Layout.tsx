@@ -1,6 +1,6 @@
 import { ReactNode, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { LogOut, Users, Briefcase, User as UserIcon, LayoutDashboard, Menu, X, FileText, Settings, Activity, Upload, ChevronDown } from 'lucide-react';
+import { LogOut, Users, Briefcase, User as UserIcon, LayoutDashboard, Menu, X, FileText, Settings, Activity, Upload, ChevronDown, Trash2 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 interface LayoutProps {
@@ -46,6 +46,7 @@ export function Layout({ children }: LayoutProps) {
     { path: '/configuracoes', label: 'Configurações', icon: Settings, show: canViewConfig },
     { path: '/auditoria-lemmit', label: 'Auditoria Lemmit', icon: Activity, show: canViewAudit },
     { path: '/fila-upload-erp', label: 'Fila Upload ERP', icon: Upload, show: canViewAudit },
+    { path: '/adesoes-excluidas', label: 'Adesões Excluídas', icon: Trash2, show: canViewAudit },
   ];
 
   const hasAnyConfigMenu = configMenuItems.some(item => item.show);

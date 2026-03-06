@@ -1,8 +1,9 @@
-import { FileText, Clock, AlertCircle, CheckCircle2, Eye, Ban, User, Search, X, Filter, Tag, ChevronLeft, ChevronRight } from 'lucide-react';
+import { FileText, Clock, AlertCircle, CheckCircle2, Eye, Ban, User, Search, X, Filter, Tag, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
 import { Cadastro } from '../../hooks/useCadastros';
 import { formatCPF, formatDate } from '../../lib/cpf';
 import { AlreadyExistsModal } from './AlreadyExistsModal';
+import { ExcluirCadastroModal } from './ExcluirCadastroModal';
 import { Input } from '../Input';
 import { Select } from '../Select';
 import { Button } from '../Button';
@@ -37,6 +38,7 @@ interface UserProfile {
 export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: CadastrosIncompletosListProps) {
   const { profile } = useAuth();
   const [viewERPData, setViewERPData] = useState<Cadastro | null>(null);
+  const [cadastroParaExcluir, setCadastroParaExcluir] = useState<Cadastro | null>(null);
   const [statusList, setStatusList] = useState<StatusAdesao[]>([]);
   const [tipoBusca, setTipoBusca] = useState<'associado' | 'empresa'>('associado');
   const [tipoBuscaAplicada, setTipoBuscaAplicada] = useState<'associado' | 'empresa'>('associado');
@@ -159,6 +161,39 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
     } catch (error) {
       console.error('Error updating status:', error);
       alert('Erro ao atualizar status');
+    }
+  };
+
+  const handleExcluirCadastro = async (motivo: string) => {
+    if (!cadastroParaExcluir) return;
+
+    const { data: session } = await supabase.auth.getSession();
+    if (!session?.session?.access_token) {
+      throw new Error('Usuário não autenticado');
+    }
+
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/excluir-cadastro`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cadastroId: cadastroParaExcluir.id,
+          motivoExclusao: motivo,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Erro ao excluir cadastro');
+    }
+
+    if (onRefresh) {
+      await onRefresh();
     }
   };
 
@@ -652,6 +687,18 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
                             <Eye className="w-5 h-5" />
                           </button>
                         )}
+                        {(profile?.role === 'VENDEDOR' || profile?.role === 'ADESIONISTA') && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCadastroParaExcluir(cadastro);
+                            }}
+                            className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Excluir adesão"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        )}
                         {!isBlocked && (
                           <button
                             onClick={() => onSelect(cadastro)}
@@ -733,6 +780,14 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
             <ChevronRight className="w-5 h-5" />
           </button>
         </div>
+      )}
+
+      {cadastroParaExcluir && (
+        <ExcluirCadastroModal
+          onClose={() => setCadastroParaExcluir(null)}
+          onConfirm={handleExcluirCadastro}
+          titularNome={cadastroParaExcluir.nome || 'Nome não informado'}
+        />
       )}
 
       {viewERPData && viewERPData.erp_dados_associado && (

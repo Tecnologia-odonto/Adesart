@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Trash2, Edit2, X, Check, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Pencil, X, Check, Loader2 } from 'lucide-react';
 import { Input } from '../Input';
 import { Select } from '../Select';
 import { Button } from '../Button';
@@ -57,9 +57,12 @@ export function DependentesSection({
     const isOculto = planosOcultos.includes(planoId);
 
     if (editingIndex !== null && dependentes[editingIndex]) {
-      const planoDoDepEditando = dependentes[editingIndex].plano.toString();
-      if (planoId === planoDoDepEditando) {
-        return true;
+      const planoDepEditando = dependentes[editingIndex].plano;
+      if (planoDepEditando !== null && planoDepEditando !== undefined) {
+        const planoDoDepEditando = planoDepEditando.toString();
+        if (planoId === planoDoDepEditando) {
+          return true;
+        }
       }
     }
 
@@ -529,7 +532,7 @@ export function DependentesSection({
                   className="p-2 hover:bg-slate-200 rounded transition-colors"
                   title="Editar"
                 >
-                  <Edit2 className="w-4 h-4 text-slate-600" />
+                  <Pencil className="w-4 h-4 text-slate-600" />
                 </button>
                 <button
                   onClick={() => handleDelete(index)}

@@ -12,6 +12,7 @@ import { Cadastro } from './pages/Cadastro';
 import { ConfiguracoesCadastro } from './pages/ConfiguracoesCadastro';
 import { AuditoriaLemmit } from './pages/AuditoriaLemmit';
 import { FilaUploadERP } from './pages/FilaUploadERP';
+import { AdesoesExcluidas } from './pages/AdesoesExcluidas';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -86,6 +87,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['ADMINISTRADOR']}>
             <FilaUploadERP />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/adesoes-excluidas"
+        element={
+          <ProtectedRoute allowedRoles={['ADMINISTRADOR']}>
+            <AdesoesExcluidas />
           </ProtectedRoute>
         }
       />
