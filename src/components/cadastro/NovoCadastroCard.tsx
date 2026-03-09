@@ -376,23 +376,17 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         };
       }
 
-      // Criar array de dependentes com o titular no formato interno
-      const sexoTitular = typeof cadastroData.sexoCodigo === 'number' ? cadastroData.sexoCodigo : -1;
-      const sexoDescricaoTitular =
-        sexoTitular === 1 ? 'Masculino' : sexoTitular === 0 ? 'Feminino' : '';
-
+      // Criar array de dependentes com o titular
       const dependentes = [{
-        tipo: 1,
-        nome: cadastroData.nome || '',
-        dataNascimento: cadastroData.dataNascimento || '',
         cpf: cpfLimpo,
-        sexo: sexoTitular,
-        sexoDescricao: sexoDescricaoTitular,
-        plano: 0,
-        planoValor: '0,00',
+        nome: cadastroData.nome,
+        dataNascimento: cadastroData.dataNascimento,
+        sexo: cadastroData.sexoCodigo,
+        parentesco: 1, // Titular
+        plano: null,
+        codigoPlano: null,
+        valorPlano: null,
         nomeMae: cadastroData.nomeMae || '',
-        carenciaAtendimento: 0,
-        funcionarioCadastro: 0,
       }];
 
       const rascunho = await createOrUpdateRascunho({
@@ -509,23 +503,17 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         };
       }
 
-      // Criar array de dependentes com o titular no formato interno
-      const sexoTitular = typeof cadastroData.sexoCodigo === 'number' ? cadastroData.sexoCodigo : -1;
-      const sexoDescricaoTitular =
-        sexoTitular === 1 ? 'Masculino' : sexoTitular === 0 ? 'Feminino' : '';
-
+      // Criar array de dependentes com o titular
       const dependentes = [{
-        tipo: 1,
-        nome: cadastroData.nome || '',
-        dataNascimento: cadastroData.dataNascimento || '',
         cpf: removeCPFMask(cpf),
-        sexo: sexoTitular,
-        sexoDescricao: sexoDescricaoTitular,
-        plano: 0,
-        planoValor: '0,00',
+        nome: cadastroData.nome,
+        dataNascimento: cadastroData.dataNascimento,
+        sexo: cadastroData.sexoCodigo,
+        parentesco: 1, // Titular
+        plano: null,
+        codigoPlano: null,
+        valorPlano: null,
         nomeMae: cadastroData.nomeMae || '',
-        carenciaAtendimento: 0,
-        funcionarioCadastro: 0,
       }];
 
       const rascunho = await createOrUpdateRascunho({
@@ -628,23 +616,17 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         };
       }
 
-      // Criar array de dependentes com o titular no formato interno
-      const sexoTitular = typeof cadastroData.sexoCodigo === 'number' ? cadastroData.sexoCodigo : -1;
-      const sexoDescricaoTitular =
-        sexoTitular === 1 ? 'Masculino' : sexoTitular === 0 ? 'Feminino' : '';
-
+      // Criar array de dependentes com o titular
       const dependentes = [{
-        tipo: 1,
-        nome: cadastroData.nome || '',
-        dataNascimento: cadastroData.dataNascimento || '',
         cpf: cpfLimpo,
-        sexo: sexoTitular,
-        sexoDescricao: sexoDescricaoTitular,
-        plano: 0,
-        planoValor: '0,00',
+        nome: cadastroData.nome,
+        dataNascimento: cadastroData.dataNascimento,
+        sexo: cadastroData.sexoCodigo,
+        parentesco: 1, // Titular
+        plano: null,
+        codigoPlano: null,
+        valorPlano: null,
         nomeMae: cadastroData.nomeMae || '',
-        carenciaAtendimento: 0,
-        funcionarioCadastro: 0,
       }];
 
       const rascunho = await createOrUpdateRascunho({

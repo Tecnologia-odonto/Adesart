@@ -321,20 +321,13 @@ export function DependentesSection({
 
   const handleEdit = (index: number) => {
     const dep = dependentes[index];
-    const sexoValue =
-      dep.sexo !== null && dep.sexo !== undefined ? dep.sexo.toString() : '';
-    const planoValue =
-      dep.plano !== null && dep.plano !== undefined && Number(dep.plano) !== 0
-        ? dep.plano.toString()
-        : '';
-
     setFormData({
       tipo: dep.tipo ?? 0,
       nome: dep.nome ?? '',
       dataNascimento: normalizeToISO(dep.dataNascimento ?? ''),
       cpf: dep.cpf ?? '',
-      sexo: sexoValue,
-      plano: planoValue,
+      sexo: dep.sexo !== undefined ? dep.sexo.toString() : '',
+      plano: (dep.plano && dep.plano !== 0) ? dep.plano.toString() : '',
       nomeMae: dep.nomeMae ?? '',
     });
     setEditingIndex(index);
@@ -501,15 +494,9 @@ export function DependentesSection({
 
       <div className="space-y-3">
         {dependentes.map((dep, index) => {
-          const tipoNumero = Number(dep.tipo ?? 0);
-          const planoNumero = Number(dep.plano ?? 0);
-          const parentesco = parentescos.find((p) => p.parentesco_id === tipoNumero);
-          const plano = planos.find((p) => p.Plano === planoNumero);
-          const temPlanoValido = Number.isFinite(planoNumero) && planoNumero > 0;
-          const nomeDependente = dep.nome?.trim() ? dep.nome : 'Sem nome';
-          const sexoDescricao =
-            dep.sexoDescricao ||
-            (dep.sexo === 1 ? 'Masculino' : dep.sexo === 0 ? 'Feminino' : 'Não informado');
+          const parentesco = parentescos.find((p) => p.parentesco_id === dep.tipo);
+          const plano = planos.find((p) => p.Plano === dep.plano);
+          const temPlanoValido = dep.plano && dep.plano !== 0;
 
           return (
             <div
@@ -518,19 +505,19 @@ export function DependentesSection({
             >
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="font-medium text-slate-800">{nomeDependente}</span>
+                  <span className="font-medium text-slate-800">{dep.nome}</span>
                   <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded">
                     {parentesco?.label || 'N/A'}
                   </span>
                 </div>
                 <div className="text-sm text-slate-600 space-y-0.5">
-                  <p>CPF: {formatCPF(dep.cpf)} • {sexoDescricao}</p>
+                  <p>CPF: {formatCPF(dep.cpf)} • {dep.sexoDescricao}</p>
                   <p>
                     Data Nascimento: {formatDate(dep.dataNascimento)}
                     {temPlanoValido && (
                       <>
                         {' • Plano: '}
-                        {plano?.nomeExibicao || `Plano ${planoNumero}`} (R$ {dep.planoValor})
+                        {plano?.nomeExibicao || `Plano ${dep.plano}`} (R$ {dep.planoValor})
                       </>
                     )}
                     {!temPlanoValido && (
