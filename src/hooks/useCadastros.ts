@@ -46,7 +46,7 @@ export interface Cadastro {
   plano_codigo: number | null;
   plano_nome: string | null;
   status_adesao_id: string | null;
-  data_envio: string | null;
+  data_envio?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -523,18 +523,69 @@ export function useCadastros() {
         funcionarioCadastro: dep.funcionarioCadastro,
       }));
 
-      await updateCadastro(id, {
+      const syncPayloadBase = {
         status: 'enviado',
         payload_erp: payload,
         erp_response: result,
         dependentes: dependentesFormatados,
-        data_envio: new Date().toISOString(),
-      });
+      };
+
+      let { error: syncError, count: syncCount } = await supabase
+        .from('cadastros')
+        .update({
+          ...syncPayloadBase,
+          data_envio: new Date().toISOString(),
+        }, { count: 'exact' })
+        .eq('id', id);
+
+      // Compatibilidade com ambientes onde a coluna ainda não existe
+      if (syncError?.message?.includes("data_envio")) {
+        console.warn('[useCadastros] Coluna data_envio não encontrada, sincronizando sem data_envio');
+        const retry = await supabase
+          .from('cadastros')
+          .update(syncPayloadBase, { count: 'exact' })
+          .eq('id', id);
+
+        syncError = retry.error;
+        syncCount = retry.count;
+      }
+
+      if (syncError) {
+        throw new Error(
+          `Cadastro enviado ao ERP, mas falhou ao sincronizar no Adesart: ${syncError.message}`
+        );
+      }
+
+      if (!syncCount || syncCount < 1) {
+        throw new Error(
+          `Cadastro enviado ao ERP, mas nenhuma linha foi atualizada no Adesart (cadastro ${id}). Verifique políticas de RLS/permissão.`
+        );
+      }
+
+      await fetchCadastros();
 
       return result;
     } catch (error) {
       console.error('Error sending to ERP:', error);
-      throw error;
+
+      if (
+        error &&
+        typeof error === 'object' &&
+        ('codigo' in error || 'dependentesAtivos' in error)
+      ) {
+        throw error;
+      }
+
+      if (error instanceof Error) {
+        throw error;
+      }
+
+      if (error && typeof error === 'object' && 'message' in error) {
+        const message = String((error as { message?: unknown }).message || '');
+        throw new Error(message || 'Erro ao enviar para o ERP');
+      }
+
+      throw new Error('Erro ao enviar para o ERP');
     }
   };
 
