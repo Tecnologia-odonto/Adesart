@@ -135,7 +135,36 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       }
 
       if (cadastroAtual.dependentes && Array.isArray(cadastroAtual.dependentes) && cadastroAtual.dependentes.length > 0) {
-        setDependentes(cadastroAtual.dependentes as Dependente[]);
+        const dependentesNormalizados = (cadastroAtual.dependentes as any[]).map((dep: any) => {
+          const tipoRaw = dep?.tipo ?? dep?.parentesco;
+          const tipo = tipoRaw === null || tipoRaw === undefined || tipoRaw === '' ? 0 : Number(tipoRaw);
+
+          const planoRaw = dep?.plano ?? dep?.codigoPlano ?? dep?.plano_codigo;
+          const plano = planoRaw === null || planoRaw === undefined || planoRaw === '' ? 0 : Number(planoRaw);
+
+          const sexoRaw = dep?.sexo ?? dep?.sexo_codigo ?? dep?.sexoCodigo;
+          const sexo = sexoRaw === null || sexoRaw === undefined || sexoRaw === '' ? -1 : Number(sexoRaw);
+
+          const sexoDescricao =
+            dep?.sexoDescricao ||
+            (sexo === 1 ? 'Masculino' : sexo === 0 ? 'Feminino' : '');
+
+          return {
+            tipo: Number.isFinite(tipo) ? tipo : 0,
+            nome: dep?.nome ?? '',
+            dataNascimento: dep?.dataNascimento ?? dep?.data_nascimento ?? '',
+            cpf: removeCPFMask(String(dep?.cpf ?? '')),
+            sexo: Number.isFinite(sexo) ? sexo : -1,
+            sexoDescricao,
+            plano: Number.isFinite(plano) ? plano : 0,
+            planoValor: String(dep?.planoValor ?? dep?.valorPlano ?? dep?.plano_valor ?? '0,00'),
+            nomeMae: dep?.nomeMae ?? dep?.nome_mae ?? '',
+            carenciaAtendimento: Number(dep?.carenciaAtendimento ?? 0) || 0,
+            funcionarioCadastro: Number(dep?.funcionarioCadastro ?? funcionarioCadastroId ?? 0) || 0,
+          } as Dependente;
+        });
+
+        setDependentes(dependentesNormalizados);
         setDependentesInicializados(true);
       } else {
         setDependentesInicializados(true);
@@ -789,7 +818,12 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     } catch (err: any) {
       console.error('Error sending to ERP:', err);
 
-      const errorMessage = err instanceof Error ? err.message : 'Erro ao enviar cadastro para o ERP';
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'object' && err !== null && 'message' in err
+            ? String((err as { message?: unknown }).message || 'Erro ao enviar cadastro para o ERP')
+            : 'Erro ao enviar cadastro para o ERP';
 
       if (err.codigo === 3 && err.dependentesAtivos && err.dependentesAtivos.length > 0) {
         setDependentesAtivos(err.dependentesAtivos);

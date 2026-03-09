@@ -800,6 +800,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
     }
 
     setLoading(true);
+    let erpInclusaoConcluida = false;
 
     try {
       const vendedorSelecionado = vendedores.find(v => v.id === selectedVendedor);
@@ -890,6 +891,8 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
         const errorMsg = result.data?.mensagem || 'Erro: Resposta inválida da API';
         throw new Error(errorMsg);
       }
+
+      erpInclusaoConcluida = true;
 
       if (result?.data?.dados?.dependentes && result.data.dados.dependentes.length > 0) {
         for (let i = 0; i < dependentes.length; i++) {
@@ -1005,17 +1008,25 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
         }
       }
 
-      const { error: updateError } = await supabase
+      const { error: updateError, count: updateCount } = await supabase
         .from('cadastros')
         .update({
           status: 'enviado',
           tipo_cadastro: 'inclusao_dependente'
-        })
+        }, { count: 'exact' })
         .eq('id', cadastro.id);
 
       if (updateError) {
         console.error('Erro ao atualizar status do cadastro:', updateError);
-        throw updateError;
+        throw new Error(
+          `Dependente enviado ao ERP, mas falhou ao atualizar status no Adesart: ${updateError.message}`
+        );
+      }
+
+      if (!updateCount || updateCount < 1) {
+        throw new Error(
+          `Dependente enviado ao ERP, mas nenhuma linha foi atualizada no Adesart (cadastro ${cadastro.id}). Verifique políticas de RLS/permissão.`
+        );
       }
 
       setSuccess('Dependentes incluídos com sucesso!');
@@ -1026,15 +1037,23 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
 
     } catch (err: any) {
       console.error('Erro ao incluir dependente:', err);
-      setError(err.message || 'Erro ao incluir dependentes');
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'object' && err !== null && 'message' in err
+            ? String((err as { message?: unknown }).message || 'Erro ao incluir dependentes')
+            : 'Erro ao incluir dependentes';
+      setError(errorMessage);
 
-      const { error: rollbackError } = await supabase
-        .from('cadastros')
-        .update({ status: 'incompleto' })
-        .eq('id', cadastro.id);
+      if (!erpInclusaoConcluida) {
+        const { error: rollbackError } = await supabase
+          .from('cadastros')
+          .update({ status: 'incompleto' })
+          .eq('id', cadastro.id);
 
-      if (rollbackError) {
-        console.error('Erro ao reverter status do cadastro:', rollbackError);
+        if (rollbackError) {
+          console.error('Erro ao reverter status do cadastro:', rollbackError);
+        }
       }
     } finally {
       setLoading(false);
