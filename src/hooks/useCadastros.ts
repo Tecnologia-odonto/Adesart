@@ -2,6 +2,48 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
+const ERP_ABORT_FRIENDLY_MESSAGE =
+  'A conexao foi interrompida durante o envio. Nao foi possivel confirmar automaticamente o resultado. Atualize a tela para verificar se o cadastro foi concluido antes de tentar novamente.';
+
+const ERP_SITUACOES_ATIVAS = [1, 4, 6];
+const inFlightCadastroEnvios = new Map<string, Promise<any>>();
+
+const normalizeCpf = (value?: string | null) => (value || '').replace(/\D/g, '');
+
+const isAbortLikeError = (error: unknown): boolean => {
+  if (!error) return false;
+
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return true;
+  }
+
+  if (error instanceof Error) {
+    if (error.name === 'AbortError') return true;
+
+    const message = error.message.toLowerCase();
+    return (
+      message.includes('aborterror') ||
+      message.includes('signal is aborted without reason') ||
+      message.includes('operation was aborted') ||
+      message.includes('request aborted') ||
+      message.includes('network request failed')
+    );
+  }
+
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = String((error as { message?: unknown }).message || '').toLowerCase();
+    return (
+      message.includes('aborterror') ||
+      message.includes('signal is aborted without reason') ||
+      message.includes('operation was aborted') ||
+      message.includes('request aborted') ||
+      message.includes('network request failed')
+    );
+  }
+
+  return false;
+};
+
 export interface Cadastro {
   id: string;
   status: 'incompleto' | 'enviado';
@@ -446,149 +488,289 @@ export function useCadastros() {
     return updated;
   };
 
-  const enviarParaERP = async (id: string, payload: Record<string, unknown>) => {
-    const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-novo-usuario2`;
+  const extractDependentesPayload = (payload: Record<string, unknown>) => {
+    const dados = payload.dados as { dependente?: any[] } | undefined;
+    return Array.isArray(dados?.dependente) ? dados.dependente : [];
+  };
 
+  const formatDependentesForSync = (dependentesPayload: any[]) => (
+    dependentesPayload.map((dep: any) => ({
+      cpf: normalizeCpf(dep?.cpf),
+      nome: dep?.nome,
+      dataNascimento: dep?.dataNascimento,
+      sexo: dep?.sexo,
+      sexoDescricao: dep?.sexoDescricao,
+      tipo: dep?.tipo,
+      plano: dep?.plano,
+      planoValor: dep?.planoValor,
+      nomeMae: dep?.nomeMae,
+      carenciaAtendimento: dep?.carenciaAtendimento,
+      funcionarioCadastro: dep?.funcionarioCadastro,
+    }))
+  );
+
+  const syncCadastroEnviado = async (id: string, payload: Record<string, unknown>, result: any) => {
+    const dependentesFormatados = formatDependentesForSync(extractDependentesPayload(payload));
+
+    const syncPayloadBase = {
+      status: 'enviado',
+      payload_erp: payload,
+      erp_response: result,
+      dependentes: dependentesFormatados,
+    };
+
+    let { error: syncError, count: syncCount } = await supabase
+      .from('cadastros')
+      .update({
+        ...syncPayloadBase,
+        data_envio: new Date().toISOString(),
+      }, { count: 'exact' })
+      .eq('id', id);
+
+    // Compatibilidade com ambientes onde a coluna ainda nao existe
+    if (syncError?.message?.includes('data_envio')) {
+      console.warn('[useCadastros] Coluna data_envio nao encontrada, sincronizando sem data_envio');
+      const retry = await supabase
+        .from('cadastros')
+        .update(syncPayloadBase, { count: 'exact' })
+        .eq('id', id);
+
+      syncError = retry.error;
+      syncCount = retry.count;
+    }
+
+    if (syncError) {
+      throw new Error(
+        `Cadastro enviado ao ERP, mas falhou ao sincronizar no Adesart: ${syncError.message}`
+      );
+    }
+
+    if (!syncCount || syncCount < 1) {
+      throw new Error(
+        `Cadastro enviado ao ERP, mas nenhuma linha foi atualizada no Adesart (cadastro ${id}). Verifique politicas de RLS/permissao.`
+      );
+    }
+
+    await fetchCadastros();
+  };
+
+  const reconcileCadastroAfterAbort = async (
+    id: string,
+    payload: Record<string, unknown>,
+    token: string
+  ) => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const dependentesPayload = extractDependentesPayload(payload);
+      const titularPayload = dependentesPayload.find((dep: any) => Number(dep?.tipo) === 1);
+      const cpfTitular = normalizeCpf(titularPayload?.cpf);
 
-      const response = await fetch(apiUrl, {
+      if (!cpfTitular || cpfTitular.length !== 11) {
+        return null;
+      }
+
+      const checkApiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-check-associado`;
+      const checkResponse = await fetch(checkApiUrl, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ cpf: cpfTitular }),
       });
 
-      const result = await response.json();
+      if (!checkResponse.ok) {
+        return null;
+      }
 
-      if (!response.ok || result.error) {
-        if (result.details?.codigo === 3 && result.details?.mensagem?.includes('já cadastrado e ativo no contrato')) {
-          const dependentesAtivos = await checkDependentesAtivos(payload);
+      const checkResult = await checkResponse.json();
+      if (!checkResult?.exists || !Array.isArray(checkResult?.dados) || checkResult.dados.length === 0) {
+        return null;
+      }
 
-          if (dependentesAtivos.length > 0) {
-            const error: any = new Error('Dependente(s) já cadastrado(s)');
-            error.dependentesAtivos = dependentesAtivos;
-            error.codigo = 3;
-            throw error;
+      const dependentesPorCpf = new Map<string, Array<{ codigo: string; situacao: number }>>();
+      let titularAtivoNoERP = false;
+
+      for (const associado of checkResult.dados) {
+        const cpfAssociado = normalizeCpf(associado?.cpf);
+        const dependentesAssociado = Array.isArray(associado?.dependentes) ? associado.dependentes : [];
+
+        for (const depERP of dependentesAssociado) {
+          const cpfDependente = normalizeCpf(depERP?.numeroCpfDependente);
+          if (!cpfDependente) continue;
+
+          const situacao = Number(depERP?.codigoSituacao);
+          const lista = dependentesPorCpf.get(cpfDependente) || [];
+          lista.push({
+            codigo: String(depERP?.codigoDependente || ''),
+            situacao,
+          });
+          dependentesPorCpf.set(cpfDependente, lista);
+
+          if (cpfDependente === cpfTitular && ERP_SITUACOES_ATIVAS.includes(situacao)) {
+            titularAtivoNoERP = true;
           }
         }
 
-        let mensagemErro = result.error || 'Erro ao enviar para o ERP';
-
-        if (result.details?.mensagem) {
-          mensagemErro = `${mensagemErro} (${result.details.mensagem.trim()})`;
+        if (cpfAssociado === cpfTitular && dependentesAssociado.some((depERP: any) =>
+          ERP_SITUACOES_ATIVAS.includes(Number(depERP?.codigoSituacao))
+        )) {
+          titularAtivoNoERP = true;
         }
-
-        await updateCadastro(id, {
-          status: 'incompleto',
-          payload_erp: payload,
-          erp_response: result,
-        });
-        throw new Error(mensagemErro);
       }
 
-      if (result.data?.dados === null || result.data?.dados === undefined) {
-        let mensagemErro = 'Erro ao cadastrar: dados inválidos retornados pelo ERP';
-
-        if (result.data?.mensagem) {
-          mensagemErro = `${mensagemErro} (${result.data.mensagem.trim()})`;
-        }
-
-        await updateCadastro(id, {
-          status: 'incompleto',
-          payload_erp: payload,
-          erp_response: result,
-        });
-        throw new Error(mensagemErro);
+      if (!titularAtivoNoERP) {
+        return null;
       }
 
-      const dados = payload.dados as any;
-      const dependentesPayload = dados?.dependente || [];
+      const dependentesReconciliados = dependentesPayload
+        .map((dep: any) => {
+          const cpfDep = normalizeCpf(dep?.cpf);
+          if (!cpfDep) return null;
 
-      // Converter dependentes do formato ERP para o formato interno
-      const dependentesFormatados = dependentesPayload.map((dep: any) => ({
-        cpf: dep.cpf.replace(/\D/g, ''),
-        nome: dep.nome,
-        dataNascimento: dep.dataNascimento,
-        sexo: dep.sexo,
-        sexoDescricao: dep.sexoDescricao,
-        tipo: dep.tipo,
-        plano: dep.plano,
-        planoValor: dep.planoValor,
-        nomeMae: dep.nomeMae,
-        carenciaAtendimento: dep.carenciaAtendimento,
-        funcionarioCadastro: dep.funcionarioCadastro,
-      }));
+          const candidatos = dependentesPorCpf.get(cpfDep) || [];
+          const candidatoAtivo = candidatos.find((item) => ERP_SITUACOES_ATIVAS.includes(item.situacao));
+          const escolhido = candidatoAtivo || candidatos[0];
+          if (!escolhido?.codigo) return null;
 
-      const syncPayloadBase = {
-        status: 'enviado',
-        payload_erp: payload,
-        erp_response: result,
-        dependentes: dependentesFormatados,
+          return {
+            codigo: escolhido.codigo,
+            contrato: '',
+          };
+        })
+        .filter(Boolean);
+
+      const reconciledResult = {
+        success: true,
+        reconciled: true,
+        data: {
+          dados: {
+            codigo: checkResult?.summary?.codigo || checkResult?.dados?.[0]?.codigo || null,
+            dependentes: dependentesReconciliados,
+          },
+          mensagem: 'Envio reconciliado automaticamente apos falha de conexao',
+        },
       };
 
-      let { error: syncError, count: syncCount } = await supabase
-        .from('cadastros')
-        .update({
-          ...syncPayloadBase,
-          data_envio: new Date().toISOString(),
-        }, { count: 'exact' })
-        .eq('id', id);
-
-      // Compatibilidade com ambientes onde a coluna ainda não existe
-      if (syncError?.message?.includes("data_envio")) {
-        console.warn('[useCadastros] Coluna data_envio não encontrada, sincronizando sem data_envio');
-        const retry = await supabase
-          .from('cadastros')
-          .update(syncPayloadBase, { count: 'exact' })
-          .eq('id', id);
-
-        syncError = retry.error;
-        syncCount = retry.count;
-      }
-
-      if (syncError) {
-        throw new Error(
-          `Cadastro enviado ao ERP, mas falhou ao sincronizar no Adesart: ${syncError.message}`
-        );
-      }
-
-      if (!syncCount || syncCount < 1) {
-        throw new Error(
-          `Cadastro enviado ao ERP, mas nenhuma linha foi atualizada no Adesart (cadastro ${id}). Verifique políticas de RLS/permissão.`
-        );
-      }
-
-      await fetchCadastros();
-
-      return result;
-    } catch (error) {
-      console.error('Error sending to ERP:', error);
-
-      if (
-        error &&
-        typeof error === 'object' &&
-        ('codigo' in error || 'dependentesAtivos' in error)
-      ) {
-        throw error;
-      }
-
-      if (error instanceof Error) {
-        throw error;
-      }
-
-      if (error && typeof error === 'object' && 'message' in error) {
-        const message = String((error as { message?: unknown }).message || '');
-        throw new Error(message || 'Erro ao enviar para o ERP');
-      }
-
-      throw new Error('Erro ao enviar para o ERP');
+      await syncCadastroEnviado(id, payload, reconciledResult);
+      return reconciledResult;
+    } catch (reconcileError) {
+      console.error('Erro ao reconciliar cadastro apos AbortError:', reconcileError);
+      return null;
     }
   };
 
+  const enviarParaERP = async (id: string, payload: Record<string, unknown>) => {
+    const inFlight = inFlightCadastroEnvios.get(id);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    const envioPromise = (async () => {
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-novo-usuario2`;
+      const idempotencyKey = `cadastro:${id}`;
+      let token = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'X-Idempotency-Key': idempotencyKey,
+            'X-Cadastro-Id': id,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || result.error) {
+          if (result.details?.codigo === 3 && result.details?.mensagem?.includes('cadastrado e ativo no contrato')) {
+            const dependentesAtivos = await checkDependentesAtivos(payload);
+
+            if (dependentesAtivos.length > 0) {
+              const error: any = new Error('Dependente(s) ja cadastrado(s)');
+              error.dependentesAtivos = dependentesAtivos;
+              error.codigo = 3;
+              throw error;
+            }
+          }
+
+          let mensagemErro = result.error || 'Erro ao enviar para o ERP';
+
+          if (result.details?.mensagem) {
+            mensagemErro = `${mensagemErro} (${result.details.mensagem.trim()})`;
+          }
+
+          await updateCadastro(id, {
+            status: 'incompleto',
+            payload_erp: payload,
+            erp_response: result,
+          });
+          throw new Error(mensagemErro);
+        }
+
+        if (result.data?.dados === null || result.data?.dados === undefined) {
+          let mensagemErro = 'Erro ao cadastrar: dados invalidos retornados pelo ERP';
+
+          if (result.data?.mensagem) {
+            mensagemErro = `${mensagemErro} (${result.data.mensagem.trim()})`;
+          }
+
+          await updateCadastro(id, {
+            status: 'incompleto',
+            payload_erp: payload,
+            erp_response: result,
+          });
+          throw new Error(mensagemErro);
+        }
+
+        await syncCadastroEnviado(id, payload, result);
+        return result;
+      } catch (error) {
+        console.error('Error sending to ERP:', error);
+
+        if (
+          error &&
+          typeof error === 'object' &&
+          ('codigo' in error || 'dependentesAtivos' in error)
+        ) {
+          throw error;
+        }
+
+        if (isAbortLikeError(error)) {
+          const reconciledResult = await reconcileCadastroAfterAbort(id, payload, token);
+          if (reconciledResult) {
+            return reconciledResult;
+          }
+
+          throw new Error(ERP_ABORT_FRIENDLY_MESSAGE);
+        }
+
+        if (error instanceof Error) {
+          throw error;
+        }
+
+        if (error && typeof error === 'object' && 'message' in error) {
+          const message = String((error as { message?: unknown }).message || '');
+          throw new Error(message || 'Erro ao enviar para o ERP');
+        }
+
+        throw new Error('Erro ao enviar para o ERP');
+      }
+    })();
+
+    inFlightCadastroEnvios.set(id, envioPromise);
+
+    try {
+      return await envioPromise;
+    } finally {
+      inFlightCadastroEnvios.delete(id);
+    }
+  };
   const checkDependentesAtivos = async (payload: Record<string, unknown>): Promise<Array<{
     nome: string;
     cpf: string;
@@ -609,7 +791,7 @@ export function useCadastros() {
     const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
     const checkApiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/erp-check-associado`;
 
-    const situacoesAtivas = [1, 4, 6];
+    const situacoesAtivas = ERP_SITUACOES_ATIVAS;
 
     for (const dep of dependentes) {
       try {
@@ -705,3 +887,4 @@ export function useCadastros() {
     refresh,
   };
 }
+

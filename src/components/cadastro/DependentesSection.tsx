@@ -69,6 +69,30 @@ export function DependentesSection({
     return !isOculto;
   });
 
+  const parsePlanoValor = (plano: any, tipo: 'titular' | 'dependente') => {
+    const valorBruto =
+      tipo === 'titular'
+        ? plano?.ValorTitular ?? plano?.valorTitular
+        : plano?.ValorDependente ?? plano?.valorDependente;
+
+    if (valorBruto === null || valorBruto === undefined || valorBruto === '') {
+      return 0;
+    }
+
+    const valor =
+      typeof valorBruto === 'string'
+        ? Number(valorBruto.replace(',', '.'))
+        : Number(valorBruto);
+
+    return Number.isFinite(valor) ? valor : 0;
+  };
+
+  const formatarValorPlano = (valor: number) =>
+    valor.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
   const [formData, setFormData] = useState<{
     tipo: number;
     nome: string;
@@ -289,6 +313,10 @@ export function DependentesSection({
       return;
     }
 
+    // Regra do módulo de cadastro: no payload final do botão "Cadastrar",
+    // o valor de plano deve usar sempre a faixa de dependente.
+    const valorPlanoSelecionado = parsePlanoValor(planoSelecionado, 'dependente');
+
     const sexoNum = parseInt(formData.sexo);
     const cpfValue = formData.cpf.replace(/\D/g, '');
 
@@ -300,7 +328,7 @@ export function DependentesSection({
       sexo: sexoNum,
       sexoDescricao: sexoNum === 1 ? 'Masculino' : (sexoNum === 0 ? 'Feminino' : ''),
       plano: planoId,
-      planoValor: planoSelecionado.ValorTitular?.toString() || '0,00',
+      planoValor: formatarValorPlano(valorPlanoSelecionado),
       nomeMae: formData.nomeMae,
       carenciaAtendimento: 0,
       funcionarioCadastro: funcionarioCadastro || 0,
@@ -469,11 +497,16 @@ export function DependentesSection({
               required
             >
               <option value="">Selecione</option>
-              {planosFiltrados.map((p) => (
-                <option key={p.Plano} value={p.Plano}>
-                  {p.nomeExibicao || `Plano ${p.Plano}`} - Titular: R$ {p.ValorTitular || '0,00'} / Dep: R$ {p.ValorDependente || '0,00'}
-                </option>
-              ))}
+              {planosFiltrados.map((p) => {
+                const valorTitular = formatarValorPlano(parsePlanoValor(p, 'titular'));
+                const valorDependente = formatarValorPlano(parsePlanoValor(p, 'dependente'));
+
+                return (
+                  <option key={p.Plano} value={p.Plano}>
+                    {p.nomeExibicao || `Plano ${p.Plano}`} - Titular: R$ {valorTitular} / Dep: R$ {valorDependente}
+                  </option>
+                );
+              })}
             </Select>
 
             <div className="md:col-span-2">
