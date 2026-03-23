@@ -1,4 +1,5 @@
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
+const DEFAULT_PRODUCTION_PUBLIC_URL = 'https://vendamais.odontoart.com';
 const isLocalHostname = (hostname: string) =>
   hostname === 'localhost' ||
   hostname === '127.0.0.1' ||
@@ -29,6 +30,10 @@ export function getPublicAppBaseUrl(): string {
 
   if (configuredUrl) {
     return normalizeConfiguredUrl(configuredUrl);
+  }
+
+  if (import.meta.env.PROD) {
+    return DEFAULT_PRODUCTION_PUBLIC_URL;
   }
 
   const currentOrigin = window.location.origin;
