@@ -32,6 +32,31 @@ async function saveLog(
 const isUuid = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
+const extractErpMessage = (payload: any): string | null => {
+  if (!payload || typeof payload !== "object") return null;
+
+  const candidates = [
+    payload.message,
+    payload.mensagem,
+    payload.error,
+    payload.data?.message,
+    payload.data?.mensagem,
+    payload.details?.message,
+    payload.details?.mensagem,
+    Array.isArray(payload.errors) ? payload.errors[0] : null,
+    Array.isArray(payload.data?.errors) ? payload.data.errors[0] : null,
+    Array.isArray(payload.details?.errors) ? payload.details.errors[0] : null,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  return null;
+};
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -227,9 +252,9 @@ Deno.serve(async (req: Request) => {
 
     if (!hasDadosCodigo) {
       if (!erpResponse.ok) {
-        errorMessage = responseData.message || responseData?.mensagem || "Erro ao enviar cadastro para o ERP";
+        errorMessage = extractErpMessage(responseData) || "Erro ao enviar cadastro para o ERP";
       } else {
-        errorMessage = responseData?.data?.mensagem || responseData?.mensagem || "Erro no cadastro: dados invalidos retornados pelo ERP";
+        errorMessage = extractErpMessage(responseData) || "Erro no cadastro: dados invalidos retornados pelo ERP";
       }
 
       responseBody = {

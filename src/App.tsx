@@ -14,6 +14,7 @@ import { AuditoriaLemmit } from './pages/AuditoriaLemmit';
 import { FilaUploadERP } from './pages/FilaUploadERP';
 import { AdesoesExcluidas } from './pages/AdesoesExcluidas';
 import { PublicCadastroLink } from './pages/PublicCadastroLink';
+import { PublicCadastroLinkPreview } from './pages/PublicCadastroLinkPreview';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -32,6 +33,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/adesao/:token" element={<PublicCadastroLink />} />
+      <Route path="/preview/link-plano" element={<PublicCadastroLinkPreview />} />
       <Route
         path="/login"
         element={user ? <Navigate to="/dashboard" replace /> : <Login />}
