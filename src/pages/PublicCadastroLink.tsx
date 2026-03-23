@@ -863,9 +863,13 @@ export function PublicCadastroLink() {
       if (!response.ok || !result.ok) {
         const detailedMessage =
           result.error ||
+          result.message ||
+          result.mensagem ||
           result.details?.error ||
+          result.details?.errors?.[0] ||
           result.details?.details?.mensagem ||
           result.details?.details?.message ||
+          result.details?.details?.errors?.[0] ||
           result.details?.mensagem ||
           result.details?.message ||
           'Nao foi possivel concluir o cadastro';

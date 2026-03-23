@@ -55,6 +55,30 @@ type PublicCadastroPayload = {
   dependentes: Dependente[];
 };
 
+type ErpDependente = {
+  codigoDependente: number;
+  nomeDependente: string;
+  numeroCpfDependente: string;
+  codigoPlano: number;
+  nomePlano: string;
+  codigoSituacao: number;
+  nomeSituacao: string;
+};
+
+type ErpAssociado = {
+  codigo: number;
+  nome: string;
+  cpf: string;
+  codigoDaEmpresa: number;
+  nomeFantasiaDaEmpresa: string;
+  dependentes: ErpDependente[];
+};
+
+type ErpAssociadoResponse = {
+  totalRegistros: number;
+  dados: ErpAssociado[];
+};
+
 const jsonResponse = (body: Record<string, unknown>, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -76,6 +100,32 @@ const formatDateFromISO = (isoDate: string) => {
   const [year, month, day] = isoDate.split("-");
   if (!year || !month || !day) return isoDate;
   return `${day}/${month}/${year}`;
+};
+
+const extractMessage = (payload: any): string | null => {
+  if (!payload || typeof payload !== "object") return null;
+
+  const candidates = [
+    payload.error,
+    payload.message,
+    payload.mensagem,
+    payload.details?.error,
+    payload.details?.message,
+    payload.details?.mensagem,
+    payload.details?.details?.message,
+    payload.details?.details?.mensagem,
+    Array.isArray(payload.errors) ? payload.errors[0] : null,
+    Array.isArray(payload.details?.errors) ? payload.details.errors[0] : null,
+    Array.isArray(payload.details?.details?.errors) ? payload.details.details.errors[0] : null,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  return null;
 };
 
 const hashToken = async (token: string) => {
@@ -122,25 +172,143 @@ const checkLocalBlockedCpf = async (
   return data as { blocked?: boolean; reason?: string | null; code?: string | null } | null;
 };
 
+const saveApiLog = async (
+  supabase: ReturnType<typeof createClient>,
+  logData: {
+    endpoint: string;
+    method: string;
+    request_body: any;
+    response_body?: any;
+    status_code?: number;
+    success: boolean;
+    error_message?: string;
+    duration_ms: number;
+  },
+) => {
+  try {
+    await supabase.from("api_logs").insert(logData);
+  } catch (error) {
+    console.error("[cadastro-public-submit] failed to save api log:", error);
+  }
+};
+
 const checkErpAssociado = async (
-  supabaseUrl: string,
+  supabase: ReturnType<typeof createClient>,
   cpf: string,
 ) => {
-  const response = await fetch(`${supabaseUrl}/functions/v1/erp-check-associado`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ cpf }),
-  });
+  const ERP_TOKEN = Deno.env.get("ERP_TOKEN");
+  const ERP_BASE_URL = Deno.env.get("ERP_BASE_URL") || "https://odontoart.s4e.com.br";
 
-  const result = await response.json();
-
-  if (!response.ok) {
-    throw new Error(result?.error || "Erro ao validar CPF no ERP");
+  if (!ERP_TOKEN) {
+    throw new Error("ERP_TOKEN not configured");
   }
 
-  return result;
+  const startedAt = Date.now();
+  const cpfLimpo = normalizeDigits(cpf);
+  const erpUrl = `${ERP_BASE_URL}/v2/api/associados?token=${ERP_TOKEN}&cpfAssociado=${cpfLimpo}&incluirAns=true`;
+  const response = await fetch(erpUrl, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+
+    await saveApiLog(supabase, {
+      endpoint: "erp-check-associado-public",
+      method: "GET",
+      request_body: { cpf: cpfLimpo },
+      response_body: { error: "Erro ao consultar ERP", details: errorText },
+      status_code: response.status,
+      success: false,
+      error_message: "Erro ao consultar ERP",
+      duration_ms: Date.now() - startedAt,
+    });
+
+    throw new Error("Erro ao validar CPF no ERP");
+  }
+
+  const result = await response.json() as ErpAssociadoResponse;
+
+  const { data: config } = await supabase
+    .from("cadastro_config")
+    .select("situacoes_que_barram, planos_validos")
+    .eq("id", 1)
+    .maybeSingle();
+
+  const situacoesQueBarram = config?.situacoes_que_barram || [1, 4, 6];
+  const planosValidos = config?.planos_validos || [4, 11, 3, 26];
+  const exists = result.totalRegistros > 0 || (Array.isArray(result.dados) && result.dados.length > 0);
+
+  let shouldBlock = false;
+  let blockReason = "";
+  const summary = {
+    empresa: null as string | null,
+    codigo: null as number | null,
+    nomeFantasiaDaEmpresa: null as string | null,
+    codigoPlano: null as number | null,
+    codigoSituacao: null as number | null,
+    nomeSituacao: null as string | null,
+  };
+
+  if (exists && Array.isArray(result.dados)) {
+    for (const associado of result.dados) {
+      if (!Array.isArray(associado.dependentes)) continue;
+
+      for (const dependente of associado.dependentes) {
+        if (situacoesQueBarram.includes(dependente.codigoSituacao) && !planosValidos.includes(dependente.codigoPlano)) {
+          shouldBlock = true;
+          blockReason = `Associado ja cadastrado na empresa ${associado.nomeFantasiaDaEmpresa} com situacao "${dependente.nomeSituacao}" (codigo ${dependente.codigoSituacao}) e plano ${dependente.codigoPlano} que nao permite recadastro`;
+          summary.empresa = associado.codigoDaEmpresa?.toString() || null;
+          summary.codigo = associado.codigo;
+          summary.nomeFantasiaDaEmpresa = associado.nomeFantasiaDaEmpresa;
+          summary.codigoPlano = dependente.codigoPlano;
+          summary.codigoSituacao = dependente.codigoSituacao;
+          summary.nomeSituacao = dependente.nomeSituacao;
+          break;
+        }
+      }
+
+      if (shouldBlock) break;
+    }
+
+    if (!shouldBlock && result.dados.length > 0) {
+      const firstRecord = result.dados[0];
+      summary.empresa = firstRecord.codigoDaEmpresa?.toString() || null;
+      summary.codigo = firstRecord.codigo;
+      summary.nomeFantasiaDaEmpresa = firstRecord.nomeFantasiaDaEmpresa;
+
+      if (Array.isArray(firstRecord.dependentes) && firstRecord.dependentes.length > 0) {
+        const firstDep = firstRecord.dependentes[0];
+        summary.codigoPlano = firstDep.codigoPlano;
+        summary.codigoSituacao = firstDep.codigoSituacao;
+        summary.nomeSituacao = firstDep.nomeSituacao;
+      }
+    }
+  }
+
+  const normalizedResult = {
+    exists,
+    shouldBlock,
+    blockReason,
+    totalRegistros: result.totalRegistros || 0,
+    dados: result.dados || [],
+    summary,
+  };
+
+  await saveApiLog(supabase, {
+    endpoint: "erp-check-associado-public",
+    method: "GET",
+    request_body: { cpf: cpfLimpo },
+    response_body: normalizedResult,
+    status_code: 200,
+    success: true,
+    duration_ms: Date.now() - startedAt,
+  });
+
+  return normalizedResult;
 };
 
 const formatDependentesForSync = (dependentes: Dependente[]) =>
@@ -196,13 +364,53 @@ const resolveVendedorCodigo = async (
   return null;
 };
 
+const resolveProfileContext = async (
+  supabase: ReturnType<typeof createClient>,
+  userId?: string | null,
+) => {
+  if (!userId) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("role, external_id")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as { role?: string | null; external_id?: string | null } | null;
+};
+
 const buildErpPayload = (
   cadastro: PublicCadastroPayload,
   empresaCodigo: number,
   vendedorCodigo: string,
+  funcionarioCadastroId?: number | null,
+  userRole?: string | null,
+  userExternalId?: string | null,
+  adesionistaCodigo?: string | null,
 ) => {
-  const funcionarioCadastroCode = Number.parseInt(vendedorCodigo, 10) || 0;
-  const codigoVendedor = Number.parseInt(vendedorCodigo, 10) || 0;
+  const sexoDescricao = cadastro.sexoCodigo === 1 ? "Masculino" : "Feminino";
+  let codigoVendedor = 0;
+  let codigoAdesionista = 0;
+
+  if (userRole === "VENDEDOR" && userExternalId) {
+    codigoVendedor = Number.parseInt(userExternalId, 10) || 0;
+  } else if (vendedorCodigo) {
+    codigoVendedor = Number.parseInt(vendedorCodigo, 10) || 0;
+  }
+
+  if (adesionistaCodigo) {
+    codigoAdesionista = Number.parseInt(adesionistaCodigo, 10) || 0;
+  }
+
+  const funcionarioCadastroCode = userExternalId
+    ? Number.parseInt(userExternalId, 10) || 0
+    : (funcionarioCadastroId || 0);
 
   const contatosRespFin = cadastro.contatos.map((contato) => {
     let tipo = 8;
@@ -217,39 +425,51 @@ const buildErpPayload = (
     };
   });
 
-  return {
+  const responsavelFinanceiro: Record<string, unknown> = {
+    codigoContrato: empresaCodigo.toString(),
+    nome: cadastro.nome,
+    dataNascimento: formatDateFromISO(cadastro.dataNascimento),
+    cpf: formatCpf(cadastro.cpf),
+    sexo: cadastro.sexoCodigo,
+    grupoFaturamento: 0,
+    sexoDescricao,
+    identidadeNumero: "123456789",
+    identidadeOrgaoExpeditor: "SSPDS",
+    endereco: {
+      cep: cadastro.endereco.cep,
+      tipoLogradouro: cadastro.endereco.idTipoLogradouro?.toString() || "816",
+      logradouro: cadastro.endereco.logradouro,
+      numero: cadastro.endereco.numero,
+      complemento: cadastro.endereco.complemento || "N/D",
+      bairro: cadastro.endereco.idBairro?.toString() || "1262",
+      municipio: cadastro.endereco.idMunicipio?.toString() || "2",
+      uf: cadastro.endereco.idUf?.toString() || "5",
+      descricaoUf: cadastro.endereco.ufSigla || cadastro.endereco.uf,
+    },
+    contatoResponsavelFinanceiro: contatosRespFin,
+    fl_AlteraSituacao: 1,
+  };
+
+  if (cadastro.numeroMatricula) {
+    (responsavelFinanceiro as { Matricula?: string }).Matricula = cadastro.numeroMatricula;
+  }
+
+  (responsavelFinanceiro as { dataApresentacao?: string }).dataApresentacao = new Date().toISOString();
+
+  const parceiro: Record<string, unknown> = {
+    codigo: codigoVendedor,
+    tipoCobranca: 1,
+  };
+
+  if (codigoAdesionista > 0) {
+    parceiro.adesionista = codigoAdesionista;
+  }
+
+  const payload = {
     dados: {
-      parceiro: {
-        codigo: codigoVendedor,
-        tipoCobranca: 1,
-      },
+      parceiro,
       parcelaRetidaComissao: "0",
-      responsavelFinanceiro: {
-        codigoContrato: empresaCodigo.toString(),
-        nome: cadastro.nome,
-        dataNascimento: formatDateFromISO(cadastro.dataNascimento),
-        cpf: formatCpf(cadastro.cpf),
-        sexo: cadastro.sexoCodigo,
-        grupoFaturamento: 0,
-        sexoDescricao: cadastro.sexoCodigo === 1 ? "Masculino" : "Feminino",
-        identidadeNumero: "123456789",
-        identidadeOrgaoExpeditor: "SSPDS",
-        endereco: {
-          cep: cadastro.endereco.cep,
-          tipoLogradouro: cadastro.endereco.idTipoLogradouro?.toString() || "816",
-          logradouro: cadastro.endereco.logradouro,
-          numero: cadastro.endereco.numero,
-          complemento: cadastro.endereco.complemento || "N/D",
-          bairro: cadastro.endereco.idBairro?.toString() || "1262",
-          municipio: cadastro.endereco.idMunicipio?.toString() || "2",
-          uf: cadastro.endereco.idUf?.toString() || "5",
-          descricaoUf: cadastro.endereco.ufSigla || cadastro.endereco.uf,
-        },
-        contatoResponsavelFinanceiro: contatosRespFin,
-        fl_AlteraSituacao: 1,
-        ...(cadastro.numeroMatricula ? { Matricula: cadastro.numeroMatricula } : {}),
-        dataApresentacao: new Date().toISOString(),
-      },
+      responsavelFinanceiro,
       dependente: cadastro.dependentes.map((dep) => ({
         tipo: dep.tipo,
         nome: dep.nome,
@@ -266,6 +486,146 @@ const buildErpPayload = (
     },
     empresa: empresaCodigo.toString(),
   };
+
+  return payload;
+};
+
+const sendCadastroToErp = async (
+  supabase: ReturnType<typeof createClient>,
+  payload: Record<string, unknown>,
+  cadastroId: string,
+) => {
+  const ERP_TOKEN = Deno.env.get("ERP_TOKEN");
+  const ERP_URL = Deno.env.get("ERP_URL") || "https://odontoart.s4e.com.br/api/vendedor/NovoUsuario2";
+
+  if (!ERP_TOKEN) {
+    throw new Error("ERP_TOKEN not configured");
+  }
+
+  const startedAt = Date.now();
+  const response = await fetch(ERP_URL, {
+    method: "POST",
+    headers: {
+      token: ERP_TOKEN,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const result = await response.json();
+  const hasDadosCodigo = result?.dados?.codigo || result?.data?.dados?.codigo;
+
+  if (!response.ok || !hasDadosCodigo) {
+    const errorMessage = extractMessage(result) ||
+      (!response.ok ? "Erro ao enviar cadastro para o ERP" : "Erro no cadastro: dados invalidos retornados pelo ERP");
+
+    const responseBody = {
+      error: errorMessage,
+      details: result,
+      status: response.status,
+    };
+
+    await saveApiLog(supabase, {
+      endpoint: "erp-novo-usuario2-public",
+      method: "POST",
+      request_body: { ...payload, cadastro_id: cadastroId },
+      response_body: responseBody,
+      status_code: response.status,
+      success: false,
+      error_message: errorMessage,
+      duration_ms: Date.now() - startedAt,
+    });
+
+    return {
+      ok: false,
+      status: response.status,
+      result: responseBody,
+    };
+  }
+
+  const responseBody = {
+    success: true,
+    data: result,
+  };
+
+  await saveApiLog(supabase, {
+    endpoint: "erp-novo-usuario2-public",
+    method: "POST",
+    request_body: { ...payload, cadastro_id: cadastroId },
+    response_body: responseBody,
+    status_code: 200,
+    success: true,
+    duration_ms: Date.now() - startedAt,
+  });
+
+  return {
+    ok: true,
+    status: 200,
+    result: responseBody,
+  };
+};
+
+const syncCadastroEnviado = async (
+  supabase: ReturnType<typeof createClient>,
+  cadastroId: string,
+  erpPayload: Record<string, unknown>,
+  erpResult: Record<string, unknown>,
+  dependentes: Dependente[],
+) => {
+  const syncPayloadBase = {
+    status: "enviado",
+    payload_erp: erpPayload,
+    erp_response: erpResult,
+    dependentes: formatDependentesForSync(dependentes),
+  };
+
+  let { error, count } = await supabase
+    .from("cadastros")
+    .update({
+      ...syncPayloadBase,
+      data_envio: new Date().toISOString(),
+    }, { count: "exact" })
+    .eq("id", cadastroId);
+
+  if (error?.message?.includes("data_envio")) {
+    console.warn("[cadastro-public-submit] data_envio not available, retrying sync without the column");
+
+    const retry = await supabase
+      .from("cadastros")
+      .update(syncPayloadBase, { count: "exact" })
+      .eq("id", cadastroId);
+
+    error = retry.error;
+    count = retry.count;
+  }
+
+  if (error) {
+    throw new Error(`Falha ao sincronizar cadastro local apos envio ao ERP: ${error.message}`);
+  }
+
+  if (!count || count < 1) {
+    throw new Error(`Nenhum cadastro local foi atualizado apos envio ao ERP (cadastro ${cadastroId}).`);
+  }
+};
+
+const syncLinkUsage = async (
+  supabase: ReturnType<typeof createClient>,
+  linkId: string,
+  cpf: string,
+  cadastroId: string,
+) => {
+  const { error } = await supabase
+    .from("cadastro_links")
+    .update({
+      used_at: new Date().toISOString(),
+      used_cpf: cpf,
+      used_cadastro_id: cadastroId,
+    })
+    .eq("id", linkId);
+
+  if (error) {
+    throw new Error(`Falha ao atualizar historico do link: ${error.message}`);
+  }
 };
 
 const validatePayload = (cadastro?: PublicCadastroPayload) => {
@@ -371,7 +731,7 @@ Deno.serve(async (req: Request) => {
     }
 
     try {
-      const erpCheck = await checkErpAssociado(supabaseUrl, normalizedCpf);
+      const erpCheck = await checkErpAssociado(supabase, normalizedCpf);
       if (erpCheck?.exists && erpCheck?.shouldBlock) {
         return jsonResponse({
           error: erpCheck.blockReason || "Cliente ja cadastrado no sistema",
@@ -388,8 +748,17 @@ Deno.serve(async (req: Request) => {
       }, 400);
     }
 
+    const ownerContext = await resolveProfileContext(supabase, link.vendedor_id || link.created_by);
     const dependentesNormalizados = formatDependentesForSync(cadastro!.dependentes);
-    const erpPayload = buildErpPayload(cadastro!, link.empresa_codigo, vendedorCodigoResolvido);
+    const erpPayload = buildErpPayload(
+      cadastro!,
+      link.empresa_codigo,
+      vendedorCodigoResolvido,
+      ownerContext?.external_id ? Number.parseInt(ownerContext.external_id, 10) || 0 : 0,
+      ownerContext?.role || null,
+      ownerContext?.external_id || null,
+      ownerContext?.role === "ADESIONISTA" ? ownerContext?.external_id || null : null,
+    );
 
     const { data: insertedCadastro, error: insertError } = await supabase
       .from("cadastros")
@@ -430,20 +799,9 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "Nao foi possivel criar o cadastro" }, 500);
     }
 
-    const functionUrl = `${supabaseUrl}/functions/v1/erp-novo-usuario2`;
-    const erpResponse = await fetch(functionUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Idempotency-Key": `public-link:${link.id}:${normalizedCpf}`,
-        "X-Cadastro-Id": insertedCadastro.id,
-      },
-      body: JSON.stringify(erpPayload),
-    });
+    const { ok: erpOk, result: erpResult } = await sendCadastroToErp(supabase, erpPayload, insertedCadastro.id);
 
-    const erpResult = await erpResponse.json();
-
-    if (!erpResponse.ok || erpResult?.error) {
+    if (!erpOk || erpResult?.error) {
       await supabase
         .from("cadastros")
         .update({
@@ -454,48 +812,46 @@ Deno.serve(async (req: Request) => {
         .eq("id", insertedCadastro.id);
 
       return jsonResponse({
-        error: erpResult?.error || erpResult?.details?.mensagem || erpResult?.details?.message || "Erro ao enviar cadastro para o ERP",
+        error: extractMessage(erpResult) || "Erro ao enviar cadastro para o ERP",
         details: erpResult,
         cadastroId: insertedCadastro.id,
       }, 400);
     }
 
-    const dependentesParaSync = formatDependentesForSync(cadastro!.dependentes);
+    try {
+      await syncCadastroEnviado(
+        supabase,
+        insertedCadastro.id,
+        erpPayload,
+        erpResult,
+        cadastro!.dependentes,
+      );
+    } catch (syncError) {
+      console.error("[cadastro-public-submit] cadastro sync error after ERP success:", syncError);
 
-    const { error: updateCadastroError } = await supabase
-      .from("cadastros")
-      .update({
-        status: "enviado",
-        payload_erp: erpPayload,
-        erp_response: erpResult,
-        dependentes: dependentesParaSync,
-        data_envio: new Date().toISOString(),
-      })
-      .eq("id", insertedCadastro.id);
-
-    if (updateCadastroError) {
-      console.error("[cadastro-public-submit] update cadastro error:", updateCadastroError);
       return jsonResponse({
-        error: "Cadastro enviado ao ERP, mas falhou a sincronizacao local",
+        ok: true,
+        warning: syncError instanceof Error
+          ? syncError.message
+          : "Cadastro enviado ao ERP, mas houve uma divergencia na sincronizacao local",
         cadastroId: insertedCadastro.id,
-      }, 500);
+        message: "Cadastro concluido com sucesso",
+      });
     }
 
-    const { error: updateLinkError } = await supabase
-      .from("cadastro_links")
-      .update({
-        used_at: new Date().toISOString(),
-        used_cpf: normalizedCpf,
-        used_cadastro_id: insertedCadastro.id,
-      })
-      .eq("id", link.id);
+    try {
+      await syncLinkUsage(supabase, link.id, normalizedCpf, insertedCadastro.id);
+    } catch (linkSyncError) {
+      console.error("[cadastro-public-submit] link sync warning after ERP success:", linkSyncError);
 
-    if (updateLinkError) {
-      console.error("[cadastro-public-submit] update link error:", updateLinkError);
       return jsonResponse({
-        error: "Cadastro concluido, mas o historico do link nao foi atualizado corretamente",
+        ok: true,
+        warning: linkSyncError instanceof Error
+          ? linkSyncError.message
+          : "Cadastro concluido, mas o historico do link nao foi atualizado corretamente",
         cadastroId: insertedCadastro.id,
-      }, 500);
+        message: "Cadastro concluido com sucesso",
+      });
     }
 
     return jsonResponse({

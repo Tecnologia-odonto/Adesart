@@ -577,10 +577,15 @@ export function DependentesSection({
               <div className="flex gap-2">
                 <button
                   onClick={() => handleEdit(index)}
-                  className="p-2 hover:bg-slate-200 rounded transition-colors"
-                  title="Editar"
+                  className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
+                    temPlanoValido
+                      ? 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                      : 'border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                  }`}
+                  title={temPlanoValido ? 'Editar dependente ou trocar plano' : 'Selecionar plano disponivel'}
                 >
-                  <Pencil className="w-4 h-4 text-slate-600" />
+                  <Pencil className={`w-4 h-4 ${temPlanoValido ? 'text-slate-600' : 'text-amber-700'}`} />
+                  <span>{temPlanoValido ? 'Editar / plano' : 'Selecionar plano'}</span>
                 </button>
                 <button
                   onClick={() => handleDelete(index)}
