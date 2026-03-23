@@ -29,6 +29,7 @@ interface DependentesSectionProps {
   planos: any[];
   funcionarioCadastro: number | null;
   onChange: (dependentes: Dependente[]) => void;
+  enableLemmit?: boolean;
 }
 
 export function DependentesSection({
@@ -36,6 +37,7 @@ export function DependentesSection({
   planos,
   funcionarioCadastro,
   onChange,
+  enableLemmit = true,
 }: DependentesSectionProps) {
   const { parentescos, config } = useConfigCadastro();
   const { profile } = useAuth();
@@ -136,7 +138,7 @@ export function DependentesSection({
   };
 
   const consultarLemmit = async (cpf: string) => {
-    if (!config?.lemmit_dependente) {
+    if (!enableLemmit || !config?.lemmit_dependente || !profile?.id) {
       return;
     }
 
@@ -246,7 +248,7 @@ export function DependentesSection({
 
       setCpfValidationError('');
 
-      if (config?.lemmit_dependente) {
+      if (enableLemmit && config?.lemmit_dependente && profile?.id) {
         consultarLemmit(cpfLimpo);
       }
     } else {

@@ -13,7 +13,7 @@ export type Profile = {
   id: string;
   name: string;
   email: string;
-  role: 'ADMINISTRADOR' | 'GERENTE' | 'CADASTRO' | 'SUPERVISOR' | 'VENDEDOR' | 'ADESIONISTA';
+  role: 'ADMINISTRADOR' | 'GERENTE' | 'GESTOR' | 'CADASTRO' | 'SUPERVISOR' | 'VENDEDOR' | 'ADESIONISTA';
   external_id: string | null;
   team_id: string | null;
   is_active: boolean;
