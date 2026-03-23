@@ -6,16 +6,19 @@ import { CadastrosCompletosList } from '../components/cadastro/CadastrosCompleto
 import { CadastroModal } from '../components/cadastro/CadastroModal';
 import { InclusaoDependenteModal } from '../components/cadastro/InclusaoDependenteModal';
 import { ContinuarInclusaoDependenteModal } from '../components/cadastro/ContinuarInclusaoDependenteModal';
+import { LinkCadastroCard } from '../components/cadastro/LinkCadastroCard';
+import { LinksGeradosList } from '../components/cadastro/LinksGeradosList';
 import { useCadastros, Cadastro as CadastroType } from '../hooks/useCadastros';
-import { Plus, FileText, Loader2, CheckCircle, UserPlus } from 'lucide-react';
+import { Plus, FileText, Loader2, CheckCircle, UserPlus, Link as LinkIcon } from 'lucide-react';
 
 export function Cadastro() {
   console.log('[Cadastro] 🔄 Componente renderizado');
 
   const { cadastros, stats, loading, loadCadastros, loadStats, refresh } = useCadastros();
-  const [activeTab, setActiveTab] = useState<'novo' | 'dependente' | 'incompletos' | 'completos'>('novo');
+  const [activeTab, setActiveTab] = useState<'novo' | 'link' | 'dependente' | 'incompletos' | 'completos'>('novo');
   const [selectedCadastro, setSelectedCadastro] = useState<CadastroType | null>(null);
   const [showInclusaoDependente, setShowInclusaoDependente] = useState(false);
+  const [linkListReloadKey, setLinkListReloadKey] = useState(0);
 
   console.log('[Cadastro] 📊 Stats:', stats);
   console.log('[Cadastro] 📋 Cadastros length:', cadastros.length);
@@ -37,7 +40,7 @@ export function Cadastro() {
     }
   };
 
-  const handleTabChange = async (tab: 'novo' | 'dependente' | 'incompletos' | 'completos') => {
+  const handleTabChange = async (tab: 'novo' | 'link' | 'dependente' | 'incompletos' | 'completos') => {
     console.log('[Cadastro] 🔄 handleTabChange para tab:', tab);
     console.log('[Cadastro] 📋 Cadastros length atual:', cadastros.length);
 
@@ -88,6 +91,17 @@ export function Cadastro() {
             <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-2 sm:mr-2" />
             <span className="hidden xs:inline">Nova Adesão</span>
             <span className="xs:hidden">Nova Adesão</span>
+          </button>
+          <button
+            onClick={() => handleTabChange('link')}
+            className={`flex-1 sm:flex-none flex items-center justify-center px-4 sm:px-4 py-2.5 sm:py-3 font-medium text-xs sm:text-sm transition-colors relative whitespace-nowrap ${
+              activeTab === 'link'
+                ? 'text-emerald-700 border-b-2 border-emerald-600 bg-emerald-50'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 active:bg-slate-100'
+            }`}
+          >
+            <LinkIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-2 sm:mr-2" />
+            <span>Link</span>
           </button>
           <button
             onClick={() => {
@@ -149,6 +163,14 @@ export function Cadastro() {
             {activeTab === 'novo' && (
               <div className="max-w-2xl">
                 <NovoCadastroCard onSuccess={handleNewCadastroSuccess} />
+              </div>
+            )}
+            {activeTab === 'link' && (
+              <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)] gap-6 items-start">
+                <LinkCadastroCard onGenerated={() => setLinkListReloadKey((prev) => prev + 1)} />
+                <div className="min-w-0">
+                  <LinksGeradosList reloadKey={linkListReloadKey} />
+                </div>
               </div>
             )}
             {activeTab === 'dependente' && (
