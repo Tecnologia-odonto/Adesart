@@ -17,7 +17,8 @@ import { PublicCadastroLink } from './pages/PublicCadastroLink';
 import { PublicCadastroLinkPreview } from './pages/PublicCadastroLinkPreview';
 
 function AppRoutes() {
-  const { user, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
+  const isAuthenticated = Boolean(user && profile);
 
   if (loading) {
     return (
@@ -36,7 +37,7 @@ function AppRoutes() {
       <Route path="/preview/link-plano" element={<PublicCadastroLinkPreview />} />
       <Route
         path="/login"
-        element={user ? <Navigate to="/dashboard" replace /> : <Login />}
+        element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />}
       />
       <Route
         path="/dashboard"
@@ -110,8 +111,8 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/" element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />} />
+      <Route path="*" element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />} />
     </Routes>
   );
 }
