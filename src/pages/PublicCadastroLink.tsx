@@ -6,7 +6,7 @@ import { Button } from '../components/Button';
 import { DateInput } from '../components/DateInput';
 import { Select } from '../components/Select';
 import { DependentesSection, Dependente } from '../components/cadastro/DependentesSection';
-import { formatCEP, formatCPF, formatPhone, removeCPFMask, validateCPF } from '../lib/cpf';
+import { formatCEP, formatCPF, formatMobilePhone, formatPhone, removeCPFMask, validateCPF } from '../lib/cpf';
 import { mapLemitToCadastro } from '../lib/mappers';
 import { useCadastros } from '../hooks/useCadastros';
 import { useConfigCadastro } from '../contexts/ConfigCadastroContext';
@@ -33,6 +33,7 @@ interface LinkResolveData {
   planosRaw: any[];
   vendedorCodigo: string;
   vendedorNome: string;
+  vendedorTelefone?: string | null;
 }
 
 interface CadastroContato {
@@ -935,6 +936,11 @@ export function PublicCadastroLink() {
                 <p className="text-xs text-slate-300 mt-2">
                   Atendimento vinculado a {linkData?.vendedorNome}
                 </p>
+                {linkData?.vendedorTelefone && (
+                  <p className="text-xs text-slate-300 mt-1">
+                    Telefone: {formatMobilePhone(linkData.vendedorTelefone)}
+                  </p>
+                )}
               </div>
             </div>
           </div>

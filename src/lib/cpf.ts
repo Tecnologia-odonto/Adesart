@@ -61,6 +61,22 @@ export function formatPhone(phone: string): string {
   return numbers;
 }
 
+export function normalizeMobilePhone(phone: string): string {
+  if (!phone) return '';
+  return phone.replace(/\D/g, '').slice(0, 11);
+}
+
+export function formatMobilePhone(phone: string): string {
+  if (!phone) return '';
+
+  const numbers = normalizeMobilePhone(phone);
+
+  if (numbers.length <= 2) return `(${numbers}`;
+  if (numbers.length <= 7) return `(${numbers.slice(0, 2)}) ${numbers.slice(2)}`;
+
+  return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)} ${numbers.slice(7)}`;
+}
+
 export function formatCEP(cep: string): string {
   if (!cep) return '';
   const numbers = cep.replace(/\D/g, '');

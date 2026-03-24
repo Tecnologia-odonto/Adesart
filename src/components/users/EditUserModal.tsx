@@ -4,6 +4,7 @@ import { Input } from '../Input';
 import { Select } from '../Select';
 import { Button } from '../Button';
 import { supabase, Profile, Team } from '../../lib/supabase';
+import { formatMobilePhone, normalizeMobilePhone } from '../../lib/cpf';
 
 interface EditUserModalProps {
   user: Profile;
@@ -21,6 +22,7 @@ export function EditUserModal({ user, onClose, onSuccess, canEditRole }: EditUse
   const [formData, setFormData] = useState({
     name: user.name,
     email: user.email,
+    telefone: formatMobilePhone(user.telefone || ''),
     role: user.role,
     external_id: user.external_id || '',
     team_id: user.team_id || '',
@@ -55,9 +57,16 @@ export function EditUserModal({ user, onClose, onSuccess, canEditRole }: EditUse
     setLoading(true);
 
     try {
+      const telefone = normalizeMobilePhone(formData.telefone);
+
+      if (formData.telefone.trim() && telefone.length !== 11) {
+        throw new Error('Telefone deve estar no formato (XX) XXXXX XXXX');
+      }
+
       const updateData: any = {
         name: formData.name,
         email: formData.email,
+        telefone: telefone || null,
         is_active: formData.is_active,
         lemmit_limite_consultas: formData.lemmit_limite_consultas === '' ? null : parseFloat(formData.lemmit_limite_consultas as string),
       };
@@ -129,6 +138,15 @@ export function EditUserModal({ user, onClose, onSuccess, canEditRole }: EditUse
             value={formData.email}
             onChange={(e) => setFormData({ ...formData, email: e.target.value })}
             required
+          />
+
+          <Input
+            label="Telefone"
+            value={formData.telefone}
+            onChange={(e) => setFormData({ ...formData, telefone: formatMobilePhone(e.target.value) })}
+            placeholder="(11) 98765 4321"
+            maxLength={15}
+            inputMode="tel"
           />
 
           <Select
