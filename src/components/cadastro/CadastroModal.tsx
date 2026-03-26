@@ -390,7 +390,9 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         setDependentes(draft.dependentes);
       }
 
-      setArquivo(draft.arquivo || null);
+      if (draft.arquivo) {
+        setArquivo(draft.arquivo);
+      }
       setSelectedEmpresa(draft.selectedEmpresa || null);
       setNovoContato(draft.novoContato || { tipo: 'celular', valor: '' });
     }
@@ -603,9 +605,26 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       );
 
       setArquivo(uploadedFile);
+      saveDraft(
+        'cadastro-modal',
+        {
+          ...buildDraftPayload(),
+          arquivo: uploadedFile,
+        },
+        profile.id,
+        cadastro.id
+      );
 
       await updateCadastro(cadastroAtual.id, {
         arquivo_path: uploadedFile.path
+      });
+      setCadastroFresh((prev) => {
+        if (!prev) return prev;
+
+        return {
+          ...prev,
+          arquivo_path: uploadedFile.path,
+        };
       });
 
       setSuccess('Arquivo carregado com sucesso!');
