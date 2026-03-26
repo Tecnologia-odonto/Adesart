@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search, Loader2 } from 'lucide-react';
 import { Input } from '../Input';
 import { Button } from '../Button';
@@ -14,6 +14,7 @@ import { EmpresaSearchCard } from './EmpresaSearchCard';
 import { LemmitErrorModal } from './LemmitErrorModal';
 import { LemmitLimitModal } from './LemmitLimitModal';
 import { CadastroExistenteModal } from './CadastroExistenteModal';
+import { loadDraft, saveDraft, clearDraft } from '../../utils/draftStorage';
 
 interface NovoCadastroCardProps {
   onSuccess: (cadastro: any, isBlocked?: boolean) => void;
@@ -57,6 +58,7 @@ interface Adesionista {
 }
 
 export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
+  const draftHydratedRef = useRef(false);
   const [cpf, setCpf] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -82,6 +84,12 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
   const { checkERPAssociado, consultarCPF, consultarEnderecoCEP, findClienteByCPF, createOrUpdateRascunho } = useCadastros();
   const { loadConfig } = useConfigCadastro();
   const { profile } = useAuth();
+
+  const clearFrontDraft = () => {
+    if (profile?.id) {
+      clearDraft('novo-cadastro-card', profile.id);
+    }
+  };
 
   useEffect(() => {
     const fetchVendedores = async () => {
@@ -130,6 +138,47 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
 
     fetchAdesionistas();
   }, [profile]);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+
+    const draft = loadDraft('novo-cadastro-card', profile.id) as any;
+    if (draft) {
+      setCpf(draft.cpf || '');
+      setSelectedEmpresa(draft.selectedEmpresa || null);
+      setSelectedVendedor(draft.selectedVendedor || '');
+      setSelectedAdesionista(draft.selectedAdesionista || '');
+    }
+
+    draftHydratedRef.current = true;
+  }, [profile?.id]);
+
+  useEffect(() => {
+    if (!profile?.id || !draftHydratedRef.current) return;
+
+    const hasDraftData = Boolean(
+      cpf ||
+      selectedEmpresa ||
+      selectedVendedor ||
+      selectedAdesionista
+    );
+
+    if (!hasDraftData) {
+      clearDraft('novo-cadastro-card', profile.id);
+      return;
+    }
+
+    saveDraft(
+      'novo-cadastro-card',
+      {
+        cpf,
+        selectedEmpresa,
+        selectedVendedor,
+        selectedAdesionista,
+      },
+      profile.id
+    );
+  }, [profile?.id, cpf, selectedEmpresa, selectedVendedor, selectedAdesionista]);
 
   const needsVendedor = profile && (profile.role === 'CADASTRO' || profile.role === 'ADESIONISTA');
 
@@ -422,6 +471,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         }),
       });
 
+      clearFrontDraft();
       setCpf('');
       onSuccess(rascunho);
     } catch (err) {
@@ -451,6 +501,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         cliente_sera_usuario: false,
       });
 
+      clearFrontDraft();
       setCpf('');
       setClientExists(null);
       onSuccess(rascunhoBloqueado, true);
@@ -555,6 +606,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         }),
       });
 
+      clearFrontDraft();
       setLemmitError(null);
       setCpf('');
       onSuccess(rascunho);
@@ -674,6 +726,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
         }),
       });
 
+      clearFrontDraft();
       setLemmitLimitExceeded(null);
       setCpf('');
       onSuccess(rascunho);
@@ -700,6 +753,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
       }
 
       setCadastroExistente(null);
+      clearFrontDraft();
       setCpf('');
       onSuccess(cadastroCompleto);
     } catch (err) {
