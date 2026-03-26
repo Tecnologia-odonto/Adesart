@@ -53,6 +53,19 @@ export interface EmpresaData {
 }
 
 /**
+ * NovoCadastroCard draft
+ */
+export interface NovoCadastroCardDraft {
+  modalName: 'novo-cadastro-card';
+  cpf: string;
+  selectedEmpresa?: EmpresaData | null;
+  selectedVendedor?: string;
+  selectedAdesionista?: string;
+  timestamp: number;
+  lastSaved: number;
+}
+
+/**
  * CadastroModal draft
  */
 export interface CadastroModalDraft {
@@ -133,6 +146,7 @@ export interface ContinuarInclusaoDependenteModalDraft {
  * Union type for all draft types
  */
 export type ModalDraft =
+  | NovoCadastroCardDraft
   | CadastroModalDraft
   | InclusaoDependenteModalDraft
   | ContinuarInclusaoDependenteModalDraft;

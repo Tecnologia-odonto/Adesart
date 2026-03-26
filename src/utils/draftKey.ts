@@ -3,7 +3,11 @@
  * for localStorage persistence
  */
 
-export type ModalName = 'cadastro-modal' | 'inclusao-dependente-modal' | 'continuar-inclusao-dependente-modal';
+export type ModalName =
+  | 'novo-cadastro-card'
+  | 'cadastro-modal'
+  | 'inclusao-dependente-modal'
+  | 'continuar-inclusao-dependente-modal';
 
 /**
  * Generate a standardized draft key

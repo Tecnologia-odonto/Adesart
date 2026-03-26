@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Save, Send, Trash2, Loader2, Plus, Trash } from 'lucide-react';
 import { Input } from '../Input';
 import { DateInput } from '../DateInput';
@@ -16,6 +16,7 @@ import { ParceiroInvalidoModal } from './ParceiroInvalidoModal';
 import { EmpresaSearchCard } from './EmpresaSearchCard';
 import { supabase } from '../../lib/supabase';
 import { uploadToStorage, UploadedFile, validateFile } from '../../utils/uploadFile';
+import { loadDraft, saveDraft, clearDraft, saveBeforeFilePicker } from '../../utils/draftStorage';
 
 interface CadastroModalProps {
   cadastro: Cadastro;
@@ -36,6 +37,7 @@ interface Empresa {
 }
 
 export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalProps) {
+  const draftHydratedRef = useRef(false);
   const { updateCadastro, enviarParaERP, deleteCadastro, canDelete, consultarEnderecoCEP, searchEmpresa } = useCadastros();
   const { profile } = useAuth();
   const { planos: planosMap, config } = useConfigCadastro();
@@ -60,6 +62,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   const [selectedEmpresa, setSelectedEmpresa] = useState<Empresa | null>(null);
   const [arquivo, setArquivo] = useState<UploadedFile | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [novoContato, setNovoContato] = useState({ tipo: 'celular', valor: '' });
 
   const funcionarioCadastroId = profile?.external_id ? parseInt(profile.external_id) : null;
 
@@ -97,6 +100,22 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     },
     nomeMae: cadastro.nome_mae || '',
     numeroMatricula: cadastro.numero_matricula || '',
+  });
+
+  const clearModalDraft = () => {
+    if (profile?.id) {
+      clearDraft('cadastro-modal', profile.id, cadastro.id);
+    }
+  };
+
+  const buildDraftPayload = () => ({
+    formData,
+    dependentes,
+    arquivo,
+    selectedEmpresa,
+    novoContato,
+    step: cadastroFresh?.status === 'incompleto' ? 2 : 1,
+    currentTab: 0,
   });
 
   useEffect(() => {
@@ -350,6 +369,41 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     }
   }, [formData.nome, formData.dataNascimento, formData.sexo, formData.nomeMae]);
 
+  useEffect(() => {
+    if (!profile?.id || !initialLoadComplete || draftHydratedRef.current) return;
+
+    const draft = loadDraft('cadastro-modal', profile.id, cadastro.id) as any;
+    if (draft) {
+      if (draft.formData) {
+        setFormData((prev) => ({
+          ...prev,
+          ...draft.formData,
+          contatos: draft.formData.contatos || prev.contatos,
+          endereco: {
+            ...prev.endereco,
+            ...(draft.formData.endereco || {}),
+          },
+        }));
+      }
+
+      if (Array.isArray(draft.dependentes)) {
+        setDependentes(draft.dependentes);
+      }
+
+      setArquivo(draft.arquivo || null);
+      setSelectedEmpresa(draft.selectedEmpresa || null);
+      setNovoContato(draft.novoContato || { tipo: 'celular', valor: '' });
+    }
+
+    draftHydratedRef.current = true;
+  }, [profile?.id, initialLoadComplete, cadastro.id]);
+
+  useEffect(() => {
+    if (!profile?.id || !initialLoadComplete || !draftHydratedRef.current) return;
+
+    saveDraft('cadastro-modal', buildDraftPayload(), profile.id, cadastro.id);
+  }, [profile?.id, initialLoadComplete, formData, dependentes, arquivo, selectedEmpresa, novoContato, cadastro.id]);
+
 
   const isValidISODate = (dateStr: string): boolean => {
     if (!dateStr) return true;
@@ -487,6 +541,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   const handleStatusSelect = async (statusId: string) => {
     try {
       await updateCadastro(cadastroAtual.id, { status_adesao_id: statusId });
+      clearModalDraft();
       setShowSelectStatusModal(false);
       onSuccess();
       onClose();
@@ -498,6 +553,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   };
 
   const handleStatusCancel = () => {
+    clearModalDraft();
     setShowSelectStatusModal(false);
     onSuccess();
     onClose();
@@ -812,6 +868,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
       setSuccess('Cadastro enviado com sucesso! Arquivo em fila de envio ao ERP.');
       setTimeout(() => {
+        clearModalDraft();
         onSuccess();
         onClose();
       }, 2000);
@@ -981,6 +1038,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
       setSuccess('Cadastro enviado com sucesso com o novo vendedor!');
       setTimeout(() => {
+        clearModalDraft();
         onSuccess();
         onClose();
       }, 2000);
@@ -998,6 +1056,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     setLoading(true);
     try {
       await deleteCadastro(cadastroAtual.id);
+      clearModalDraft();
       onSuccess();
     } catch (err) {
       console.error('Error deleting cadastro:', err);
@@ -1017,8 +1076,6 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     });
     setFormData({ ...formData, contatos: novosContatos });
   };
-
-  const [novoContato, setNovoContato] = useState({ tipo: 'celular', valor: '' });
 
   const handleAdicionarContato = () => {
     if (!novoContato.valor.trim()) {
@@ -1463,6 +1520,16 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
                   type="file"
                   accept=".pdf,.jpg,.jpeg,.png"
                   onChange={handleArquivoChange}
+                  onPointerDown={() => {
+                    if (profile?.id && draftHydratedRef.current) {
+                      saveBeforeFilePicker('cadastro-modal', buildDraftPayload, profile.id, cadastro.id);
+                    }
+                  }}
+                  onClick={() => {
+                    if (profile?.id && draftHydratedRef.current) {
+                      saveBeforeFilePicker('cadastro-modal', buildDraftPayload, profile.id, cadastro.id);
+                    }
+                  }}
                   disabled={uploadingFile}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 />
