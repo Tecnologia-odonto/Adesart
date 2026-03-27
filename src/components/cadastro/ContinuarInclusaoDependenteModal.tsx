@@ -15,7 +15,7 @@ import { LemmitLimitModal } from './LemmitLimitModal';
 import { SelectStatusModal } from './SelectStatusModal';
 import { EmpresaNaoIdentificadaModal } from './EmpresaNaoIdentificadaModal';
 import { uploadToStorage, UploadedFile, validateFile } from '../../utils/uploadFile';
-import { loadDraft, saveDraft, clearDraft, saveBeforeFilePicker } from '../../utils/draftStorage';
+import { clearDraft, loadDraft, saveBeforeFilePicker, saveDraft } from '../../utils/draftStorage';
 
 interface ContinuarInclusaoDependenteModalProps {
   cadastro: Cadastro;
@@ -181,7 +181,6 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
   const [showSelectStatusModal, setShowSelectStatusModal] = useState(false);
   const [pendingClose, setPendingClose] = useState(false);
   const [showEmpresaModal, setShowEmpresaModal] = useState(false);
-
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [selectedVendedor, setSelectedVendedor] = useState<string>(cadastro.vendedor_id || '');
   const [adesionistas, setAdesionistas] = useState<Adesionista[]>([]);
@@ -191,12 +190,6 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
   const [loadingEmpresa, setLoadingEmpresa] = useState(false);
 
   const funcionarioCadastroId = profile?.external_id ? parseInt(profile.external_id) : null;
-
-  const clearModalDraft = () => {
-    if (profile?.id) {
-      clearDraft('continuar-inclusao-dependente-modal', profile.id, cadastro.id);
-    }
-  };
 
   const buildDraftPayload = () => ({
     dependentes,
@@ -208,6 +201,12 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
     empresaObservacao,
     planosEmpresa,
   });
+
+  const clearContinuarDraft = () => {
+    if (profile?.id) {
+      clearDraft('continuar-inclusao-dependente-modal', profile.id, cadastro.id);
+    }
+  };
 
   useEffect(() => {
     if (profile?.role === 'VENDEDOR') {
@@ -236,7 +235,9 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
   }, [profile]);
 
   useEffect(() => {
-    if (!profile?.id || draftHydratedRef.current) return;
+    if (!profile?.id || draftHydratedRef.current) {
+      return;
+    }
 
     const draft = loadDraft('continuar-inclusao-dependente-modal', profile.id, cadastro.id) as any;
     if (draft) {
@@ -255,21 +256,12 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
   }, [profile?.id, cadastro.id, cadastro.vendedor_id, cadastro.adesionista_id, cadastro.empresa_codigo, cadastro.empresa_nome]);
 
   useEffect(() => {
-    if (!profile?.id || !draftHydratedRef.current) return;
+    if (!profile?.id || !draftHydratedRef.current) {
+      return;
+    }
 
     saveDraft('continuar-inclusao-dependente-modal', buildDraftPayload(), profile.id, cadastro.id);
-  }, [
-    profile?.id,
-    cadastro.id,
-    dependentes,
-    selectedVendedor,
-    selectedAdesionista,
-    selectedEmpresa,
-    empresaCodigo,
-    empresaNome,
-    empresaObservacao,
-    planosEmpresa,
-  ]);
+  }, [profile?.id, cadastro.id, dependentes, selectedVendedor, selectedAdesionista, selectedEmpresa, empresaCodigo, empresaNome, empresaObservacao, planosEmpresa]);
 
   useEffect(() => {
     if (restoredDraftRef.current) {
@@ -312,7 +304,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
     } else {
       fetchEmpresaPlanos();
     }
-  }, []);
+  }, [cadastro, empresaCodigo, empresaNome, planos]);
 
   useEffect(() => {
     if (planosEmpresa.length > 0) {
@@ -718,6 +710,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
       setShowSelectStatusModal(false);
 
       if (pendingClose) {
+        clearContinuarDraft();
         onClose();
       }
     } catch (err: any) {
@@ -775,7 +768,6 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
 
       if (updateError) throw updateError;
 
-      clearModalDraft();
       setSuccess('Rascunho salvo com sucesso!');
       setTimeout(() => {
         setSuccess('');
@@ -1092,7 +1084,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
 
       setSuccess('Dependentes incluídos com sucesso!');
       setTimeout(() => {
-        clearModalDraft();
+        clearContinuarDraft();
         onSuccess();
         onClose();
       }, 2000);
@@ -1342,6 +1334,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
                       label="CPF"
                       value={dep.cpf}
                       onChange={(e) => handleCpfChange(index, e.target.value)}
+                      inputMode="numeric"
                       required={!isMenorDeIdade(dep.dataNascimento)}
                       disabled={dep.consultingLemmit}
                     />
@@ -1475,22 +1468,12 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
                           htmlFor={`file-upload-${index}`}
                           onPointerDown={() => {
                             if (profile?.id && draftHydratedRef.current) {
-                              saveBeforeFilePicker(
-                                'continuar-inclusao-dependente-modal',
-                                buildDraftPayload,
-                                profile.id,
-                                cadastro.id
-                              );
+                              saveBeforeFilePicker('continuar-inclusao-dependente-modal', buildDraftPayload, profile.id, cadastro.id);
                             }
                           }}
                           onClick={() => {
                             if (profile?.id && draftHydratedRef.current) {
-                              saveBeforeFilePicker(
-                                'continuar-inclusao-dependente-modal',
-                                buildDraftPayload,
-                                profile.id,
-                                cadastro.id
-                              );
+                              saveBeforeFilePicker('continuar-inclusao-dependente-modal', buildDraftPayload, profile.id, cadastro.id);
                             }
                           }}
                           className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-slate-300 rounded-lg hover:border-emerald-400 hover:bg-emerald-50 transition-colors cursor-pointer"

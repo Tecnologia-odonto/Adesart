@@ -14,7 +14,7 @@ import { ParceiroInvalidoModal } from './ParceiroInvalidoModal';
 import { SelectStatusModal } from './SelectStatusModal';
 import { EmpresaNaoIdentificadaModal } from './EmpresaNaoIdentificadaModal';
 import { uploadToStorage, UploadedFile, validateFile } from '../../utils/uploadFile';
-import { loadDraft, saveDraft, clearDraft, saveBeforeFilePicker } from '../../utils/draftStorage';
+import { clearDraft, loadDraft, saveBeforeFilePicker, saveDraft } from '../../utils/draftStorage';
 
 interface InclusaoDependenteModalProps {
   onClose: () => void;
@@ -64,6 +64,15 @@ interface DependenteForm {
   carenciaAtendimento: number;
   arquivo?: UploadedFile;
   saved: boolean;
+}
+
+function isParceiroInvalidoMessage(message: string): boolean {
+  const normalized = message
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  return normalized.includes('parceiro') && normalized.includes('invalido');
 }
 
 
@@ -131,14 +140,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
   const [showEmpresaModal, setShowEmpresaModal] = useState(false);
   const [empresaCodigo, setEmpresaCodigo] = useState<number | null>(null);
   const [empresaNome, setEmpresaNome] = useState<string>('');
-
   const funcionarioCadastroId = profile?.external_id ? parseInt(profile.external_id) : null;
-
-  const clearModalDraft = () => {
-    if (profile?.id) {
-      clearDraft('inclusao-dependente-modal', profile.id);
-    }
-  };
 
   const buildDraftPayload = () => ({
     tipoBusca,
@@ -153,6 +155,12 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
     empresaCodigo,
     empresaNome,
   });
+
+  const clearInclusaoDraft = () => {
+    if (profile?.id) {
+      clearDraft('inclusao-dependente-modal', profile.id);
+    }
+  };
 
   useEffect(() => {
     if (profile?.role === 'VENDEDOR') {
@@ -181,7 +189,9 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
   }, [profile]);
 
   useEffect(() => {
-    if (!profile?.id || draftHydratedRef.current) return;
+    if (!profile?.id || draftHydratedRef.current) {
+      return;
+    }
 
     const draft = loadDraft('inclusao-dependente-modal', profile.id) as any;
     if (draft) {
@@ -202,23 +212,12 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
   }, [profile?.id]);
 
   useEffect(() => {
-    if (!profile?.id || !draftHydratedRef.current) return;
+    if (!profile?.id || !draftHydratedRef.current) {
+      return;
+    }
 
     saveDraft('inclusao-dependente-modal', buildDraftPayload(), profile.id);
-  }, [
-    profile?.id,
-    tipoBusca,
-    valorBusca,
-    responsaveisEncontrados,
-    responsavelSelecionado,
-    dependentes,
-    selectedVendedor,
-    selectedAdesionista,
-    planosEmpresa,
-    empresaCompleta,
-    empresaCodigo,
-    empresaNome,
-  ]);
+  }, [profile?.id, tipoBusca, valorBusca, responsaveisEncontrados, responsavelSelecionado, dependentes, selectedVendedor, selectedAdesionista, planosEmpresa, empresaCompleta, empresaCodigo, empresaNome]);
 
 
   const fetchVendedores = async () => {
@@ -860,7 +859,6 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
 
       setSuccess('Dependente(s) salvo(s) como pendente com sucesso!');
       setTimeout(() => {
-        clearModalDraft();
         onSuccess();
         onClose();
       }, 2000);
@@ -1146,7 +1144,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
 
       setSuccess('Dependente(s) incluído(s) com sucesso! Arquivos em fila de envio.');
       setTimeout(() => {
-        clearModalDraft();
+        clearInclusaoDraft();
         onSuccess();
         onClose();
       }, 2000);
@@ -1154,7 +1152,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       console.error('Erro ao enviar:', err);
       const errorMessage = err.message || 'Erro ao incluir dependente';
 
-      if (errorMessage.toLowerCase().includes('parceiro') && errorMessage.toLowerCase().includes('inválido')) {
+      if (isParceiroInvalidoMessage(errorMessage)) {
         setShowParceiroInvalidoModal(true);
       } else {
         setError(errorMessage);
@@ -1185,7 +1183,10 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
             </p>
           </div>
           <button
-            onClick={onClose}
+            onClick={() => {
+              clearInclusaoDraft();
+              onClose();
+            }}
             className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
             disabled={uploadingFileIndex !== null || enviando || salvandoPendente}
           >
@@ -1384,6 +1385,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                               label="CPF"
                               value={dep.cpf}
                               onChange={(e) => handleAtualizarDependente(index, 'cpf', e.target.value)}
+                              inputMode="numeric"
                               required={!isMenorDeIdade(dep.dataNascimento)}
                             />
                             {consultingLemmitIndex === index && (
@@ -1511,7 +1513,6 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                             <input
                               type="file"
                               accept=".pdf,.jpg,.jpeg,.png"
-                              onChange={(e) => handleArquivoChange(index, e)}
                               onPointerDown={() => {
                                 if (profile?.id && draftHydratedRef.current) {
                                   saveBeforeFilePicker('inclusao-dependente-modal', buildDraftPayload, profile.id);
@@ -1522,6 +1523,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                                   saveBeforeFilePicker('inclusao-dependente-modal', buildDraftPayload, profile.id);
                                 }
                               }}
+                              onChange={(e) => handleArquivoChange(index, e)}
                               disabled={uploadingFileIndex === index}
                               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                             />
@@ -1606,7 +1608,10 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
           <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-slate-200">
             <Button
               variant="secondary"
-              onClick={onClose}
+              onClick={() => {
+                clearInclusaoDraft();
+                onClose();
+              }}
               disabled={enviando || salvandoPendente || uploadingFileIndex !== null}
               className="w-full sm:w-auto"
             >

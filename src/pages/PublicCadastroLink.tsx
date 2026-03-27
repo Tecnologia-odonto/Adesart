@@ -1008,6 +1008,7 @@ export function PublicCadastroLink() {
                         setCpf(formatCPF(e.target.value));
                         setCpfError('');
                       }}
+                      inputMode="numeric"
                       maxLength={14}
                       placeholder="000.000.000-00"
                       disabled={consultingCpf || cpfLocked}
@@ -1134,6 +1135,7 @@ export function PublicCadastroLink() {
                               label=""
                               value={novoContato.tipo === 'email' ? novoContato.valor : formatPhone(novoContato.valor)}
                               onChange={(e) => setNovoContato((prev) => ({ ...prev, valor: e.target.value }))}
+                              inputMode={novoContato.tipo === 'email' ? 'email' : 'numeric'}
                               placeholder={novoContato.tipo === 'email' ? 'exemplo@email.com' : '(11) 98888-7777'}
                               maxLength={novoContato.tipo === 'email' ? undefined : 15}
                             />
@@ -1194,6 +1196,7 @@ export function PublicCadastroLink() {
                           </label>
                           <input
                             type="text"
+                            inputMode="numeric"
                             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                             value={formatCEP(formData.endereco.cep)}
                             onChange={(e) => handleCEPChange(e.target.value)}
@@ -1244,6 +1247,7 @@ export function PublicCadastroLink() {
                           </label>
                           <input
                             type="text"
+                            inputMode="numeric"
                             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                             value={formData.endereco.numero}
                             onChange={(e) => setFormData((prev) => ({

@@ -834,6 +834,7 @@ export function NovoCadastroCard({ onSuccess }: NovoCadastroCardProps) {
               value={cpf}
               onChange={handleCPFChange}
               onKeyPress={handleKeyPress}
+              inputMode="numeric"
               placeholder="000.000.000-00"
               maxLength={14}
               disabled={loading}
