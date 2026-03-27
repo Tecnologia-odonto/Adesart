@@ -75,6 +75,7 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
         <input
           ref={ref}
           type="text"
+          inputMode="numeric"
           placeholder="DD/MM/AAAA"
           maxLength={10}
           value={displayValue}

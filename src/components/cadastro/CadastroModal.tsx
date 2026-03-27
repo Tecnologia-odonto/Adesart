@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Save, Send, Trash2, Loader2, Plus, Trash } from 'lucide-react';
+import { X, Save, Send, Trash2, Loader2, Plus, Trash, ArrowLeft } from 'lucide-react';
 import { Input } from '../Input';
 import { DateInput } from '../DateInput';
 import { Button } from '../Button';
@@ -16,6 +16,7 @@ import { ParceiroInvalidoModal } from './ParceiroInvalidoModal';
 import { EmpresaSearchCard } from './EmpresaSearchCard';
 import { supabase } from '../../lib/supabase';
 import { uploadToStorage, UploadedFile, validateFile } from '../../utils/uploadFile';
+import { clearDraft, loadDraft, saveBeforeFilePicker, saveDraft } from '../../utils/draftStorage';
 
 interface CadastroModalProps {
   cadastro: Cadastro;
@@ -33,6 +34,15 @@ interface Empresa {
   exigeMatricula?: number;
   observacoes?: string;
   raw: any;
+}
+
+function isParceiroInvalidoMessage(message: string): boolean {
+  const normalized = message
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  return normalized.includes('parceiro') && normalized.includes('invalido');
 }
 
 export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalProps) {
@@ -60,6 +70,8 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   const [selectedEmpresa, setSelectedEmpresa] = useState<Empresa | null>(null);
   const [arquivo, setArquivo] = useState<UploadedFile | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [currentStep, setCurrentStep] = useState<1 | 2>(1);
+  const [draftInitialized, setDraftInitialized] = useState(false);
 
   const funcionarioCadastroId = profile?.external_id ? parseInt(profile.external_id) : null;
 
@@ -99,6 +111,21 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     numeroMatricula: cadastro.numero_matricula || '',
   });
 
+  const getCadastroDraftData = () => ({
+    formData,
+    arquivo,
+    dependentes,
+    selectedEmpresa,
+    step: currentStep,
+    currentTab: 0,
+  });
+
+  const clearCadastroDraft = () => {
+    if (profile?.id) {
+      clearDraft('cadastro-modal', profile.id, cadastro.id);
+    }
+  };
+
   useEffect(() => {
     const fetchFreshCadastro = async () => {
       try {
@@ -118,7 +145,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
           setCadastroFresh(data as Cadastro);
         }
       } catch (err) {
-        console.error('[CadastroModal] Exceção ao buscar cadastro fresh:', err);
+        console.error('[CadastroModal] ExceÃ§Ã£o ao buscar cadastro fresh:', err);
       } finally {
         setInitialLoadComplete(true);
       }
@@ -128,9 +155,56 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   }, [cadastro.id]);
 
   useEffect(() => {
+    if (!profile?.id || draftInitialized || !initialLoadComplete || !dependentesInicializados) {
+      return;
+    }
+
+    const draft = loadDraft('cadastro-modal', profile.id, cadastro.id);
+
+    if (draft) {
+      if (draft.formData) {
+        setFormData((prev) => ({
+          ...prev,
+          ...draft.formData,
+          contatos: Array.isArray(draft.formData.contatos) ? draft.formData.contatos : prev.contatos,
+          endereco: draft.formData.endereco
+            ? { ...prev.endereco, ...draft.formData.endereco }
+            : prev.endereco,
+        }));
+      }
+
+      if (Array.isArray(draft.dependentes)) {
+        setDependentes(draft.dependentes as Dependente[]);
+      }
+
+      if (draft.arquivo) {
+        setArquivo(draft.arquivo as UploadedFile);
+      }
+
+      if (draft.selectedEmpresa) {
+        setSelectedEmpresa(draft.selectedEmpresa as Empresa);
+      }
+
+      if (draft.step === 2) {
+        setCurrentStep(2);
+      }
+    }
+
+    setDraftInitialized(true);
+  }, [profile?.id, draftInitialized, initialLoadComplete, dependentesInicializados, cadastro.id]);
+
+  useEffect(() => {
+    if (!profile?.id || !draftInitialized) {
+      return;
+    }
+
+    saveDraft('cadastro-modal', getCadastroDraftData(), profile.id, cadastro.id);
+  }, [profile?.id, draftInitialized, formData, arquivo, dependentes, selectedEmpresa, currentStep, cadastro.id]);
+
+  useEffect(() => {
     try {
       if (!cadastroAtual) {
-        console.warn('[CadastroModal] cadastroAtual não disponível');
+        console.warn('[CadastroModal] cadastroAtual nÃ£o disponÃ­vel');
         return;
       }
 
@@ -239,7 +313,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         setLoadingPlanos(true);
 
         if (!cadastroAtual || !cadastroAtual.id) {
-          console.warn('[CadastroModal] cadastroAtual inválido, abortando loadPlanos');
+          console.warn('[CadastroModal] cadastroAtual invÃ¡lido, abortando loadPlanos');
           setLoadingPlanos(false);
           return;
         }
@@ -267,19 +341,19 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
                   planos_raw: planos,
                 });
               } else {
-                console.warn('[CadastroModal] ⚠️ Empresa encontrada mas sem planos');
+                console.warn('[CadastroModal] âš ï¸ Empresa encontrada mas sem planos');
               }
             } else {
-              console.warn('[CadastroModal] ⚠️ Empresa não encontrada ou resposta inválida');
+              console.warn('[CadastroModal] âš ï¸ Empresa nÃ£o encontrada ou resposta invÃ¡lida');
             }
           } catch (err) {
-            console.error('[CadastroModal] ❌ Erro ao buscar planos da empresa:', err);
+            console.error('[CadastroModal] âŒ Erro ao buscar planos da empresa:', err);
           }
         } else {
-          console.warn('[CadastroModal] ⚠️ Nenhum empresa_id disponível');
+          console.warn('[CadastroModal] âš ï¸ Nenhum empresa_id disponÃ­vel');
         }
       } catch (err) {
-        console.error('[CadastroModal] ❌ Erro geral em loadPlanos:', err);
+        console.error('[CadastroModal] âŒ Erro geral em loadPlanos:', err);
       } finally {
         setLoadingPlanos(false);
       }
@@ -288,7 +362,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     if (cadastroAtual && cadastroAtual.id && planosMap) {
       loadPlanos();
     } else {
-      console.warn('[CadastroModal] Condições para loadPlanos não atendidas:', { cadastroAtual: !!cadastroAtual, id: cadastroAtual?.id, planosMap: !!planosMap });
+      console.warn('[CadastroModal] CondiÃ§Ãµes para loadPlanos nÃ£o atendidas:', { cadastroAtual: !!cadastroAtual, id: cadastroAtual?.id, planosMap: !!planosMap });
       setLoadingPlanos(false);
     }
   }, [cadastroAtual.id, cadastroAtual.empresa_id, cadastroAtual.planos_raw, planosMap]);
@@ -323,7 +397,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         setDependentes([responsavelComoDependente]);
       }
     } catch (err) {
-      console.error('[CadastroModal] Erro ao criar titular automático:', err);
+      console.error('[CadastroModal] Erro ao criar titular automÃ¡tico:', err);
     }
   }, [dependentesInicializados, planosEmpresa, cadastroAtual?.cpf, cadastroAtual?.dependentes, funcionarioCadastroId, loadingPlanos, formData.sexo, formData.nome, formData.dataNascimento, formData.nomeMae, dependentes.length]);
 
@@ -423,7 +497,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       let errorMessage = 'Erro ao salvar cadastro';
 
       if (err?.code === '22007') {
-        errorMessage = 'Erro: Data de nascimento inválida. Por favor, preencha a data corretamente ou deixe em branco.';
+        errorMessage = 'Erro: Data de nascimento invÃ¡lida. Por favor, preencha a data corretamente ou deixe em branco.';
       } else if (err instanceof Error) {
         errorMessage = err.message;
       } else if (err?.message) {
@@ -431,7 +505,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       }
 
       if (err?.code === '22007') {
-        console.error('[CadastroModal] Erro de data inválida:', err);
+        console.error('[CadastroModal] Erro de data invÃ¡lida:', err);
       } else {
         if (err?.details) {
           console.error('[CadastroModal] Detalhes do erro:', err.details);
@@ -488,6 +562,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     try {
       await updateCadastro(cadastroAtual.id, { status_adesao_id: statusId });
       setShowSelectStatusModal(false);
+      clearCadastroDraft();
       onSuccess();
       onClose();
     } catch (err) {
@@ -499,6 +574,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
   const handleStatusCancel = () => {
     setShowSelectStatusModal(false);
+    clearCadastroDraft();
     onSuccess();
     onClose();
   };
@@ -516,7 +592,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
     const validation = validateFile(file);
     if (!validation.valid) {
-      setError(validation.error || 'Arquivo inválido');
+      setError(validation.error || 'Arquivo invÃ¡lido');
       e.target.value = '';
       return;
     }
@@ -536,7 +612,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       }
 
       if (!profile?.id) {
-        throw new Error('Usuário não autenticado');
+        throw new Error('UsuÃ¡rio nÃ£o autenticado');
       }
 
       const uploadedFile = await uploadToStorage(
@@ -564,38 +640,38 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     }
   };
 
-  const handleEnviar = async () => {
+  const validateCadastro = (requireArquivo: boolean) => {
     setError('');
     setSuccess('');
 
     if (!formData.nome) {
-      setError('Campo obrigatório: Nome Completo');
-      return;
+      setError('Campo obrigatÃ³rio: Nome Completo');
+      return false;
     }
 
     if (!formData.nomeMae) {
-      setError('Campo obrigatório: Nome da Mãe');
-      return;
+      setError('Campo obrigatÃ³rio: Nome da MÃ£e');
+      return false;
     }
 
     if (!formData.dataNascimento) {
-      setError('Campo obrigatório: Data de Nascimento');
-      return;
+      setError('Campo obrigatÃ³rio: Data de Nascimento');
+      return false;
     }
 
     if (formData.sexo === null || formData.sexo === undefined || formData.sexo === '') {
-      setError('Campo obrigatório: Sexo');
-      return;
+      setError('Campo obrigatÃ³rio: Sexo');
+      return false;
     }
 
     if (!funcionarioCadastroId) {
-      setError('Código do usuário (External ID) não configurado. Configure seu código na página de Perfil antes de cadastrar.');
-      return;
+      setError('CÃ³digo do usuÃ¡rio (External ID) nÃ£o configurado. Configure seu cÃ³digo na pÃ¡gina de Perfil antes de cadastrar.');
+      return false;
     }
 
-    if (config?.exigir_arquivo && !arquivo) {
-      setError('Campo obrigatório: Arquivo (documento)');
-      return;
+    if (requireArquivo && config?.exigir_arquivo && !arquivo) {
+      setError('Campo obrigatÃ³rio: Arquivo (documento)');
+      return false;
     }
 
     const telefones = formData.contatos.filter(
@@ -603,76 +679,90 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     );
 
     if (telefones.length === 0) {
-      setError('Adicione pelo menos um telefone antes de enviar');
-      return;
+      setError('Adicione pelo menos um telefone antes de continuar');
+      return false;
     }
 
-    const telefonePrincipal = telefones.find(c => c.principal);
+    const telefonePrincipal = telefones.find((c) => c.principal);
     if (!telefonePrincipal && telefones.length > 0) {
-      formData.contatos = formData.contatos.map(c => {
-        if (c.tipo === 'celular' || c.tipo === 'fixo' || c.tipo === 'whatsapp') {
-          if (c === telefones[0]) {
-            return { ...c, principal: true };
-          }
+      formData.contatos = formData.contatos.map((c) => {
+        if ((c.tipo === 'celular' || c.tipo === 'fixo' || c.tipo === 'whatsapp') && c === telefones[0]) {
+          return { ...c, principal: true };
         }
         return c;
       });
     }
 
     if (!formData.endereco.cep) {
-      setError('Campo obrigatório: CEP');
-      return;
+      setError('Campo obrigatÃ³rio: CEP');
+      return false;
     }
 
     if (!formData.endereco.logradouro) {
-      setError('Campo obrigatório: Logradouro');
-      return;
+      setError('Campo obrigatÃ³rio: Logradouro');
+      return false;
     }
 
     if (!formData.endereco.numero) {
-      setError('Campo obrigatório: Número do endereço');
-      return;
+      setError('Campo obrigatÃ³rio: NÃºmero do endereÃ§o');
+      return false;
     }
 
     if (!formData.endereco.bairro) {
-      setError('Campo obrigatório: Bairro');
-      return;
+      setError('Campo obrigatÃ³rio: Bairro');
+      return false;
     }
 
     if (!formData.endereco.cidade) {
-      setError('Campo obrigatório: Cidade');
-      return;
+      setError('Campo obrigatÃ³rio: Cidade');
+      return false;
     }
 
     if (!formData.endereco.uf) {
-      setError('Campo obrigatório: UF');
-      return;
+      setError('Campo obrigatÃ³rio: UF');
+      return false;
     }
 
     if (cadastroAtual.empresa_exige_matricula === 1 && !formData.numeroMatricula) {
-      setError('Campo obrigatório: Matrícula (obrigatória para esta empresa)');
-      return;
+      setError('Campo obrigatÃ³rio: MatrÃ­cula (obrigatÃ³ria para esta empresa)');
+      return false;
     }
 
     if (!selectedEmpresa || !selectedEmpresa.id) {
       setError('Selecione uma empresa antes de continuar');
-      return;
+      return false;
     }
 
-    const titulares = dependentes.filter(d => d.tipo === 1);
+    const titulares = dependentes.filter((d) => d.tipo === 1);
     if (titulares.length === 0) {
-      setError('É necessário ter pelo menos 1 titular nos dependentes');
-      return;
+      setError('Ã‰ necessÃ¡rio ter pelo menos 1 titular nos dependentes');
+      return false;
     }
 
     if (titulares.length > 1) {
-      setError('Só pode haver 1 titular nos dependentes');
+      setError('SÃ³ pode haver 1 titular nos dependentes');
+      return false;
+    }
+
+    const dependentesSemPlano = dependentes.filter((d) => !d.plano || d.plano === 0);
+    if (dependentesSemPlano.length > 0) {
+      setError('Todos os dependentes devem ter um plano selecionado');
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleNextStep = () => {
+    if (!validateCadastro(false)) {
       return;
     }
 
-    const dependentesSemPlano = dependentes.filter(d => !d.plano || d.plano === 0);
-    if (dependentesSemPlano.length > 0) {
-      setError('Todos os dependentes devem ter um plano selecionado');
+    setCurrentStep(2);
+  };
+
+  const handleEnviar = async () => {
+    if (!validateCadastro(true)) {
       return;
     }
 
@@ -710,7 +800,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
           const { data: { session } } = await supabase.auth.getSession();
           if (!session) {
-            throw new Error('Sessão não encontrada');
+            throw new Error('SessÃ£o nÃ£o encontrada');
           }
 
           const uploadPayload = {
@@ -805,13 +895,14 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
               await enqueueResponse.json();
             }
           } catch (enqueueErr) {
-            console.error('Erro crítico ao enfileirar arquivo:', enqueueErr);
+            console.error('Erro crÃ­tico ao enfileirar arquivo:', enqueueErr);
           }
         }
       }
 
       setSuccess('Cadastro enviado com sucesso! Arquivo em fila de envio ao ERP.');
       setTimeout(() => {
+        clearCadastroDraft();
         onSuccess();
         onClose();
       }, 2000);
@@ -828,7 +919,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       if (err.codigo === 3 && err.dependentesAtivos && err.dependentesAtivos.length > 0) {
         setDependentesAtivos(err.dependentesAtivos);
         setShowDependentesAtivosModal(true);
-      } else if (errorMessage.toLowerCase().includes('parceiro') && errorMessage.toLowerCase().includes('inválido')) {
+      } else if (isParceiroInvalidoMessage(errorMessage)) {
         setShowParceiroInvalidoModal(true);
       } else {
         setError(errorMessage);
@@ -879,7 +970,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
           const { data: { session } } = await supabase.auth.getSession();
           if (!session) {
-            throw new Error('Sessão não encontrada');
+            throw new Error('SessÃ£o nÃ£o encontrada');
           }
 
           const uploadPayload = {
@@ -974,7 +1065,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
               await enqueueResponse.json();
             }
           } catch (enqueueErr) {
-            console.error('Erro crítico ao enfileirar arquivo:', enqueueErr);
+            console.error('Erro crÃ­tico ao enfileirar arquivo:', enqueueErr);
           }
         }
       }
@@ -998,6 +1089,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     setLoading(true);
     try {
       await deleteCadastro(cadastroAtual.id);
+      clearCadastroDraft();
       onSuccess();
     } catch (err) {
       console.error('Error deleting cadastro:', err);
@@ -1028,22 +1120,22 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
 
     let valorLimpo = novoContato.valor.trim();
 
-    // Validação específica por tipo
+    // ValidaÃ§Ã£o especÃ­fica por tipo
     if (novoContato.tipo === 'email') {
-      // Validação de email com regex
+      // ValidaÃ§Ã£o de email com regex
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(valorLimpo)) {
-        setError('Email inválido. Digite um email válido (exemplo@email.com)');
+        setError('Email invÃ¡lido. Digite um email vÃ¡lido (exemplo@email.com)');
         return;
       }
-      // Para email, mantém o valor original (sem remover caracteres)
+      // Para email, mantÃ©m o valor original (sem remover caracteres)
     } else {
-      // Para telefones (celular, whatsapp, fixo), remove máscara
+      // Para telefones (celular, whatsapp, fixo), remove mÃ¡scara
       valorLimpo = removeCPFMask(novoContato.valor);
 
-      // Validação de quantidade de dígitos para telefones
+      // ValidaÃ§Ã£o de quantidade de dÃ­gitos para telefones
       if (valorLimpo.length < 10 || valorLimpo.length > 11) {
-        setError('Telefone inválido. Digite um telefone com 10 ou 11 dígitos');
+        setError('Telefone invÃ¡lido. Digite um telefone com 10 ou 11 dÃ­gitos');
         return;
       }
     }
@@ -1053,7 +1145,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     );
 
     if (contatoExiste) {
-      setError('Este contato já foi adicionado');
+      setError('Este contato jÃ¡ foi adicionado');
       return;
     }
 
@@ -1115,14 +1207,14 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
             },
           });
 
-          setSuccess('Endereço encontrado e preenchido automaticamente!');
+          setSuccess('EndereÃ§o encontrado e preenchido automaticamente!');
           setTimeout(() => setSuccess(''), 3000);
         } else {
-          console.warn('[CadastroModal] CEP não retornou dados válidos');
-          setError('CEP não encontrado');
+          console.warn('[CadastroModal] CEP nÃ£o retornou dados vÃ¡lidos');
+          setError('CEP nÃ£o encontrado');
         }
       } catch (cepError) {
-        console.error('[CadastroModal] ❌ Erro ao buscar CEP:', cepError);
+        console.error('[CadastroModal] âŒ Erro ao buscar CEP:', cepError);
         console.error('[CadastroModal] Tipo do erro:', typeof cepError);
         console.error('[CadastroModal] Detalhes completos:', JSON.stringify(cepError, null, 2));
         const errorMessage = cepError instanceof Error ? cepError.message : 'Erro ao consultar CEP';
@@ -1152,7 +1244,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
         <div className="bg-white rounded-xl shadow-xl p-8">
           <div className="flex flex-col items-center gap-4">
-            <p className="text-red-700 font-medium">Erro: Dados do cadastro não disponíveis</p>
+            <p className="text-red-700 font-medium">Erro: Dados do cadastro nÃ£o disponÃ­veis</p>
             <Button onClick={onClose}>Fechar</Button>
           </div>
         </div>
@@ -1168,10 +1260,12 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
             <h2 className="text-xl font-bold text-slate-800">
               {cadastroAtual.nome || 'Editar Cadastro'}
             </h2>
-            <p className="text-sm text-slate-600 mt-1">CPF: {formatCPF(cadastroAtual.cpf)}</p>
+            <p className="text-sm text-slate-600 mt-1">
+              CPF: {formatCPF(cadastroAtual.cpf)} | Etapa {currentStep} de 2
+            </p>
             {cadastroAtual.vendedor_codigo && (
               <p className="text-sm text-emerald-600 mt-0.5">
-                Vendedor: {cadastroAtual.vendedor_nome || 'Nome não disponível'} (Código {cadastroAtual.vendedor_codigo})
+                Vendedor: {cadastroAtual.vendedor_nome || 'Nome nÃ£o disponÃ­vel'} (CÃ³digo {cadastroAtual.vendedor_codigo})
               </p>
             )}
           </div>
@@ -1185,353 +1279,374 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         </div>
 
         <div className="p-6 space-y-6">
-          <EmpresaSearchCard
-            onEmpresaSelected={handleEmpresaSelected}
-            selectedEmpresa={selectedEmpresa}
-          />
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="md:col-span-2">
-              <Input
-                label="Nome Completo"
-                value={formData.nome}
-                onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
-                required
+          {currentStep === 1 ? (
+            <>
+              <EmpresaSearchCard
+                onEmpresaSelected={handleEmpresaSelected}
+                selectedEmpresa={selectedEmpresa}
               />
-            </div>
 
-            <DateInput
-              label="Data de Nascimento"
-              value={formData.dataNascimento}
-              onChange={(e) => setFormData({ ...formData, dataNascimento: e.target.value })}
-              required
-            />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <Input
+                    label="Nome Completo"
+                    value={formData.nome}
+                    onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+                    required
+                  />
+                </div>
 
-            <Select
-              label="Sexo"
-              value={formData.sexo.toString()}
-              onChange={(e) => setFormData({ ...formData, sexo: parseInt(e.target.value) })}
-              required
-            >
-              <option value="-1">Selecione</option>
-              <option value="1">Masculino</option>
-              <option value="0">Feminino</option>
-            </Select>
-
-            <div className="md:col-span-2">
-              <Input
-                label="Nome da Mãe"
-                value={formData.nomeMae}
-                onChange={(e) => setFormData({ ...formData, nomeMae: e.target.value })}
-                required
-              />
-            </div>
-
-            {cadastroAtual.empresa_exige_matricula === 1 && (
-              <div className="md:col-span-2">
-                <Input
-                  label="Matrícula"
-                  value={formData.numeroMatricula}
-                  onChange={(e) => setFormData({ ...formData, numeroMatricula: e.target.value })}
+                <DateInput
+                  label="Data de Nascimento"
+                  value={formData.dataNascimento}
+                  onChange={(e) => setFormData({ ...formData, dataNascimento: e.target.value })}
                   required
                 />
-                <p className="text-xs text-red-600 mt-1 font-medium">
-                  * Campo obrigatório para esta empresa
-                </p>
-              </div>
-            )}
-          </div>
 
-          <div className="border-t border-slate-200 pt-6">
-            <h3 className="font-semibold text-slate-800 mb-4">Contatos</h3>
+                <Select
+                  label="Sexo"
+                  value={formData.sexo.toString()}
+                  onChange={(e) => setFormData({ ...formData, sexo: parseInt(e.target.value) })}
+                  required
+                >
+                  <option value="-1">Selecione</option>
+                  <option value="1">Masculino</option>
+                  <option value="0">Feminino</option>
+                </Select>
 
-            {/* Adicionar novo contato */}
-            <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <h4 className="text-sm font-medium text-blue-900 mb-3">Adicionar Contato</h4>
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
-                <div className="md:col-span-3">
-                  <Select
-                    label=""
-                    value={novoContato.tipo}
-                    onChange={(e) => setNovoContato({ ...novoContato, tipo: e.target.value })}
-                  >
-                    <option value="celular">Celular</option>
-                    <option value="whatsapp">WhatsApp</option>
-                    <option value="fixo">Fixo</option>
-                    <option value="email">Email</option>
-                  </Select>
-                </div>
-                <div className="md:col-span-7">
+                <div className="md:col-span-2">
                   <Input
-                    label=""
-                    value={novoContato.tipo === 'email' ? novoContato.valor : formatPhone(novoContato.valor)}
-                    onChange={(e) => {
-                      const valor = e.target.value;
-                      // Se for email, permite qualquer caractere
-                      // Se for telefone, formata automaticamente
-                      setNovoContato({ ...novoContato, valor });
-                    }}
-                    placeholder={novoContato.tipo === 'email' ? 'exemplo@email.com' : '(11) 98888-7777'}
-                    maxLength={novoContato.tipo === 'email' ? undefined : 15}
+                    label="Nome da Mãe"
+                    value={formData.nomeMae}
+                    onChange={(e) => setFormData({ ...formData, nomeMae: e.target.value })}
+                    required
                   />
                 </div>
-                <div className="md:col-span-2 flex items-end">
-                  <Button
-                    onClick={handleAdicionarContato}
-                    className="w-full"
-                  >
-                    <Plus className="w-4 h-4 mr-1" />
-                    Adicionar
-                  </Button>
-                </div>
-              </div>
-            </div>
 
-            {/* Lista de contatos existentes */}
-            <div className="space-y-3">
-              {formData.contatos.length === 0 ? (
-                <p className="text-sm text-slate-500 text-center py-4">
-                  Nenhum contato adicionado. Adicione pelo menos um telefone.
-                </p>
-              ) : (
-                formData.contatos.map((contato, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={contato.principal || false}
-                      onChange={() => toggleContatoPrincipal(index)}
-                      className="w-4 h-4"
+                {cadastroAtual.empresa_exige_matricula === 1 && (
+                  <div className="md:col-span-2">
+                    <Input
+                      label="Matrícula"
+                      value={formData.numeroMatricula}
+                      onChange={(e) => setFormData({ ...formData, numeroMatricula: e.target.value })}
+                      required
                     />
-                    <div className="flex-1">
-                      <span className="text-xs font-medium text-slate-500 uppercase">
-                        {contato.tipo}
-                      </span>
-                      <p className="text-sm text-slate-800">
-                        {contato.tipo === 'email' ? contato.valor : formatPhone(contato.valor)}
-                      </p>
-                    </div>
-                    {contato.principal && (
-                      <span className="text-xs font-medium text-emerald-600">Principal</span>
-                    )}
-                    <button
-                      onClick={() => handleRemoverContato(index)}
-                      className="p-1 text-red-600 hover:bg-red-50 rounded"
-                      title="Remover contato"
-                    >
-                      <Trash className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="border-t border-slate-200 pt-6">
-            <h3 className="font-semibold text-slate-800 mb-4">Endereço</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="relative">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    CEP <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                    value={formatCEP(formData.endereco.cep)}
-                    onChange={(e) => handleCEPChange(e.target.value)}
-                    maxLength={9}
-                    disabled={loadingCEP}
-                  />
-                </div>
-                {loadingCEP && (
-                  <div className="absolute right-3 top-9">
-                    <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  UF <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                  value={formData.endereco.uf}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      endereco: { ...formData.endereco, uf: e.target.value.toUpperCase() },
-                    })
-                  }
-                  maxLength={2}
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Logradouro <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                  value={formData.endereco.logradouro}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      endereco: { ...formData.endereco, logradouro: e.target.value },
-                    })
-                  }
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Número <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                  value={formData.endereco.numero}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      endereco: { ...formData.endereco, numero: e.target.value },
-                    })
-                  }
-                />
-              </div>
-
-              <Input
-                label="Complemento"
-                value={formData.endereco.complemento}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    endereco: { ...formData.endereco, complemento: e.target.value },
-                  })
-                }
-              />
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Bairro <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                  value={formData.endereco.bairro}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      endereco: { ...formData.endereco, bairro: e.target.value },
-                    })
-                  }
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Cidade <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                  value={formData.endereco.cidade}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      endereco: { ...formData.endereco, cidade: e.target.value },
-                    })
-                  }
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-200 pt-6">
-            <h3 className="font-semibold text-slate-800 mb-4">Documento</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Arquivo {config?.exigir_arquivo && <span className="text-red-500">*</span>}
-                </label>
-                <input
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={handleArquivoChange}
-                  disabled={uploadingFile}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                />
-                <p className="text-xs text-slate-500 mt-1">
-                  Formatos aceitos: PDF, JPG, PNG. Tamanho máximo: 10MB.
-                </p>
-                {uploadingFile && (
-                  <div className="flex items-center gap-2 mt-2">
-                    <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
-                    <p className="text-xs text-emerald-600 font-medium">
-                      Fazendo upload do arquivo...
+                    <p className="text-xs text-red-600 mt-1 font-medium">
+                      * Campo obrigatório para esta empresa
                     </p>
                   </div>
                 )}
-                {arquivo && !uploadingFile && (
-                  <div className="mt-2">
-                    <div className="flex items-center justify-between p-2 bg-emerald-50 border border-emerald-200 rounded-lg">
-                      <p className="text-xs text-emerald-700 font-medium">
-                        {arquivo.nome}
-                      </p>
-                      <button
-                        onClick={async () => {
-                          try {
-                            await supabase.storage
-                              .from('cadastros-temp-files')
-                              .remove([arquivo.path]);
-                          } catch (err) {
-                            console.error('Erro ao remover arquivo:', err);
-                          }
-                          setArquivo(null);
-                        }}
-                        className="p-1 text-red-600 hover:bg-red-100 rounded transition-colors"
-                        title="Remover arquivo"
+              </div>
+
+              <div className="border-t border-slate-200 pt-6">
+                <h3 className="font-semibold text-slate-800 mb-4">Contatos</h3>
+                <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <h4 className="text-sm font-medium text-blue-900 mb-3">Adicionar Contato</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
+                    <div className="md:col-span-3">
+                      <Select
+                        label=""
+                        value={novoContato.tipo}
+                        onChange={(e) => setNovoContato({ ...novoContato, tipo: e.target.value })}
                       >
-                        <Trash className="w-4 h-4" />
-                      </button>
+                        <option value="celular">Celular</option>
+                        <option value="whatsapp">WhatsApp</option>
+                        <option value="fixo">Fixo</option>
+                        <option value="email">Email</option>
+                      </Select>
+                    </div>
+                    <div className="md:col-span-7">
+                      <Input
+                        label=""
+                        value={novoContato.tipo === 'email' ? novoContato.valor : formatPhone(novoContato.valor)}
+                        onChange={(e) => setNovoContato({ ...novoContato, valor: e.target.value })}
+                        inputMode={novoContato.tipo === 'email' ? 'email' : 'numeric'}
+                        placeholder={novoContato.tipo === 'email' ? 'exemplo@email.com' : '(11) 98888-7777'}
+                        maxLength={novoContato.tipo === 'email' ? undefined : 15}
+                      />
+                    </div>
+                    <div className="md:col-span-2 flex items-end">
+                      <Button onClick={handleAdicionarContato} className="w-full">
+                        <Plus className="w-4 h-4 mr-1" />
+                        Adicionar
+                      </Button>
                     </div>
                   </div>
-                )}
-              </div>
-            </div>
-          </div>
+                </div>
 
-          {loadingPlanos ? (
-            <div className="border-t border-slate-200 pt-6">
-              <div className="flex items-center justify-center py-12 bg-slate-50 rounded-lg border border-slate-200">
-                <div className="text-center">
-                  <Loader2 className="w-8 h-8 text-emerald-600 animate-spin mx-auto mb-3" />
-                  <p className="text-sm font-medium text-slate-700">Carregando planos da empresa...</p>
-                  <p className="text-xs text-slate-500 mt-1">Por favor, aguarde</p>
+                <div className="space-y-3">
+                  {formData.contatos.length === 0 ? (
+                    <p className="text-sm text-slate-500 text-center py-4">
+                      Nenhum contato adicionado. Adicione pelo menos um telefone.
+                    </p>
+                  ) : (
+                    formData.contatos.map((contato, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={contato.principal || false}
+                          onChange={() => toggleContatoPrincipal(index)}
+                          className="w-4 h-4"
+                        />
+                        <div className="flex-1">
+                          <span className="text-xs font-medium text-slate-500 uppercase">
+                            {contato.tipo}
+                          </span>
+                          <p className="text-sm text-slate-800">
+                            {contato.tipo === 'email' ? contato.valor : formatPhone(contato.valor)}
+                          </p>
+                        </div>
+                        {contato.principal && (
+                          <span className="text-xs font-medium text-emerald-600">Principal</span>
+                        )}
+                        <button
+                          onClick={() => handleRemoverContato(index)}
+                          className="p-1 text-red-600 hover:bg-red-50 rounded"
+                          title="Remover contato"
+                        >
+                          <Trash className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
-            </div>
-          ) : planosEmpresa.length === 0 ? (
-            <div className="border-t border-slate-200 pt-6">
-              <div className="py-12 bg-amber-50 rounded-lg border border-amber-200">
-                <div className="text-center">
-                  <p className="text-sm font-medium text-amber-700">Nenhum plano disponível para esta empresa</p>
-                  <p className="text-xs text-amber-600 mt-1">Entre em contato com o suporte</p>
+
+              <div className="border-t border-slate-200 pt-6">
+                <h3 className="font-semibold text-slate-800 mb-4">Endereço</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="relative">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        CEP <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                        value={formatCEP(formData.endereco.cep)}
+                        onChange={(e) => handleCEPChange(e.target.value)}
+                        maxLength={9}
+                        disabled={loadingCEP}
+                      />
+                    </div>
+                    {loadingCEP && (
+                      <div className="absolute right-3 top-9">
+                        <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      UF <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      value={formData.endereco.uf}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          endereco: { ...formData.endereco, uf: e.target.value.toUpperCase() },
+                        })
+                      }
+                      maxLength={2}
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Logradouro <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      value={formData.endereco.logradouro}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          endereco: { ...formData.endereco, logradouro: e.target.value },
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Número <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      value={formData.endereco.numero}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          endereco: { ...formData.endereco, numero: e.target.value },
+                        })
+                      }
+                    />
+                  </div>
+
+                  <Input
+                    label="Complemento"
+                    value={formData.endereco.complemento}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        endereco: { ...formData.endereco, complemento: e.target.value },
+                      })
+                    }
+                  />
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Bairro <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      value={formData.endereco.bairro}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          endereco: { ...formData.endereco, bairro: e.target.value },
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Cidade <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      value={formData.endereco.cidade}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          endereco: { ...formData.endereco, cidade: e.target.value },
+                        })
+                      }
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
+
+              {loadingPlanos ? (
+                <div className="border-t border-slate-200 pt-6">
+                  <div className="flex items-center justify-center py-12 bg-slate-50 rounded-lg border border-slate-200">
+                    <div className="text-center">
+                      <Loader2 className="w-8 h-8 text-emerald-600 animate-spin mx-auto mb-3" />
+                      <p className="text-sm font-medium text-slate-700">Carregando planos da empresa...</p>
+                      <p className="text-xs text-slate-500 mt-1">Por favor, aguarde</p>
+                    </div>
+                  </div>
+                </div>
+              ) : planosEmpresa.length === 0 ? (
+                <div className="border-t border-slate-200 pt-6">
+                  <div className="py-12 bg-amber-50 rounded-lg border border-amber-200">
+                    <div className="text-center">
+                      <p className="text-sm font-medium text-amber-700">Nenhum plano disponível para esta empresa</p>
+                      <p className="text-xs text-amber-600 mt-1">Entre em contato com o suporte</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <DependentesSection
+                  dependentes={dependentes}
+                  planos={planosEmpresa}
+                  funcionarioCadastro={funcionarioCadastroId}
+                  onChange={setDependentes}
+                />
+              )}
+            </>
           ) : (
-            <DependentesSection
-              dependentes={dependentes}
-              planos={planosEmpresa}
-              funcionarioCadastro={funcionarioCadastroId}
-              onChange={setDependentes}
-            />
+            <div className="space-y-6">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                <p className="text-sm font-semibold text-emerald-900">Etapa final: anexo do documento</p>
+                <p className="text-sm text-emerald-800 mt-1">
+                  Revise o resumo abaixo, anexe o documento e finalize o cadastro.
+                </p>
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-slate-700">
+                  <div className="rounded-lg bg-white px-3 py-2 border border-emerald-100">
+                    <span className="font-medium text-slate-900">Titular:</span> {formData.nome || 'Não informado'}
+                  </div>
+                  <div className="rounded-lg bg-white px-3 py-2 border border-emerald-100">
+                    <span className="font-medium text-slate-900">Empresa:</span> {selectedEmpresa?.nomeFantasia || 'Não informada'}
+                  </div>
+                  <div className="rounded-lg bg-white px-3 py-2 border border-emerald-100">
+                    <span className="font-medium text-slate-900">Dependentes:</span> {dependentes.length}
+                  </div>
+                  <div className="rounded-lg bg-white px-3 py-2 border border-emerald-100">
+                    <span className="font-medium text-slate-900">Arquivo obrigatório:</span> {config?.exigir_arquivo ? 'Sim' : 'Não'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-slate-200 pt-6">
+                <h3 className="font-semibold text-slate-800 mb-4">Documento</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Arquivo {config?.exigir_arquivo && <span className="text-red-500">*</span>}
+                    </label>
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onPointerDown={() => saveBeforeFilePicker('cadastro-modal', getCadastroDraftData, profile?.id, cadastro.id)}
+                      onClick={() => saveBeforeFilePicker('cadastro-modal', getCadastroDraftData, profile?.id, cadastro.id)}
+                      onChange={handleArquivoChange}
+                      disabled={uploadingFile}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">
+                      Formatos aceitos: PDF, JPG, PNG. Tamanho máximo: 10MB.
+                    </p>
+                    {uploadingFile && (
+                      <div className="flex items-center gap-2 mt-2">
+                        <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
+                        <p className="text-xs text-emerald-600 font-medium">
+                          Fazendo upload do arquivo...
+                        </p>
+                      </div>
+                    )}
+                    {arquivo && !uploadingFile && (
+                      <div className="mt-2">
+                        <div className="flex items-center justify-between p-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+                          <p className="text-xs text-emerald-700 font-medium">
+                            {arquivo.nome}
+                          </p>
+                          <button
+                            onClick={async () => {
+                              try {
+                                await supabase.storage
+                                  .from('cadastros-temp-files')
+                                  .remove([arquivo.path]);
+                              } catch (err) {
+                                console.error('Erro ao remover arquivo:', err);
+                              }
+                              setArquivo(null);
+                            }}
+                            className="p-1 text-red-600 hover:bg-red-100 rounded transition-colors"
+                            title="Remover arquivo"
+                          >
+                            <Trash className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
 
           {error && (
@@ -1585,14 +1700,32 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
               Salvar
             </Button>
 
-            <Button onClick={handleEnviar} disabled={loading || loadingPlanos || uploadingFile} className="w-full sm:w-auto">
-              {loading ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Send className="w-4 h-4 mr-2" />
-              )}
-              Cadastrar
-            </Button>
+            {currentStep === 1 ? (
+              <Button onClick={handleNextStep} disabled={loading || loadingPlanos || uploadingFile} className="w-full sm:w-auto">
+                Seguinte
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="secondary"
+                  onClick={() => setCurrentStep(1)}
+                  disabled={loading || uploadingFile}
+                  className="w-full sm:w-auto"
+                >
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Voltar
+                </Button>
+
+                <Button onClick={handleEnviar} disabled={loading || loadingPlanos || uploadingFile} className="w-full sm:w-auto">
+                  {loading ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4 mr-2" />
+                  )}
+                  Cadastrar
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </div>

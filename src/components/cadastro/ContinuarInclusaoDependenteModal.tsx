@@ -15,6 +15,7 @@ import { LemmitLimitModal } from './LemmitLimitModal';
 import { SelectStatusModal } from './SelectStatusModal';
 import { EmpresaNaoIdentificadaModal } from './EmpresaNaoIdentificadaModal';
 import { uploadToStorage, UploadedFile, validateFile } from '../../utils/uploadFile';
+import { clearDraft, loadDraft, saveBeforeFilePicker, saveDraft } from '../../utils/draftStorage';
 
 interface ContinuarInclusaoDependenteModalProps {
   cadastro: Cadastro;
@@ -178,6 +179,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
   const [showSelectStatusModal, setShowSelectStatusModal] = useState(false);
   const [pendingClose, setPendingClose] = useState(false);
   const [showEmpresaModal, setShowEmpresaModal] = useState(false);
+  const [draftInitialized, setDraftInitialized] = useState(false);
 
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [selectedVendedor, setSelectedVendedor] = useState<string>(cadastro.vendedor_id || '');
@@ -188,6 +190,18 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
   const [loadingEmpresa, setLoadingEmpresa] = useState(false);
 
   const funcionarioCadastroId = profile?.external_id ? parseInt(profile.external_id) : null;
+
+  const getContinuarDraftData = () => ({
+    dependentes,
+    selectedVendedor,
+    selectedAdesionista,
+  });
+
+  const clearContinuarDraft = () => {
+    if (profile?.id) {
+      clearDraft('continuar-inclusao-dependente-modal', profile.id, cadastro.id);
+    }
+  };
 
   useEffect(() => {
     if (profile?.role === 'VENDEDOR') {
@@ -214,6 +228,35 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
       fetchAdesionistas();
     }
   }, [profile]);
+
+  useEffect(() => {
+    if (!profile?.id || draftInitialized) {
+      return;
+    }
+
+    const draft = loadDraft('continuar-inclusao-dependente-modal', profile.id, cadastro.id);
+    if (draft) {
+      if (Array.isArray(draft.dependentes)) {
+        setDependentes(draft.dependentes as DependenteForm[]);
+      }
+      if (typeof draft.selectedVendedor === 'string') {
+        setSelectedVendedor(draft.selectedVendedor);
+      }
+      if (typeof draft.selectedAdesionista === 'string') {
+        setSelectedAdesionista(draft.selectedAdesionista);
+      }
+    }
+
+    setDraftInitialized(true);
+  }, [profile?.id, draftInitialized, cadastro.id]);
+
+  useEffect(() => {
+    if (!profile?.id || !draftInitialized) {
+      return;
+    }
+
+    saveDraft('continuar-inclusao-dependente-modal', getContinuarDraftData(), profile.id, cadastro.id);
+  }, [profile?.id, draftInitialized, dependentes, selectedVendedor, selectedAdesionista, cadastro.id]);
 
   useEffect(() => {
     if (cadastro.empresa_raw && cadastro.empresa_raw.precoPlano) {
@@ -658,6 +701,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
       setShowSelectStatusModal(false);
 
       if (pendingClose) {
+        clearContinuarDraft();
         onClose();
       }
     } catch (err: any) {
@@ -1031,6 +1075,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
 
       setSuccess('Dependentes incluídos com sucesso!');
       setTimeout(() => {
+        clearContinuarDraft();
         onSuccess();
         onClose();
       }, 2000);
@@ -1280,6 +1325,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
                       label="CPF"
                       value={dep.cpf}
                       onChange={(e) => handleCpfChange(index, e.target.value)}
+                      inputMode="numeric"
                       required={!isMenorDeIdade(dep.dataNascimento)}
                       disabled={dep.consultingLemmit}
                     />
@@ -1411,6 +1457,8 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
                         />
                         <label
                           htmlFor={`file-upload-${index}`}
+                          onPointerDown={() => saveBeforeFilePicker('continuar-inclusao-dependente-modal', getContinuarDraftData, profile?.id, cadastro.id)}
+                          onClick={() => saveBeforeFilePicker('continuar-inclusao-dependente-modal', getContinuarDraftData, profile?.id, cadastro.id)}
                           className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-slate-300 rounded-lg hover:border-emerald-400 hover:bg-emerald-50 transition-colors cursor-pointer"
                         >
                           {dep.uploadingFile ? (

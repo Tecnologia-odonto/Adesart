@@ -460,6 +460,7 @@ export function DependentesSection({
                 label={`CPF${formData.dataNascimento && calcularIdade(formData.dataNascimento) < 18 ? ' (opcional para menores de 18 anos)' : ''}`}
                 value={formatCPF(formData.cpf)}
                 onChange={handleCpfChange}
+                inputMode="numeric"
                 maxLength={14}
                 required={!formData.dataNascimento || calcularIdade(formData.dataNascimento) >= 18}
                 disabled={consultandoLemmit}
