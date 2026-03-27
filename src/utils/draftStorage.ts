@@ -176,7 +176,8 @@ export function clearAllDrafts(userId?: string): void {
 export function setupAutosave(
   modalName: string,
   getData: () => Omit<DraftData, 'timestamp'>,
-  userId?: string
+  userId?: string,
+  cadastroId?: string
 ): () => void {
   if (!userId) {
     console.warn('No userId provided for setupAutosave');
@@ -186,7 +187,7 @@ export function setupAutosave(
   const saveNow = () => {
     const data = getData();
     if (data && Object.keys(data).length > 0) {
-      saveDraft(modalName, data, userId);
+      saveDraft(modalName, data, userId, cadastroId);
     }
   };
 
@@ -227,7 +228,8 @@ export function setupAutosave(
 export function saveBeforeFilePicker(
   modalName: string,
   getData: () => Omit<DraftData, 'timestamp'>,
-  userId?: string
+  userId?: string,
+  cadastroId?: string
 ): void {
   if (!userId) {
     console.warn('No userId provided for saveBeforeFilePicker');
@@ -236,6 +238,6 @@ export function saveBeforeFilePicker(
 
   const data = getData();
   if (data && Object.keys(data).length > 0) {
-    saveDraft(modalName, data, userId);
+    saveDraft(modalName, data, userId, cadastroId);
   }
 }
