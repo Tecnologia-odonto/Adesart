@@ -5,7 +5,8 @@ import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase, Team } from '../lib/supabase';
-import { User, Mail, Shield, Briefcase, Hash, Calendar } from 'lucide-react';
+import { formatMobilePhone, normalizeMobilePhone } from '../lib/cpf';
+import { User, Mail, Shield, Briefcase, Hash, Calendar, Phone } from 'lucide-react';
 
 export function Profile() {
   const { profile, refreshProfile } = useAuth();
@@ -16,11 +17,13 @@ export function Profile() {
   const [success, setSuccess] = useState('');
   const [name, setName] = useState('');
   const [externalId, setExternalId] = useState('');
+  const [telefone, setTelefone] = useState('');
 
   useEffect(() => {
     if (profile) {
       setName(profile.name);
       setExternalId(profile.external_id || '');
+      setTelefone(formatMobilePhone(profile.telefone || ''));
       if (profile.team_id) {
         fetchTeam();
       }
@@ -51,7 +54,16 @@ export function Profile() {
     setLoading(true);
 
     try {
-      const updateData: { name: string; external_id?: string } = { name };
+      const telefoneNormalizado = normalizeMobilePhone(telefone);
+
+      if (telefone.trim() && telefoneNormalizado.length !== 11) {
+        throw new Error('Telefone deve estar no formato (XX) XXXXX XXXX');
+      }
+
+      const updateData: { name: string; external_id?: string; telefone: string | null } = {
+        name,
+        telefone: telefoneNormalizado || null,
+      };
 
       if (externalId.trim()) {
         updateData.external_id = externalId.trim();
@@ -128,6 +140,24 @@ export function Profile() {
 
               <div>
                 <div className="flex items-center text-sm text-slate-600 mb-2">
+                  <Phone className="w-4 h-4 mr-2" />
+                  <span className="font-medium">Telefone</span>
+                </div>
+                {editing ? (
+                  <Input
+                    value={telefone}
+                    onChange={(e) => setTelefone(formatMobilePhone(e.target.value))}
+                    placeholder="(11) 98765 4321"
+                    maxLength={15}
+                    inputMode="tel"
+                  />
+                ) : (
+                  <p className="text-slate-800 font-medium">{formatMobilePhone(profile?.telefone || '') || '-'}</p>
+                )}
+              </div>
+
+              <div>
+                <div className="flex items-center text-sm text-slate-600 mb-2">
                   <Shield className="w-4 h-4 mr-2" />
                   <span className="font-medium">Função</span>
                 </div>
@@ -200,6 +230,7 @@ export function Profile() {
                       setEditing(false);
                       setName(profile?.name || '');
                       setExternalId(profile?.external_id || '');
+                      setTelefone(formatMobilePhone(profile?.telefone || ''));
                       setError('');
                       setSuccess('');
                     }}

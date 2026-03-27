@@ -1,5 +1,5 @@
 import { X, Loader2, AlertCircle, CheckCircle2, Upload, Plus, Trash2, Save } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '../Button';
 import { Input } from '../Input';
 import { Select } from '../Select';
@@ -114,6 +114,8 @@ const isMenorDeIdade = (dataNascimento?: string) => {
 };
 
 export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess }: ContinuarInclusaoDependenteModalProps) {
+  const draftHydratedRef = useRef(false);
+  const restoredDraftRef = useRef(false);
   const { profile } = useAuth();
   const { config, planos, parentescos } = useConfigCadastro();
   const { searchEmpresa } = useCadastros();
@@ -179,8 +181,6 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
   const [showSelectStatusModal, setShowSelectStatusModal] = useState(false);
   const [pendingClose, setPendingClose] = useState(false);
   const [showEmpresaModal, setShowEmpresaModal] = useState(false);
-  const [draftInitialized, setDraftInitialized] = useState(false);
-
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [selectedVendedor, setSelectedVendedor] = useState<string>(cadastro.vendedor_id || '');
   const [adesionistas, setAdesionistas] = useState<Adesionista[]>([]);
@@ -191,10 +191,15 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
 
   const funcionarioCadastroId = profile?.external_id ? parseInt(profile.external_id) : null;
 
-  const getContinuarDraftData = () => ({
+  const buildDraftPayload = () => ({
     dependentes,
     selectedVendedor,
     selectedAdesionista,
+    selectedEmpresa,
+    empresaCodigo,
+    empresaNome,
+    empresaObservacao,
+    planosEmpresa,
   });
 
   const clearContinuarDraft = () => {
@@ -230,35 +235,39 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
   }, [profile]);
 
   useEffect(() => {
-    if (!profile?.id || draftInitialized) {
+    if (!profile?.id || draftHydratedRef.current) {
       return;
     }
 
-    const draft = loadDraft('continuar-inclusao-dependente-modal', profile.id, cadastro.id);
+    const draft = loadDraft('continuar-inclusao-dependente-modal', profile.id, cadastro.id) as any;
     if (draft) {
-      if (Array.isArray(draft.dependentes)) {
-        setDependentes(draft.dependentes as DependenteForm[]);
-      }
-      if (typeof draft.selectedVendedor === 'string') {
-        setSelectedVendedor(draft.selectedVendedor);
-      }
-      if (typeof draft.selectedAdesionista === 'string') {
-        setSelectedAdesionista(draft.selectedAdesionista);
-      }
+      restoredDraftRef.current = true;
+      setDependentes(draft.dependentes || []);
+      setSelectedVendedor(draft.selectedVendedor || cadastro.vendedor_id || '');
+      setSelectedAdesionista(draft.selectedAdesionista || cadastro.adesionista_id || '');
+      setSelectedEmpresa(draft.selectedEmpresa || null);
+      setEmpresaCodigo(draft.empresaCodigo ?? cadastro.empresa_codigo);
+      setEmpresaNome(draft.empresaNome || cadastro.empresa_nome);
+      setEmpresaObservacao(draft.empresaObservacao || '');
+      setPlanosEmpresa(draft.planosEmpresa || []);
     }
 
-    setDraftInitialized(true);
-  }, [profile?.id, draftInitialized, cadastro.id]);
+    draftHydratedRef.current = true;
+  }, [profile?.id, cadastro.id, cadastro.vendedor_id, cadastro.adesionista_id, cadastro.empresa_codigo, cadastro.empresa_nome]);
 
   useEffect(() => {
-    if (!profile?.id || !draftInitialized) {
+    if (!profile?.id || !draftHydratedRef.current) {
       return;
     }
 
-    saveDraft('continuar-inclusao-dependente-modal', getContinuarDraftData(), profile.id, cadastro.id);
-  }, [profile?.id, draftInitialized, dependentes, selectedVendedor, selectedAdesionista, cadastro.id]);
+    saveDraft('continuar-inclusao-dependente-modal', buildDraftPayload(), profile.id, cadastro.id);
+  }, [profile?.id, cadastro.id, dependentes, selectedVendedor, selectedAdesionista, selectedEmpresa, empresaCodigo, empresaNome, empresaObservacao, planosEmpresa]);
 
   useEffect(() => {
+    if (restoredDraftRef.current) {
+      return;
+    }
+
     if (cadastro.empresa_raw && cadastro.empresa_raw.precoPlano) {
       setPlanosEmpresa(cadastro.empresa_raw.precoPlano || []);
       setEmpresaObservacao(cadastro.empresa_raw.observacao || cadastro.empresa_raw.observacoes || '');
@@ -295,7 +304,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
     } else {
       fetchEmpresaPlanos();
     }
-  }, []);
+  }, [cadastro, empresaCodigo, empresaNome, planos]);
 
   useEffect(() => {
     if (planosEmpresa.length > 0) {
@@ -1457,8 +1466,16 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
                         />
                         <label
                           htmlFor={`file-upload-${index}`}
-                          onPointerDown={() => saveBeforeFilePicker('continuar-inclusao-dependente-modal', getContinuarDraftData, profile?.id, cadastro.id)}
-                          onClick={() => saveBeforeFilePicker('continuar-inclusao-dependente-modal', getContinuarDraftData, profile?.id, cadastro.id)}
+                          onPointerDown={() => {
+                            if (profile?.id && draftHydratedRef.current) {
+                              saveBeforeFilePicker('continuar-inclusao-dependente-modal', buildDraftPayload, profile.id, cadastro.id);
+                            }
+                          }}
+                          onClick={() => {
+                            if (profile?.id && draftHydratedRef.current) {
+                              saveBeforeFilePicker('continuar-inclusao-dependente-modal', buildDraftPayload, profile.id, cadastro.id);
+                            }
+                          }}
                           className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-slate-300 rounded-lg hover:border-emerald-400 hover:bg-emerald-50 transition-colors cursor-pointer"
                         >
                           {dep.uploadingFile ? (

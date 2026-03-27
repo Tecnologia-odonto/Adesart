@@ -58,6 +58,7 @@ Deno.serve(async (req: Request) => {
         planos_raw,
         vendedor_codigo,
         vendedor_nome,
+        vendedor_id,
         is_active,
         click_count
       `)
@@ -75,6 +76,22 @@ Deno.serve(async (req: Request) => {
 
     if (!link.is_active) {
       return jsonResponse({ error: "Link inativo" }, 410);
+    }
+
+    let vendedorTelefone: string | null = null;
+
+    if (link.vendedor_id) {
+      const { data: vendedorProfile, error: vendedorError } = await supabase
+        .from("profiles")
+        .select("telefone")
+        .eq("id", link.vendedor_id)
+        .maybeSingle();
+
+      if (vendedorError) {
+        console.error("[cadastro-link-resolve] vendedor profile error:", vendedorError);
+      } else {
+        vendedorTelefone = vendedorProfile?.telefone ?? null;
+      }
     }
 
     const { error: metricsError } = await supabase
@@ -101,6 +118,7 @@ Deno.serve(async (req: Request) => {
         planosRaw: link.planos_raw,
         vendedorCodigo: link.vendedor_codigo,
         vendedorNome: link.vendedor_nome,
+        vendedorTelefone,
       },
     });
   } catch (error) {

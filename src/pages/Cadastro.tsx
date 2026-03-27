@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Layout } from '../components/Layout';
 import { NovoCadastroCard } from '../components/cadastro/NovoCadastroCard';
 import { CadastrosIncompletosList } from '../components/cadastro/CadastrosIncompletosList';
@@ -10,10 +10,20 @@ import { LinkCadastroCard } from '../components/cadastro/LinkCadastroCard';
 import { LinksGeradosList } from '../components/cadastro/LinksGeradosList';
 import { useCadastros, Cadastro as CadastroType } from '../hooks/useCadastros';
 import { Plus, FileText, Loader2, CheckCircle, UserPlus, Link as LinkIcon } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
+
+interface CadastroPageState {
+  activeTab: 'novo' | 'link' | 'dependente' | 'incompletos' | 'completos';
+  selectedCadastroId: string | null;
+  showInclusaoDependente: boolean;
+}
 
 export function Cadastro() {
+  const pageStateHydratedRef = useRef(false);
   console.log('[Cadastro] 🔄 Componente renderizado');
 
+  const { profile } = useAuth();
   const { cadastros, stats, loading, loadCadastros, loadStats, refresh } = useCadastros();
   const [activeTab, setActiveTab] = useState<'novo' | 'link' | 'dependente' | 'incompletos' | 'completos'>('novo');
   const [selectedCadastro, setSelectedCadastro] = useState<CadastroType | null>(null);
@@ -29,6 +39,57 @@ export function Cadastro() {
     console.log('[Cadastro] 🔄 useEffect loadStats iniciado');
     loadStats();
   }, []);
+
+  useEffect(() => {
+    if (!profile?.id || pageStateHydratedRef.current) return;
+
+    const storageKey = `cadastro-page-state:${profile.id}`;
+
+    const restorePageState = async () => {
+      try {
+        const stored = localStorage.getItem(storageKey);
+        if (!stored) {
+          pageStateHydratedRef.current = true;
+          return;
+        }
+
+        const pageState = JSON.parse(stored) as CadastroPageState;
+        setActiveTab(pageState.activeTab || 'novo');
+        setShowInclusaoDependente(Boolean(pageState.showInclusaoDependente));
+
+        if (pageState.selectedCadastroId) {
+          const { data, error } = await supabase
+            .from('cadastros')
+            .select('*')
+            .eq('id', pageState.selectedCadastroId)
+            .maybeSingle();
+
+          if (!error && data) {
+            setSelectedCadastro(data as CadastroType);
+          }
+        }
+      } catch (err) {
+        console.error('[Cadastro] Erro ao restaurar estado da página:', err);
+      } finally {
+        pageStateHydratedRef.current = true;
+      }
+    };
+
+    void restorePageState();
+  }, [profile?.id]);
+
+  useEffect(() => {
+    if (!profile?.id || !pageStateHydratedRef.current) return;
+
+    const storageKey = `cadastro-page-state:${profile.id}`;
+    const pageState: CadastroPageState = {
+      activeTab,
+      selectedCadastroId: selectedCadastro?.id || null,
+      showInclusaoDependente,
+    };
+
+    localStorage.setItem(storageKey, JSON.stringify(pageState));
+  }, [profile?.id, activeTab, selectedCadastro?.id, showInclusaoDependente]);
 
   const handleNewCadastroSuccess = async (cadastro: CadastroType, isBlocked: boolean = false) => {
     await refresh();
