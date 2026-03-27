@@ -24,6 +24,7 @@ interface CadastroModalProps {
   onSuccess: () => void;
 }
 
+
 interface Empresa {
   id: number;
   razaoSocial: string;
