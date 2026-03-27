@@ -140,6 +140,31 @@ export function useCadastros() {
   const [loadingStats, setLoadingStats] = useState(true);
   const { profile } = useAuth();
 
+  const sortCadastrosByUpdatedAt = (items: Cadastro[]) => (
+    [...items].sort((a, b) => {
+      const dateA = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+      const dateB = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+      return dateB - dateA;
+    })
+  );
+
+  const upsertCadastroState = (cadastro: Cadastro) => {
+    setCadastros((prev) => {
+      const index = prev.findIndex((item) => item.id === cadastro.id);
+      if (index === -1) {
+        return sortCadastrosByUpdatedAt([cadastro, ...prev]);
+      }
+
+      const next = [...prev];
+      next[index] = cadastro;
+      return sortCadastrosByUpdatedAt(next);
+    });
+  };
+
+  const removeCadastroState = (id: string) => {
+    setCadastros((prev) => prev.filter((item) => item.id !== id));
+  };
+
   const fetchCadastros = async () => {
     try {
       setLoading(true);
@@ -450,7 +475,7 @@ export function useCadastros() {
 
       if (error) throw error;
 
-      await fetchCadastros();
+      upsertCadastroState(updated);
       return updated;
     } else {
       const { data: created, error} = await supabase
@@ -466,7 +491,7 @@ export function useCadastros() {
 
       if (error) throw error;
 
-      await fetchCadastros();
+      upsertCadastroState(created);
       return created;
     }
   };
@@ -484,7 +509,7 @@ export function useCadastros() {
       throw error;
     }
 
-    await fetchCadastros();
+    upsertCadastroState(updated);
     return updated;
   };
 
@@ -519,12 +544,12 @@ export function useCadastros() {
       dependentes: dependentesFormatados,
     };
 
-    let { error: syncError, count: syncCount } = await supabase
+    let { data: syncedCadastro, error: syncError } = await supabase
       .from('cadastros')
       .update({
         ...syncPayloadBase,
         data_envio: new Date().toISOString(),
-      }, { count: 'exact' })
+      })
       .eq('id', id);
 
     // Compatibilidade com ambientes onde a coluna ainda nao existe
@@ -532,11 +557,26 @@ export function useCadastros() {
       console.warn('[useCadastros] Coluna data_envio nao encontrada, sincronizando sem data_envio');
       const retry = await supabase
         .from('cadastros')
-        .update(syncPayloadBase, { count: 'exact' })
-        .eq('id', id);
+        .update(syncPayloadBase)
+        .eq('id', id)
+        .select()
+        .single();
 
+      syncedCadastro = retry.data;
       syncError = retry.error;
-      syncCount = retry.count;
+    } else {
+      const selectRetry = await supabase
+        .from('cadastros')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (!syncError) {
+        syncedCadastro = selectRetry.data;
+        if (selectRetry.error) {
+          syncError = selectRetry.error;
+        }
+      }
     }
 
     if (syncError) {
@@ -545,13 +585,13 @@ export function useCadastros() {
       );
     }
 
-    if (!syncCount || syncCount < 1) {
+    if (!syncedCadastro) {
       throw new Error(
-        `Cadastro enviado ao ERP, mas nenhuma linha foi atualizada no Adesart (cadastro ${id}). Verifique politicas de RLS/permissao.`
+        `Cadastro enviado ao ERP, mas nao foi possivel sincronizar o estado local do cadastro ${id}.`
       );
     }
 
-    await fetchCadastros();
+    upsertCadastroState(syncedCadastro as Cadastro);
   };
 
   const reconcileCadastroAfterAbort = async (
@@ -838,7 +878,7 @@ export function useCadastros() {
 
     if (error) throw error;
 
-    await fetchCadastros();
+    removeCadastroState(id);
   };
 
   const canDelete = profile?.role === 'ADMINISTRADOR';
