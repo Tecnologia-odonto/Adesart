@@ -16,6 +16,7 @@ export function Users() {
   const [users, setUsers] = useState<UserWithTeam[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
   const [error, setError] = useState('');
@@ -158,6 +159,8 @@ export function Users() {
   };
 
   const requiresTeamAndExternal = ['CADASTRO', 'SUPERVISOR', 'VENDEDOR', 'ADESIONISTA'].includes(formData.role);
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
+  const filteredUsers = users.filter((user) => user.name.toLowerCase().includes(normalizedSearchTerm));
 
   return (
     <Layout>
@@ -176,11 +179,20 @@ export function Users() {
         </div>
 
         <Card>
+          <div className="mb-4">
+            <Input
+              label="Pesquisar por nome"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Digite o nome do usuário"
+            />
+          </div>
+
           {loading ? (
             <div className="text-center py-12">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto"></div>
             </div>
-          ) : users.length === 0 ? (
+          ) : filteredUsers.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-slate-500">Nenhum usuário encontrado</p>
             </div>
@@ -200,7 +212,7 @@ export function Users() {
                     </tr>
                   </thead>
                   <tbody>
-                    {users.map((user) => (
+                    {filteredUsers.map((user) => (
                       <tr key={user.id} className="border-b border-slate-100 hover:bg-slate-50">
                         <td className="py-3 px-4 text-slate-800">{user.name}</td>
                         <td className="py-3 px-4 text-slate-600">{user.email}</td>
@@ -245,7 +257,7 @@ export function Users() {
               </div>
 
               <div className="md:hidden space-y-3">
-                {users.map((user) => (
+                {filteredUsers.map((user) => (
                   <div key={user.id} className="border border-slate-200 rounded-lg p-4 bg-white">
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1">

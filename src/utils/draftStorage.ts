@@ -32,6 +32,7 @@ const DRAFT_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
  * Map modal names to ModalName type
  */
 function normalizeModalName(modalName: string): ModalName {
+  if (modalName === 'novo-cadastro-card') return 'novo-cadastro-card';
   if (modalName === 'cadastro-modal') return 'cadastro-modal';
   if (modalName === 'inclusao-dependente-modal') return 'inclusao-dependente-modal';
   if (modalName === 'continuar-inclusao-dependente-modal') return 'continuar-inclusao-dependente-modal';
@@ -82,7 +83,12 @@ function sanitizeDraftData(data: DraftData): DraftData {
 /**
  * Save draft (backward compatible API)
  */
-export function saveDraft(modalName: string, data: Omit<DraftData, 'timestamp'>, userId?: string): void {
+export function saveDraft(
+  modalName: string,
+  data: Omit<DraftData, 'timestamp'>,
+  userId?: string,
+  cadastroId?: string
+): void {
   try {
     if (!userId) {
       console.warn('No userId provided, draft not saved');
@@ -97,7 +103,7 @@ export function saveDraft(modalName: string, data: Omit<DraftData, 'timestamp'>,
     const store = useDraftStore.getState();
     const normalizedName = normalizeModalName(modalName);
 
-    store.upsertDraft(userId, normalizedName, sanitized as Partial<ModalDraft>);
+    store.upsertDraft(userId, normalizedName, sanitized as Partial<ModalDraft>, cadastroId);
   } catch (error) {
     console.warn('Failed to save draft:', error);
   }

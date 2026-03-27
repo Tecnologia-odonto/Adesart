@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User } from '@supabase/supabase-js';
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
+import { Session, User } from '@supabase/supabase-js';
 import { supabase, Profile } from '../lib/supabase';
 
 interface AuthContextType {
@@ -17,6 +17,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const mountedRef = useRef(true);
+
+  const setAuthState = (nextUser: User | null, nextProfile: Profile | null) => {
+    if (!mountedRef.current) return;
+    setUser(prev => (prev?.id === nextUser?.id ? prev : nextUser));
+    setProfile(prev => {
+      if (
+        prev?.id === nextProfile?.id &&
+        prev?.role === nextProfile?.role &&
+        prev?.team_id === nextProfile?.team_id &&
+        prev?.is_active === nextProfile?.is_active &&
+        prev?.updated_at === nextProfile?.updated_at
+      ) {
+        return prev;
+      }
+
+      return nextProfile;
+    });
+  };
 
   const fetchProfile = async (userId: string) => {
     const { data, error } = await supabase
@@ -33,87 +52,139 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return data;
   };
 
+  const clearLocalSession = async () => {
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
+
+    if (error) {
+      console.error('Error clearing local session:', error);
+    }
+
+    setAuthState(null, null);
+  };
+
+  const syncSession = async (session: Session | null) => {
+    const nextUser = session?.user ?? null;
+
+    if (!nextUser) {
+      setAuthState(null, null);
+      return null;
+    }
+
+    const profileData = await fetchProfile(nextUser.id);
+
+    if (!profileData) {
+      setAuthState(null, null);
+      return null;
+    }
+
+    setAuthState(nextUser, profileData);
+    return { user: nextUser, profile: profileData };
+  };
+
   const refreshProfile = async () => {
     if (user) {
       const profileData = await fetchProfile(user.id);
-      setProfile(profileData);
+      setAuthState(user, profileData);
     }
   };
 
   useEffect(() => {
-    let mounted = true;
+    mountedRef.current = true;
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      (async () => {
-        if (!mounted) return;
+    const initializeAuth = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
 
-        const newUser = session?.user ?? null;
-        setUser(newUser);
-
-        if (newUser) {
-          const profileData = await fetchProfile(newUser.id);
-          if (mounted) {
-            setProfile(profileData);
-          }
+        if (error) {
+          console.error('Error restoring session:', error);
+          await clearLocalSession();
+          return;
         }
 
-        if (mounted) {
+        await syncSession(session);
+      } catch (error) {
+        console.error('Unexpected error restoring session:', error);
+        await clearLocalSession();
+      } finally {
+        if (mountedRef.current) {
           setLoading(false);
         }
-      })();
-    });
+      }
+    };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      (async () => {
-        if (!mounted) return;
+    void initializeAuth();
 
-        const newUser = session?.user ?? null;
-        setUser(prev => {
-          if (prev?.id === newUser?.id) return prev;
-          return newUser;
-        });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      void (async () => {
+        if (!mountedRef.current) return;
 
-        if (newUser) {
-          const profileData = await fetchProfile(newUser.id);
-          if (mounted) {
-            setProfile(prev => {
-              if (prev?.id === profileData?.id && prev?.role === profileData?.role) return prev;
-              return profileData;
-            });
+        if (event === 'SIGNED_OUT') {
+          setAuthState(null, null);
+          setLoading(false);
+          return;
+        }
+
+        if (event === 'TOKEN_REFRESHED') {
+          if (!session?.user) {
+            setAuthState(null, null);
+          } else if (mountedRef.current) {
+            setUser(prev => (prev?.id === session.user.id ? prev : session.user));
           }
-        } else {
-          if (mounted) {
-            setProfile(null);
+          return;
+        }
+
+        setLoading(true);
+
+        try {
+          await syncSession(session);
+        } catch (error) {
+          console.error('Error syncing auth state:', error);
+          await clearLocalSession();
+        } finally {
+          if (mountedRef.current) {
+            setLoading(false);
           }
         }
       })();
     });
 
     return () => {
-      mounted = false;
+      mountedRef.current = false;
       subscription.unsubscribe();
     };
   }, []);
 
   const signIn = async (email: string, password: string) => {
+    setLoading(true);
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
-    if (error) throw error;
+    if (error) {
+      setLoading(false);
+      throw error;
+    }
 
     if (data.user) {
-      setUser(data.user);
       const profileData = await fetchProfile(data.user.id);
-      setProfile(profileData);
+
+      if (!profileData) {
+        await clearLocalSession();
+        setLoading(false);
+        throw new Error('Profile not found for authenticated user');
+      }
+
+      setAuthState(data.user, profileData);
     }
+
+    setLoading(false);
   };
 
   const signOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
-    setProfile(null);
+    setAuthState(null, null);
   };
 
   return (

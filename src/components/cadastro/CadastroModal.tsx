@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Save, Send, Trash2, Loader2, Plus, Trash, ArrowLeft } from 'lucide-react';
 import { Input } from '../Input';
 import { DateInput } from '../DateInput';
@@ -47,6 +47,7 @@ function isParceiroInvalidoMessage(message: string): boolean {
 }
 
 export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalProps) {
+  const draftHydratedRef = useRef(false);
   const { updateCadastro, enviarParaERP, deleteCadastro, canDelete, consultarEnderecoCEP, searchEmpresa } = useCadastros();
   const { profile } = useAuth();
   const { planos: planosMap, config } = useConfigCadastro();
@@ -71,6 +72,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   const [selectedEmpresa, setSelectedEmpresa] = useState<Empresa | null>(null);
   const [arquivo, setArquivo] = useState<UploadedFile | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [novoContato, setNovoContato] = useState({ tipo: 'celular', valor: '' });
   const [currentStep, setCurrentStep] = useState<1 | 2>(1);
   const [draftInitialized, setDraftInitialized] = useState(false);
 
@@ -117,6 +119,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     arquivo,
     dependentes,
     selectedEmpresa,
+    novoContato,
     step: currentStep,
     currentTab: 0,
   });
@@ -156,7 +159,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   }, [cadastro.id]);
 
   useEffect(() => {
-    if (!profile?.id || draftInitialized || !initialLoadComplete || !dependentesInicializados) {
+    if (!profile?.id || draftInitialized || !initialLoadComplete || !dependentesInicializados || draftHydratedRef.current) {
       return;
     }
 
@@ -186,11 +189,16 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
         setSelectedEmpresa(draft.selectedEmpresa as Empresa);
       }
 
+      if (draft.novoContato) {
+        setNovoContato(draft.novoContato as { tipo: string; valor: string });
+      }
+
       if (draft.step === 2) {
         setCurrentStep(2);
       }
     }
 
+    draftHydratedRef.current = true;
     setDraftInitialized(true);
   }, [profile?.id, draftInitialized, initialLoadComplete, dependentesInicializados, cadastro.id]);
 
@@ -200,7 +208,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     }
 
     saveDraft('cadastro-modal', getCadastroDraftData(), profile.id, cadastro.id);
-  }, [profile?.id, draftInitialized, formData, arquivo, dependentes, selectedEmpresa, currentStep, cadastro.id]);
+  }, [profile?.id, draftInitialized, formData, arquivo, dependentes, selectedEmpresa, novoContato, currentStep, cadastro.id]);
 
   useEffect(() => {
     try {
@@ -1111,8 +1119,6 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     setFormData({ ...formData, contatos: novosContatos });
   };
 
-  const [novoContato, setNovoContato] = useState({ tipo: 'celular', valor: '' });
-
   const handleAdicionarContato = () => {
     if (!novoContato.valor.trim()) {
       setError('Digite um valor para o contato');
@@ -1602,8 +1608,16 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
                     <input
                       type="file"
                       accept=".pdf,.jpg,.jpeg,.png"
-                      onPointerDown={() => saveBeforeFilePicker('cadastro-modal', getCadastroDraftData, profile?.id, cadastro.id)}
-                      onClick={() => saveBeforeFilePicker('cadastro-modal', getCadastroDraftData, profile?.id, cadastro.id)}
+                      onPointerDown={() => {
+                        if (profile?.id && draftHydratedRef.current) {
+                          saveBeforeFilePicker('cadastro-modal', getCadastroDraftData, profile.id, cadastro.id);
+                        }
+                      }}
+                      onClick={() => {
+                        if (profile?.id && draftHydratedRef.current) {
+                          saveBeforeFilePicker('cadastro-modal', getCadastroDraftData, profile.id, cadastro.id);
+                        }
+                      }}
                       onChange={handleArquivoChange}
                       disabled={uploadingFile}
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm disabled:opacity-50 disabled:cursor-not-allowed"

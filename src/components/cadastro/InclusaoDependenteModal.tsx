@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Search, Plus, Trash, Loader2, Upload, Save } from 'lucide-react';
 import { Button } from '../Button';
 import { Input } from '../Input';
@@ -103,6 +103,7 @@ const isMenorDeIdade = (dataNascimento?: string) => {
 };
 
 export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependenteModalProps) {
+  const draftHydratedRef = useRef(false);
   const { profile } = useAuth();
   const { config, planos, parentescos } = useConfigCadastro();
   const { searchEmpresa } = useCadastros();
@@ -139,15 +140,20 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
   const [showEmpresaModal, setShowEmpresaModal] = useState(false);
   const [empresaCodigo, setEmpresaCodigo] = useState<number | null>(null);
   const [empresaNome, setEmpresaNome] = useState<string>('');
-  const [draftInitialized, setDraftInitialized] = useState(false);
-
   const funcionarioCadastroId = profile?.external_id ? parseInt(profile.external_id) : null;
 
-  const getInclusaoDraftData = () => ({
+  const buildDraftPayload = () => ({
+    tipoBusca,
+    valorBusca,
+    responsaveisEncontrados,
     responsavelSelecionado,
     dependentes,
     selectedVendedor,
     selectedAdesionista,
+    planosEmpresa,
+    empresaCompleta,
+    empresaCodigo,
+    empresaNome,
   });
 
   const clearInclusaoDraft = () => {
@@ -183,36 +189,35 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
   }, [profile]);
 
   useEffect(() => {
-    if (!profile?.id || draftInitialized) {
+    if (!profile?.id || draftHydratedRef.current) {
       return;
     }
 
-    const draft = loadDraft('inclusao-dependente-modal', profile.id);
+    const draft = loadDraft('inclusao-dependente-modal', profile.id) as any;
     if (draft) {
-      if (draft.responsavelSelecionado) {
-        setResponsavelSelecionado(draft.responsavelSelecionado);
-      }
-      if (Array.isArray(draft.dependentes)) {
-        setDependentes(draft.dependentes as DependenteForm[]);
-      }
-      if (typeof draft.selectedVendedor === 'string') {
-        setSelectedVendedor(draft.selectedVendedor);
-      }
-      if (typeof draft.selectedAdesionista === 'string') {
-        setSelectedAdesionista(draft.selectedAdesionista);
-      }
+      setTipoBusca(draft.tipoBusca || 'codigo');
+      setValorBusca(draft.valorBusca || '');
+      setResponsaveisEncontrados(draft.responsaveisEncontrados || []);
+      setResponsavelSelecionado(draft.responsavelSelecionado || null);
+      setDependentes(draft.dependentes || []);
+      setSelectedVendedor(draft.selectedVendedor || '');
+      setSelectedAdesionista(draft.selectedAdesionista || '');
+      setPlanosEmpresa(draft.planosEmpresa || []);
+      setEmpresaCompleta(draft.empresaCompleta || null);
+      setEmpresaCodigo(draft.empresaCodigo ?? null);
+      setEmpresaNome(draft.empresaNome || '');
     }
 
-    setDraftInitialized(true);
-  }, [profile?.id, draftInitialized]);
+    draftHydratedRef.current = true;
+  }, [profile?.id]);
 
   useEffect(() => {
-    if (!profile?.id || !draftInitialized) {
+    if (!profile?.id || !draftHydratedRef.current) {
       return;
     }
 
-    saveDraft('inclusao-dependente-modal', getInclusaoDraftData(), profile.id);
-  }, [profile?.id, draftInitialized, responsavelSelecionado, dependentes, selectedVendedor, selectedAdesionista]);
+    saveDraft('inclusao-dependente-modal', buildDraftPayload(), profile.id);
+  }, [profile?.id, tipoBusca, valorBusca, responsaveisEncontrados, responsavelSelecionado, dependentes, selectedVendedor, selectedAdesionista, planosEmpresa, empresaCompleta, empresaCodigo, empresaNome]);
 
 
   const fetchVendedores = async () => {
@@ -1508,8 +1513,16 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                             <input
                               type="file"
                               accept=".pdf,.jpg,.jpeg,.png"
-                              onPointerDown={() => saveBeforeFilePicker('inclusao-dependente-modal', getInclusaoDraftData, profile?.id)}
-                              onClick={() => saveBeforeFilePicker('inclusao-dependente-modal', getInclusaoDraftData, profile?.id)}
+                              onPointerDown={() => {
+                                if (profile?.id && draftHydratedRef.current) {
+                                  saveBeforeFilePicker('inclusao-dependente-modal', buildDraftPayload, profile.id);
+                                }
+                              }}
+                              onClick={() => {
+                                if (profile?.id && draftHydratedRef.current) {
+                                  saveBeforeFilePicker('inclusao-dependente-modal', buildDraftPayload, profile.id);
+                                }
+                              }}
                               onChange={(e) => handleArquivoChange(index, e)}
                               disabled={uploadingFileIndex === index}
                               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
