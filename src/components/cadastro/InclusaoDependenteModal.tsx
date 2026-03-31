@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Search, Plus, Trash, Loader2, Upload, Save } from 'lucide-react';
+import { X, Search, Plus, Trash, Loader2, Save } from 'lucide-react';
 import { Button } from '../Button';
 import { Input } from '../Input';
 import { Select } from '../Select';
@@ -15,6 +15,7 @@ import { SelectStatusModal } from './SelectStatusModal';
 import { EmpresaNaoIdentificadaModal } from './EmpresaNaoIdentificadaModal';
 import { uploadToStorage, UploadedFile, validateFile } from '../../utils/uploadFile';
 import { clearDraft, loadDraft, saveBeforeFilePicker, saveDraft } from '../../utils/draftStorage';
+import { clearPendingFile, loadPendingFile, savePendingFile } from '../../utils/pendingFileStore';
 
 interface InclusaoDependenteModalProps {
   onClose: () => void;
@@ -63,6 +64,7 @@ interface DependenteForm {
   dataNascimento: string;
   carenciaAtendimento: number;
   arquivo?: UploadedFile;
+  uploadingFile?: boolean;
   saved: boolean;
 }
 
@@ -104,6 +106,8 @@ const isMenorDeIdade = (dataNascimento?: string) => {
 
 export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependenteModalProps) {
   const draftHydratedRef = useRef(false);
+  const dependentesRef = useRef<DependenteForm[]>([]);
+  const pendingRecoverySignatureRef = useRef('');
   const { profile } = useAuth();
   const { config, planos, parentescos } = useConfigCadastro();
   const { searchEmpresa } = useCadastros();
@@ -140,26 +144,82 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
   const [showEmpresaModal, setShowEmpresaModal] = useState(false);
   const [empresaCodigo, setEmpresaCodigo] = useState<number | null>(null);
   const [empresaNome, setEmpresaNome] = useState<string>('');
+  const [currentStep, setCurrentStep] = useState<1 | 2>(1);
   const funcionarioCadastroId = profile?.external_id ? parseInt(profile.external_id) : null;
+
+  const setDependentesState = (value: React.SetStateAction<DependenteForm[]>) => {
+    const next =
+      typeof value === 'function'
+        ? (value as (prev: DependenteForm[]) => DependenteForm[])(dependentesRef.current)
+        : value;
+
+    dependentesRef.current = next;
+    setDependentes(next);
+    return next;
+  };
 
   const buildDraftPayload = () => ({
     tipoBusca,
     valorBusca,
     responsaveisEncontrados,
     responsavelSelecionado,
-    dependentes,
+    dependentes: dependentesRef.current,
     selectedVendedor,
     selectedAdesionista,
     planosEmpresa,
     empresaCompleta,
     empresaCodigo,
     empresaNome,
+    step: currentStep,
   });
+
+  const persistInclusaoDraftSnapshot = (dependentesSnapshot?: DependenteForm[]) => {
+    if (profile?.id && draftHydratedRef.current) {
+      saveDraft(
+        'inclusao-dependente-modal',
+        {
+          ...buildDraftPayload(),
+          dependentes: dependentesSnapshot ?? dependentesRef.current,
+        },
+        profile.id
+      );
+    }
+  };
+
+  const getPendingFileSlotKey = (index: number) =>
+    `${responsavelSelecionado?.codigo ?? 'sem-responsavel'}:${index}`;
+
+  const getPlanoNome = (planoId?: number | null) => {
+    if (!planoId) {
+      return null;
+    }
+
+    const planoEmpresa = planosEmpresa.find((plano: any) => Number(plano.Plano) === Number(planoId));
+    const planoMap = planos.find((plano) => Number(plano.plano_id) === Number(planoId));
+
+    return planoMap?.nome_exibicao || planoEmpresa?.NomeANS || `Plano ${planoId}`;
+  };
+
+  const planosSelecionadosResumo =
+    Array.from(
+      new Set(
+        dependentes
+          .map((dep) => getPlanoNome(dep.plano))
+          .filter((plano): plano is string => Boolean(plano))
+      )
+    ).join(', ') || 'Nenhum plano selecionado';
 
   const clearInclusaoDraft = () => {
     if (profile?.id) {
+      for (let index = 0; index < dependentesRef.current.length; index += 1) {
+        void clearPendingFile(profile.id, 'inclusao-dependente-modal', getPendingFileSlotKey(index));
+      }
       clearDraft('inclusao-dependente-modal', profile.id);
     }
+  };
+
+  const persistInclusaoDraftNow = () => {
+    persistInclusaoDraftSnapshot();
   };
 
   useEffect(() => {
@@ -199,13 +259,14 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       setValorBusca(draft.valorBusca || '');
       setResponsaveisEncontrados(draft.responsaveisEncontrados || []);
       setResponsavelSelecionado(draft.responsavelSelecionado || null);
-      setDependentes(draft.dependentes || []);
+      setDependentesState(draft.dependentes || []);
       setSelectedVendedor(draft.selectedVendedor || '');
       setSelectedAdesionista(draft.selectedAdesionista || '');
       setPlanosEmpresa(draft.planosEmpresa || []);
       setEmpresaCompleta(draft.empresaCompleta || null);
       setEmpresaCodigo(draft.empresaCodigo ?? null);
       setEmpresaNome(draft.empresaNome || '');
+      setCurrentStep(draft.step === 2 ? 2 : 1);
     }
 
     draftHydratedRef.current = true;
@@ -217,7 +278,56 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
     }
 
     saveDraft('inclusao-dependente-modal', buildDraftPayload(), profile.id);
-  }, [profile?.id, tipoBusca, valorBusca, responsaveisEncontrados, responsavelSelecionado, dependentes, selectedVendedor, selectedAdesionista, planosEmpresa, empresaCompleta, empresaCodigo, empresaNome]);
+  }, [profile?.id, tipoBusca, valorBusca, responsaveisEncontrados, responsavelSelecionado, dependentes, selectedVendedor, selectedAdesionista, planosEmpresa, empresaCompleta, empresaCodigo, empresaNome, currentStep]);
+
+  useEffect(() => {
+    dependentesRef.current = dependentes;
+  }, [dependentes]);
+
+  useEffect(() => {
+    if (!profile?.id || !draftHydratedRef.current || dependentesRef.current.length === 0) {
+      return;
+    }
+
+    const signature = `${profile.id}:${responsavelSelecionado?.codigo ?? 'sem'}:${dependentesRef.current.length}:${currentStep}`;
+    if (pendingRecoverySignatureRef.current === signature) {
+      return;
+    }
+    pendingRecoverySignatureRef.current = signature;
+
+    let cancelled = false;
+
+    const recoverPendingUploads = async () => {
+      for (let index = 0; index < dependentesRef.current.length; index += 1) {
+        if (cancelled) {
+          return;
+        }
+
+        const dependente = dependentesRef.current[index];
+        if (dependente?.arquivo) {
+          continue;
+        }
+
+        try {
+          const pendingFile = await loadPendingFile(profile.id, 'inclusao-dependente-modal', getPendingFileSlotKey(index));
+          if (!pendingFile || cancelled) {
+            continue;
+          }
+
+          setSuccess('Retomando upload do arquivo apos recarregamento...');
+          await uploadDependenteFile(index, pendingFile);
+        } catch (err) {
+          console.error('Erro ao retomar upload pendente:', err);
+        }
+      }
+    };
+
+    void recoverPendingUploads();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.id, responsavelSelecionado?.codigo, dependentes.length, currentStep]);
 
 
   const fetchVendedores = async () => {
@@ -323,9 +433,22 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
     }
   };
 
+  const handleValorBuscaChange = (value: string) => {
+    setValorBusca(value.replace(/\D/g, ''));
+  };
+
   const handleSelecionarResponsavel = async (responsavel: ResponsavelFinanceiro) => {
+    const isMesmoResponsavel = responsavelSelecionado?.codigo === responsavel.codigo;
+
+    if (isMesmoResponsavel && dependentesRef.current.length > 0) {
+      setCurrentStep(1);
+      setError('');
+      return;
+    }
+
     setResponsavelSelecionado(responsavel);
-    setDependentes([]);
+    setCurrentStep(1);
+    setDependentesState([]);
     setError('');
     setPlanosEmpresa([]);
     setEmpresaCompleta(null);
@@ -399,13 +522,14 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       nomeMae: '',
       dataNascimento: '',
       carenciaAtendimento: 1,
+      uploadingFile: false,
       saved: false,
     };
-    setDependentes([...dependentes, novoDependente]);
+    setDependentesState([...dependentesRef.current, novoDependente]);
   };
 
   const handleSalvarDependente = (index: number) => {
-    const dep = dependentes[index];
+    const dep = dependentesRef.current[index];
 
     if (!dep.nome) {
       setError(`Dependente ${index + 1}: Nome é obrigatório`);
@@ -447,20 +571,20 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       return;
     }
 
-    const novosDependentes = [...dependentes];
+    const novosDependentes = [...dependentesRef.current];
     novosDependentes[index] = {
       ...novosDependentes[index],
       dataNascimento: dataNascimentoISO,
       saved: true,
     };
-    setDependentes(novosDependentes);
+    setDependentesState(novosDependentes);
     setError('');
     setSuccess('Dependente salvo! Adicione mais ou clique em "Incluir Dependentes"');
     setTimeout(() => setSuccess(''), 3000);
   };
 
   const handleRemoverDependente = async (index: number) => {
-    const dependente = dependentes[index];
+    const dependente = dependentesRef.current[index];
     if (dependente.arquivo) {
       try {
         await supabase.storage
@@ -470,12 +594,12 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
         console.error('Erro ao remover arquivo:', err);
       }
     }
-    setDependentes(dependentes.filter((_, i) => i !== index));
+    setDependentesState(dependentesRef.current.filter((_, i) => i !== index));
   };
 
 
   const handleAtualizarDependente = async (index: number, campo: string, valor: any) => {
-    setDependentes((prev) => {
+    setDependentesState((prev) => {
       const next = [...prev];
       next[index] = {
         ...next[index],
@@ -594,7 +718,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
 
       if (lemitData?.pessoa && Object.keys(lemitData.pessoa).length > 0) {
 
-        setDependentes((prevDependentes) => {
+        setDependentesState((prevDependentes) => {
           const novosDependentes = [...prevDependentes];
           const depAtual = novosDependentes[index];
 
@@ -682,6 +806,81 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
     }
   };
 
+  const uploadDependenteFile = async (index: number, file: File) => {
+    if (profile?.id) {
+      try {
+        await savePendingFile(profile.id, 'inclusao-dependente-modal', getPendingFileSlotKey(index), file);
+      } catch (err) {
+        console.warn('Erro ao persistir arquivo pendente antes do upload:', err);
+      }
+    }
+
+    const dependentesEmUpload = dependentesRef.current.map((dep, depIndex) =>
+      depIndex === index ? { ...dep, uploadingFile: true } : dep
+    );
+
+    setUploadingFileIndex(index);
+    setDependentesState(dependentesEmUpload);
+    persistInclusaoDraftSnapshot(dependentesEmUpload);
+    setError('');
+
+    try {
+      const dependente = dependentesRef.current[index];
+      if (dependente.arquivo?.path) {
+        try {
+          await supabase.storage
+            .from('cadastros-temp-files')
+            .remove([dependente.arquivo.path]);
+        } catch (err) {
+          console.error('Erro ao remover arquivo anterior:', err);
+        }
+      }
+
+      if (!profile?.id) {
+        throw new Error('UsuÃ¡rio nÃ£o autenticado');
+      }
+
+      const cpfLimpo = removeCPFMask(dependente.cpf);
+      const cpfArquivo = cpfLimpo && cpfLimpo.trim() ? cpfLimpo : '0';
+      const prefix = `dependentes-temp/${cpfArquivo}`;
+
+      const uploadedFile = await uploadToStorage(
+        file,
+        profile.id,
+        'cadastros-temp-files',
+        prefix
+      );
+
+      const novosDependentes = [...dependentesRef.current];
+      novosDependentes[index] = {
+        ...novosDependentes[index],
+        arquivo: uploadedFile,
+        uploadingFile: false,
+      };
+      setDependentesState(novosDependentes);
+      persistInclusaoDraftSnapshot(novosDependentes);
+      try {
+        await clearPendingFile(profile.id, 'inclusao-dependente-modal', getPendingFileSlotKey(index));
+      } catch (err) {
+        console.warn('Erro ao limpar arquivo pendente apos upload:', err);
+      }
+
+      setSuccess('Arquivo carregado com sucesso!');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      console.error('Erro ao fazer upload do arquivo:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao fazer upload do arquivo';
+      setError(errorMessage);
+      const dependentesComFalha = dependentesRef.current.map((dep, depIndex) =>
+        depIndex === index ? { ...dep, uploadingFile: false } : dep
+      );
+      setDependentesState(dependentesComFalha);
+      persistInclusaoDraftSnapshot(dependentesComFalha);
+    } finally {
+      setUploadingFileIndex(null);
+    }
+  };
+
   const handleArquivoChange = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
     e.preventDefault();
     e.stopPropagation();
@@ -700,11 +899,15 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       return;
     }
 
-    setUploadingFileIndex(index);
-    setError('');
+    try {
+      await uploadDependenteFile(index, file);
+    } finally {
+      e.target.value = '';
+    }
+    return;
 
     try {
-      const dependente = dependentes[index];
+      const dependente = dependentesRef.current[index];
       if (dependente.arquivo?.path) {
         try {
           await supabase.storage
@@ -730,12 +933,17 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
         prefix
       );
 
-      const novosDependentes = [...dependentes];
+      const novosDependentes = [...dependentesRef.current];
       novosDependentes[index] = {
         ...novosDependentes[index],
-        arquivo: uploadedFile
+        arquivo: uploadedFile,
+        uploadingFile: false,
       };
-      setDependentes(novosDependentes);
+      setDependentesState(novosDependentes);
+      persistInclusaoDraftSnapshot(novosDependentes);
+      if (profile?.id) {
+        await clearPendingFile(profile.id, 'inclusao-dependente-modal', getPendingFileSlotKey(index));
+      }
 
       setSuccess('Arquivo carregado com sucesso!');
       setTimeout(() => setSuccess(''), 3000);
@@ -743,15 +951,101 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       console.error('Erro ao fazer upload do arquivo:', err);
       const errorMessage = err instanceof Error ? err.message : 'Erro ao fazer upload do arquivo';
       setError(errorMessage);
+      setDependentesState((prevDependentes) =>
+        prevDependentes.map((dep, depIndex) =>
+          depIndex === index ? { ...dep, uploadingFile: false } : dep
+        )
+      );
     } finally {
       setUploadingFileIndex(null);
       e.target.value = '';
     }
   };
 
+  const validateStepOne = () => {
+    if (!responsavelSelecionado) {
+      setError('Selecione um responsável financeiro');
+      return false;
+    }
+
+    if (!selectedVendedor) {
+      setError('Selecione um vendedor');
+      return false;
+    }
+
+    const dependentesAtuais = dependentesRef.current;
+
+    if (dependentesAtuais.length === 0) {
+      setError('Adicione pelo menos um dependente');
+      return false;
+    }
+
+    const dependentesNaoSalvos = dependentesAtuais.filter((dep) => !dep.saved);
+    if (dependentesNaoSalvos.length > 0) {
+      setError('Salve todos os dependentes antes de avançar');
+      return false;
+    }
+
+    for (let i = 0; i < dependentesAtuais.length; i++) {
+      const dep = dependentesAtuais[i];
+
+      if (!dep.nome) {
+        setError(`Dependente ${i + 1}: Nome é obrigatório`);
+        return false;
+      }
+      if (!isMenorDeIdade(dep.dataNascimento) && !dep.cpf) {
+        setError(`Dependente ${i + 1}: CPF é obrigatório`);
+        return false;
+      }
+      if (!dep.dataNascimento) {
+        setError(`Dependente ${i + 1}: Data de nascimento é obrigatória`);
+        return false;
+      }
+      if (dep.sexo === null || dep.sexo === undefined || dep.sexo < 0) {
+        setError(`Dependente ${i + 1}: Sexo é obrigatório`);
+        return false;
+      }
+      if (!dep.tipo || dep.tipo === 0) {
+        setError(`Dependente ${i + 1}: Parentesco é obrigatório`);
+        return false;
+      }
+      if (!dep.plano || dep.plano === 0) {
+        setError(`Dependente ${i + 1}: Plano é obrigatório`);
+        return false;
+      }
+      if (!dep.nomeMae) {
+        setError(`Dependente ${i + 1}: Nome da mãe é obrigatório`);
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const handleNextStep = () => {
+    setError('');
+    setSuccess('');
+    persistInclusaoDraftNow();
+
+    if (!validateStepOne()) {
+      return;
+    }
+
+    setCurrentStep(2);
+  };
+
+  const handleBackToStepOne = (e?: React.MouseEvent<HTMLButtonElement>) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    persistInclusaoDraftNow();
+    setError('');
+    setCurrentStep(1);
+  };
+
   const handleRequestSalvarPendente = () => {
     setError('');
     setSuccess('');
+    persistInclusaoDraftNow();
 
     if (!responsavelSelecionado) {
       setError('Selecione um responsável financeiro');
@@ -763,12 +1057,14 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       return;
     }
 
-    if (dependentes.length === 0) {
+    const dependentesAtuais = dependentesRef.current;
+
+    if (dependentesAtuais.length === 0) {
       setError('Adicione pelo menos um dependente');
       return;
     }
 
-    const dependentesSalvos = dependentes.filter(d => d.saved);
+    const dependentesSalvos = dependentesAtuais.filter(d => d.saved);
     if (dependentesSalvos.length === 0) {
       setError('Salve pelo menos um dependente antes de enviar');
       return;
@@ -791,7 +1087,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
     setSalvandoPendente(true);
 
     try {
-      const dependentesSalvos = dependentes.filter(d => d.saved);
+      const dependentesSalvos = dependentesRef.current.filter(d => d.saved);
 
       if (dependentesSalvos.length === 0) {
         setError('Nenhum dependente salvo para enviar');
@@ -887,6 +1183,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
   const handleEnviar = async () => {
     setError('');
     setSuccess('');
+    persistInclusaoDraftNow();
 
     if (!responsavelSelecionado) {
       setError('Selecione um responsável financeiro');
@@ -898,12 +1195,14 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
       return;
     }
 
-    if (dependentes.length === 0) {
+    const dependentesAtuais = dependentesRef.current;
+
+    if (dependentesAtuais.length === 0) {
       setError('Adicione pelo menos um dependente');
       return;
     }
 
-    const dependentesSalvos = dependentes.filter(d => d.saved);
+    const dependentesSalvos = dependentesAtuais.filter(d => d.saved);
     if (dependentesSalvos.length === 0) {
       setError('Salve pelo menos um dependente antes de enviar');
       return;
@@ -935,7 +1234,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
         setError(`Dependente ${i + 1}: Nome da mãe é obrigatório`);
         return;
       }
-      if (config?.exigir_arquivo && !dep.arquivo) {
+      if (!dep.arquivo) {
         setError(`Dependente ${i + 1}: Arquivo é obrigatório`);
         return;
       }
@@ -1239,6 +1538,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
             </div>
           )}
 
+          {currentStep === 1 && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <h3 className="font-semibold text-blue-900 mb-4">1. Buscar Responsável Financeiro</h3>
 
@@ -1257,8 +1557,12 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
               <div className="md:col-span-7">
                 <Input
                   label={tipoBusca === 'codigo' ? 'Código' : 'CPF'}
-                  value={valorBusca}
-                  onChange={(e) => setValorBusca(e.target.value)}
+                  value={tipoBusca === 'cpf' ? formatCPF(valorBusca) : valorBusca}
+                  onChange={(e) => handleValorBuscaChange(e.target.value)}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  type="tel"
+                  maxLength={tipoBusca === 'cpf' ? 14 : 20}
                   placeholder={tipoBusca === 'codigo' ? 'Digite o código' : 'Digite o CPF'}
                 />
               </div>
@@ -1330,9 +1634,11 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
               </div>
             )}
           </div>
+          )}
 
           {responsavelSelecionado && (
             <>
+              {currentStep === 1 ? (
               <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="font-semibold text-emerald-900">
@@ -1383,7 +1689,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                           <div className="relative">
                             <Input
                               label="CPF"
-                              value={dep.cpf}
+                              value={formatCPF(dep.cpf)}
                               onChange={(e) => handleAtualizarDependente(index, 'cpf', e.target.value)}
                               inputMode="numeric"
                               required={!isMenorDeIdade(dep.dataNascimento)}
@@ -1462,7 +1768,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                               const valorTitular = Number(planoEmpresaSelecionado?.ValorTitular ?? 0);
                               const valorFormatado = valorTitular.toFixed(2);
 
-                              setDependentes((prev) => {
+                              setDependentesState((prev) => {
                                 const next = [...prev];
                                 next[index] = {
                                   ...next[index],
@@ -1506,6 +1812,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                             />
                           </div>
 
+                          {false && (
                           <div className="md:col-span-2">
                             <label className="block text-sm font-medium text-slate-700 mb-1">
                               Arquivo
@@ -1553,9 +1860,9 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                                       } catch (err) {
                                         console.error('Erro ao remover arquivo:', err);
                                       }
-                                      const novosDependentes = [...dependentes];
+                                      const novosDependentes = [...dependentesRef.current];
                                       delete novosDependentes[index].arquivo;
-                                      setDependentes(novosDependentes);
+                                      setDependentesState(novosDependentes);
                                     }}
                                     className="p-1 text-red-600 hover:bg-red-100 rounded transition-colors"
                                     title="Remover arquivo"
@@ -1566,6 +1873,7 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                               </div>
                             )}
                           </div>
+                          )}
 
                           <div className="md:col-span-2 pt-3 border-t border-slate-200 flex justify-end">
                             {!dep.saved ? (
@@ -1590,6 +1898,115 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
                   </div>
                 )}
               </div>
+              ) : (
+              <div className="space-y-6">
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <p className="text-sm font-semibold text-emerald-900">Etapa final: anexos dos dependentes</p>
+                  <p className="text-sm text-emerald-800 mt-1">
+                    Revise o resumo abaixo, anexe os arquivos e conclua a inclusão.
+                  </p>
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-slate-700">
+                    <div className="rounded-lg bg-white px-3 py-2 border border-emerald-100">
+                      <span className="font-medium text-slate-900">Responsável:</span> {responsavelSelecionado.nome}
+                    </div>
+                    <div className="rounded-lg bg-white px-3 py-2 border border-emerald-100">
+                      <span className="font-medium text-slate-900">Empresa:</span> {empresaNome || responsavelSelecionado.empresa}
+                    </div>
+                    <div className="rounded-lg bg-white px-3 py-2 border border-emerald-100">
+                      <span className="font-medium text-slate-900">Dependentes:</span> {dependentes.length}
+                    </div>
+                    <div className="rounded-lg bg-white px-3 py-2 border border-emerald-100">
+                      <span className="font-medium text-slate-900">Arquivo obrigatório:</span> Sim
+                    </div>
+                    <div className="rounded-lg bg-white px-3 py-2 border border-emerald-100 md:col-span-2">
+                      <span className="font-medium text-slate-900">Planos selecionados:</span> {planosSelecionadosResumo}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {dependentes.map((dep, index) => (
+                    <div key={`anexo-${index}`} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                      <div className="mb-3">
+                        <h4 className="font-medium text-slate-800">{dep.nome || `Dependente ${index + 1}`}</h4>
+                        <p className="text-sm text-slate-600">
+                          Plano {dep.plano || '-'}{dep.planoValor ? ` • R$ ${dep.planoValor}` : ''}
+                        </p>
+                      </div>
+
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        Arquivo <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        onPointerDown={() => {
+                          if (profile?.id && draftHydratedRef.current) {
+                            saveBeforeFilePicker('inclusao-dependente-modal', buildDraftPayload, profile.id);
+                          }
+                        }}
+                        onTouchStart={() => {
+                          if (profile?.id && draftHydratedRef.current) {
+                            saveBeforeFilePicker('inclusao-dependente-modal', buildDraftPayload, profile.id);
+                          }
+                        }}
+                        onClick={() => {
+                          if (profile?.id && draftHydratedRef.current) {
+                            saveBeforeFilePicker('inclusao-dependente-modal', buildDraftPayload, profile.id);
+                          }
+                        }}
+                        onChange={(e) => handleArquivoChange(index, e)}
+                        disabled={uploadingFileIndex === index}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      />
+                      <p className="text-xs text-slate-500 mt-1">
+                        Formatos aceitos: PDF, JPG, PNG. Tamanho máximo: 10MB.
+                      </p>
+                      {(dep.uploadingFile || uploadingFileIndex === index) && (
+                        <div className="flex items-center gap-2 mt-2">
+                          <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
+                          <p className="text-xs text-emerald-600 font-medium">
+                            Fazendo upload do arquivo...
+                          </p>
+                        </div>
+                      )}
+                      {dep.arquivo && !dep.uploadingFile && uploadingFileIndex !== index && (
+                        <div className="mt-2">
+                          <div className="flex items-center justify-between p-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+                            <p className="text-xs text-emerald-700 font-medium">
+                              {dep.arquivo.nome}
+                            </p>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await supabase.storage
+                                    .from('cadastros-temp-files')
+                                    .remove([dep.arquivo!.path]);
+                                } catch (err) {
+                                  console.error('Erro ao remover arquivo:', err);
+                                }
+                                const novosDependentes = [...dependentesRef.current];
+                                delete novosDependentes[index].arquivo;
+                                novosDependentes[index].uploadingFile = false;
+                                setDependentesState(novosDependentes);
+                                persistInclusaoDraftSnapshot(novosDependentes);
+                                if (profile?.id) {
+                                  await clearPendingFile(profile.id, 'inclusao-dependente-modal', getPendingFileSlotKey(index));
+                                }
+                              }}
+                              className="p-1 text-red-600 hover:bg-red-100 rounded transition-colors"
+                              title="Remover arquivo"
+                            >
+                              <Trash className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              )}
             </>
           )}
 
@@ -1635,18 +2052,39 @@ export function InclusaoDependenteModal({ onClose, onSuccess }: InclusaoDependen
               Salvar Pendente
             </Button>
 
-            <Button
-              onClick={handleEnviar}
-              disabled={enviando || salvandoPendente || !responsavelSelecionado || dependentes.filter(d => d.saved).length === 0}
-              className="w-full sm:w-auto"
-            >
-              {enviando ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Save className="w-4 h-4 mr-2" />
-              )}
-              Incluir Dependentes
-            </Button>
+            {currentStep === 1 ? (
+              <Button
+                onClick={handleNextStep}
+                disabled={enviando || salvandoPendente || uploadingFileIndex !== null || !responsavelSelecionado}
+                className="w-full sm:w-auto"
+              >
+                Seguinte
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="secondary"
+                  onClick={handleBackToStepOne}
+                  disabled={enviando || salvandoPendente || uploadingFileIndex !== null}
+                  className="w-full sm:w-auto"
+                >
+                  Voltar
+                </Button>
+
+                <Button
+                  onClick={handleEnviar}
+                  disabled={enviando || salvandoPendente || !responsavelSelecionado || dependentes.filter(d => d.saved).length === 0}
+                  className="w-full sm:w-auto"
+                >
+                  {enviando ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4 mr-2" />
+                  )}
+                  Incluir Dependentes
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </div>

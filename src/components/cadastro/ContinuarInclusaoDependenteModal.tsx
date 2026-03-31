@@ -16,6 +16,7 @@ import { SelectStatusModal } from './SelectStatusModal';
 import { EmpresaNaoIdentificadaModal } from './EmpresaNaoIdentificadaModal';
 import { uploadToStorage, UploadedFile, validateFile } from '../../utils/uploadFile';
 import { clearDraft, loadDraft, saveBeforeFilePicker, saveDraft } from '../../utils/draftStorage';
+import { clearPendingFile, loadPendingFile, savePendingFile } from '../../utils/pendingFileStore';
 
 interface ContinuarInclusaoDependenteModalProps {
   cadastro: Cadastro;
@@ -116,6 +117,8 @@ const isMenorDeIdade = (dataNascimento?: string) => {
 export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess }: ContinuarInclusaoDependenteModalProps) {
   const draftHydratedRef = useRef(false);
   const restoredDraftRef = useRef(false);
+  const dependentesRef = useRef<DependenteForm[]>([]);
+  const pendingRecoverySignatureRef = useRef('');
   const { profile } = useAuth();
   const { config, planos, parentescos } = useConfigCadastro();
   const { searchEmpresa } = useCadastros();
@@ -185,14 +188,26 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
   const [selectedVendedor, setSelectedVendedor] = useState<string>(cadastro.vendedor_id || '');
   const [adesionistas, setAdesionistas] = useState<Adesionista[]>([]);
   const [selectedAdesionista, setSelectedAdesionista] = useState<string>(cadastro.adesionista_id || '');
+  const [currentStep, setCurrentStep] = useState<1 | 2>(1);
 
   const [planosEmpresa, setPlanosEmpresa] = useState<any[]>([]);
   const [loadingEmpresa, setLoadingEmpresa] = useState(false);
 
   const funcionarioCadastroId = profile?.external_id ? parseInt(profile.external_id) : null;
 
+  const setDependentesState = (value: React.SetStateAction<DependenteForm[]>) => {
+    const next =
+      typeof value === 'function'
+        ? (value as (prev: DependenteForm[]) => DependenteForm[])(dependentesRef.current)
+        : value;
+
+    dependentesRef.current = next;
+    setDependentes(next);
+    return next;
+  };
+
   const buildDraftPayload = () => ({
-    dependentes,
+    dependentes: dependentesRef.current,
     selectedVendedor,
     selectedAdesionista,
     selectedEmpresa,
@@ -200,11 +215,123 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
     empresaNome,
     empresaObservacao,
     planosEmpresa,
+    step: currentStep,
   });
+
+  const persistContinuarDraftSnapshot = (dependentesSnapshot?: DependenteForm[]) => {
+    if (profile?.id && draftHydratedRef.current) {
+      saveDraft(
+        'continuar-inclusao-dependente-modal',
+        {
+          ...buildDraftPayload(),
+          dependentes: dependentesSnapshot ?? dependentesRef.current,
+        },
+        profile.id,
+        cadastro.id
+      );
+    }
+  };
+
+  const handleBeforeFilePicker = () => {
+    if (profile?.id && draftHydratedRef.current) {
+      saveBeforeFilePicker('continuar-inclusao-dependente-modal', buildDraftPayload, profile.id, cadastro.id);
+    }
+  };
+
+  const getPlanoNome = (planoId?: number | null) => {
+    if (!planoId) {
+      return null;
+    }
+
+    const planoEmpresa = planosEmpresa.find((plano: any) => Number(plano.Plano) === Number(planoId));
+    const planoMap = planos.find((plano) => Number(plano.plano_id) === Number(planoId));
+
+    return planoMap?.nome_exibicao || planoEmpresa?.NomeANS || `Plano ${planoId}`;
+  };
+
+  const planosSelecionadosResumo =
+    Array.from(
+      new Set(
+        dependentes
+          .map((dep) => getPlanoNome(dep.plano))
+          .filter((plano): plano is string => Boolean(plano))
+      )
+    ).join(', ') || 'Nenhum plano selecionado';
+
+  const getPendingFileSlotKey = (index: number) =>
+    `${cadastro.id}:${dependentesRef.current[index]?.id ?? index}`;
 
   const clearContinuarDraft = () => {
     if (profile?.id) {
+      for (let index = 0; index < dependentesRef.current.length; index += 1) {
+        void clearPendingFile(profile.id, 'continuar-inclusao-dependente-modal', getPendingFileSlotKey(index));
+      }
       clearDraft('continuar-inclusao-dependente-modal', profile.id, cadastro.id);
+    }
+  };
+
+  const buildCadastroUpdateData = () => {
+    const dependentesData = dependentesRef.current.map(dep => ({
+      nome: dep.nome,
+      cpf: dep.cpf,
+      data_nascimento: dep.dataNascimento,
+      sexo: dep.sexo === 1 ? 'Masculino' : dep.sexo === 0 ? 'Feminino' : null,
+      parentesco: dep.parentesco,
+      plano_codigo: dep.plano,
+      nome_mae: dep.nomeMae,
+      arquivo_path: dep.arquivo?.path || null
+    }));
+
+    const updateData: any = {
+      dependentes: dependentesData,
+      tipo_cadastro: 'inclusao_dependente',
+      updated_at: new Date().toISOString()
+    };
+
+    if (selectedEmpresa) {
+      updateData.empresa_codigo = selectedEmpresa.id;
+      updateData.empresa_nome = selectedEmpresa.nomeFantasia || empresaNome;
+      updateData.empresa_raw = selectedEmpresa.raw || selectedEmpresa;
+    } else {
+      updateData.empresa_codigo = empresaCodigo;
+      updateData.empresa_nome = empresaNome;
+    }
+
+    if (selectedVendedor) {
+      const vendedor = vendedores.find(v => v.id === selectedVendedor);
+      if (vendedor) {
+        updateData.vendedor_id = vendedor.id;
+        updateData.vendedor_codigo = vendedor.external_id;
+        updateData.vendedor_nome = vendedor.name;
+      }
+    }
+
+    if (selectedAdesionista) {
+      const adesionista = adesionistas.find(a => a.id === selectedAdesionista);
+      if (adesionista) {
+        updateData.adesionista_id = adesionista.id;
+        updateData.adesionista_codigo = adesionista.external_id;
+        updateData.adesionista_nome = adesionista.name;
+      }
+    }
+
+    return updateData;
+  };
+
+  const persistContinuarProgress = async () => {
+    const updateData = buildCadastroUpdateData();
+
+    const { error: updateError } = await supabase
+      .from('cadastros')
+      .update(updateData)
+      .eq('id', cadastro.id);
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    if (profile?.id && draftHydratedRef.current) {
+      saveDraft('continuar-inclusao-dependente-modal', buildDraftPayload(), profile.id, cadastro.id);
     }
   };
 
@@ -242,7 +369,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
     const draft = loadDraft('continuar-inclusao-dependente-modal', profile.id, cadastro.id) as any;
     if (draft) {
       restoredDraftRef.current = true;
-      setDependentes(draft.dependentes || []);
+      setDependentesState(draft.dependentes || []);
       setSelectedVendedor(draft.selectedVendedor || cadastro.vendedor_id || '');
       setSelectedAdesionista(draft.selectedAdesionista || cadastro.adesionista_id || '');
       setSelectedEmpresa(draft.selectedEmpresa || null);
@@ -250,6 +377,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
       setEmpresaNome(draft.empresaNome || cadastro.empresa_nome);
       setEmpresaObservacao(draft.empresaObservacao || '');
       setPlanosEmpresa(draft.planosEmpresa || []);
+      setCurrentStep(draft.step === 2 ? 2 : 1);
     }
 
     draftHydratedRef.current = true;
@@ -261,7 +389,61 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
     }
 
     saveDraft('continuar-inclusao-dependente-modal', buildDraftPayload(), profile.id, cadastro.id);
-  }, [profile?.id, cadastro.id, dependentes, selectedVendedor, selectedAdesionista, selectedEmpresa, empresaCodigo, empresaNome, empresaObservacao, planosEmpresa]);
+  }, [profile?.id, cadastro.id, dependentes, selectedVendedor, selectedAdesionista, selectedEmpresa, empresaCodigo, empresaNome, empresaObservacao, planosEmpresa, currentStep]);
+
+  useEffect(() => {
+    dependentesRef.current = dependentes;
+  }, [dependentes]);
+
+  useEffect(() => {
+    if (!profile?.id || !draftHydratedRef.current || dependentesRef.current.length === 0) {
+      return;
+    }
+
+    const signature = `${profile.id}:${cadastro.id}:${dependentesRef.current.length}:${currentStep}`;
+    if (pendingRecoverySignatureRef.current === signature) {
+      return;
+    }
+    pendingRecoverySignatureRef.current = signature;
+
+    let cancelled = false;
+
+    const recoverPendingUploads = async () => {
+      for (let index = 0; index < dependentesRef.current.length; index += 1) {
+        if (cancelled) {
+          return;
+        }
+
+        const dependente = dependentesRef.current[index];
+        if (dependente?.arquivo) {
+          continue;
+        }
+
+        try {
+          const pendingFile = await loadPendingFile(
+            profile.id,
+            'continuar-inclusao-dependente-modal',
+            getPendingFileSlotKey(index)
+          );
+
+          if (!pendingFile || cancelled) {
+            continue;
+          }
+
+          setSuccess('Retomando upload do arquivo apos recarregamento...');
+          await uploadDependenteFile(index, pendingFile);
+        } catch (err) {
+          console.error('Erro ao retomar upload pendente:', err);
+        }
+      }
+    };
+
+    void recoverPendingUploads();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.id, cadastro.id, dependentes.length, currentStep]);
 
   useEffect(() => {
     if (restoredDraftRef.current) {
@@ -294,7 +476,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
             ? planoEncontrado.ValorAgregado
             : planoEncontrado.ValorDependente;
 
-          setDependentes(prev => prev.map((dep, idx) =>
+          setDependentesState(prev => prev.map((dep, idx) =>
             idx === 0 ? { ...dep, planoValor: valor?.toString() || '0.00' } : dep
           ));
         }
@@ -308,7 +490,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
 
   useEffect(() => {
     if (planosEmpresa.length > 0) {
-      setDependentes(prev => prev.map(dep => {
+      setDependentesState(prev => prev.map(dep => {
         if (dep.plano && dep.plano !== 0) {
           const planoEncontrado = planosEmpresa.find((p: any) => p.Plano === dep.plano);
           if (planoEncontrado) {
@@ -374,7 +556,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
               ? planoEncontrado.ValorAgregado
               : planoEncontrado.ValorDependente;
 
-            setDependentes(prev => prev.map((dep, idx) =>
+            setDependentesState(prev => prev.map((dep, idx) =>
               idx === 0 ? { ...dep, planoValor: valor?.toString() || '0.00' } : dep
             ));
           }
@@ -431,7 +613,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
     const formatted = formatCPF(value);
     const cpfLimpo = removeCPFMask(formatted);
 
-    setDependentes(prev => prev.map((dep, idx) => {
+    setDependentesState(prev => prev.map((dep, idx) => {
       if (idx === index) {
         let cpfError = '';
         if (cpfLimpo.length === 11 && !validateCPF(formatted)) {
@@ -456,7 +638,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
       return;
     }
 
-    setDependentes(prev => prev.map((dep, idx) =>
+    setDependentesState(prev => prev.map((dep, idx) =>
       idx === index ? { ...dep, consultingLemmit: true } : dep
     ));
     setError('');
@@ -493,7 +675,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
           setLemmitLimitExceeded({});
         }
 
-        setDependentes(prev => prev.map((dep, idx) =>
+        setDependentesState(prev => prev.map((dep, idx) =>
           idx === index ? { ...dep, consultingLemmit: false } : dep
         ));
         return;
@@ -518,7 +700,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
 
       if (!response.ok) {
         console.warn('Erro na consulta Lemmit para dependente:', response.status, response.statusText);
-        setDependentes(prev => prev.map((dep, idx) =>
+        setDependentesState(prev => prev.map((dep, idx) =>
           idx === index ? { ...dep, consultingLemmit: false } : dep
         ));
         return;
@@ -552,7 +734,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
           sexo: sexoValue
         });
 
-        setDependentes(prev => prev.map((dep, idx) => {
+        setDependentesState(prev => prev.map((dep, idx) => {
           if (idx === index) {
             return {
               ...dep,
@@ -567,13 +749,13 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
         }));
       } else {
         console.warn('Lemmit não retornou dados válidos:', lemitData);
-        setDependentes(prev => prev.map((dep, idx) =>
+        setDependentesState(prev => prev.map((dep, idx) =>
           idx === index ? { ...dep, consultingLemmit: false } : dep
         ));
       }
     } catch (err: any) {
       console.error('Erro ao consultar Lemmit:', err);
-      setDependentes(prev => prev.map((dep, idx) =>
+      setDependentesState(prev => prev.map((dep, idx) =>
         idx === index ? { ...dep, consultingLemmit: false } : dep
       ));
     }
@@ -588,7 +770,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
       ? planoEncontrado?.ValorAgregado
       : planoEncontrado?.ValorDependente;
 
-    setDependentes(prev => prev.map((dep, idx) => {
+    setDependentesState(prev => prev.map((dep, idx) => {
       if (idx === index) {
         return {
           ...dep,
@@ -600,7 +782,79 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
     }));
   };
 
+  const uploadDependenteFile = async (index: number, file: File) => {
+    if (!profile?.id) {
+      throw new Error('UsuÃ¡rio nÃ£o autenticado');
+    }
+
+    try {
+      await savePendingFile(profile.id, 'continuar-inclusao-dependente-modal', getPendingFileSlotKey(index), file);
+    } catch (err) {
+      console.warn('Erro ao persistir arquivo pendente antes do upload:', err);
+    }
+
+    const dependentesEmUpload = dependentesRef.current.map((dep, idx) =>
+      idx === index ? { ...dep, uploadingFile: true } : dep
+    );
+    setDependentesState(dependentesEmUpload);
+    persistContinuarDraftSnapshot(dependentesEmUpload);
+    setError('');
+
+    try {
+      const dependente = dependentesRef.current[index];
+      if (dependente.arquivo?.path) {
+        try {
+          await supabase.storage
+            .from('cadastros-temp-files')
+            .remove([dependente.arquivo.path]);
+        } catch (err) {
+          console.error('Erro ao remover arquivo anterior:', err);
+        }
+      }
+
+      const cpfLimpo = removeCPFMask(dependente.cpf);
+      const cpfArquivo = cpfLimpo && cpfLimpo.trim() ? cpfLimpo : cadastro.id;
+      const prefix = `dependentes-continuar/${cadastro.id}/${cpfArquivo}`;
+
+      const uploadedFile = await uploadToStorage(
+        file,
+        profile.id,
+        'cadastros-temp-files',
+        prefix
+      );
+
+      const novosDependentes = dependentesRef.current.map((dep, idx) =>
+        idx === index ? { ...dep, arquivo: uploadedFile, uploadingFile: false } : dep
+      );
+      setDependentesState(novosDependentes);
+      persistContinuarDraftSnapshot(novosDependentes);
+
+      try {
+        await clearPendingFile(profile.id, 'continuar-inclusao-dependente-modal', getPendingFileSlotKey(index));
+      } catch (err) {
+        console.warn('Erro ao limpar arquivo pendente apos upload:', err);
+      }
+
+      setSuccess('Arquivo carregado com sucesso!');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      console.error('Erro ao fazer upload:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao fazer upload do arquivo';
+      setError(errorMessage);
+
+      const dependentesComFalha = dependentesRef.current.map((dep, idx) =>
+        idx === index ? { ...dep, uploadingFile: false } : dep
+      );
+      setDependentesState(dependentesComFalha);
+      persistContinuarDraftSnapshot(dependentesComFalha);
+      throw err;
+    }
+  };
+
   const handleFileUpload = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -611,7 +865,14 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
       return;
     }
 
-    setDependentes(prev => prev.map((dep, idx) =>
+    try {
+      await uploadDependenteFile(index, file);
+    } finally {
+      e.target.value = '';
+    }
+    return;
+
+    setDependentesState(prev => prev.map((dep, idx) =>
       idx === index ? { ...dep, uploadingFile: true } : dep
     ));
     setError('');
@@ -621,7 +882,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
         throw new Error('Usuário não autenticado');
       }
 
-      const dependente = dependentes[index];
+      const dependente = dependentesRef.current[index];
       const cpfLimpo = removeCPFMask(dependente.cpf);
       const cpfArquivo = cpfLimpo && cpfLimpo.trim() ? cpfLimpo : cadastro.id;
       const prefix = `dependentes-continuar/${cpfArquivo}`;
@@ -633,7 +894,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
         prefix
       );
 
-      setDependentes(prev => prev.map((dep, idx) => {
+      setDependentesState(prev => prev.map((dep, idx) => {
         if (idx === index) {
           return {
             ...dep,
@@ -643,6 +904,11 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
         }
         return dep;
       }));
+      persistContinuarDraftSnapshot(
+        dependentesRef.current.map((dep, idx) =>
+          idx === index ? { ...dep, arquivo: uploadedFile, uploadingFile: false } : dep
+        )
+      );
 
       setSuccess('Arquivo carregado com sucesso!');
       setTimeout(() => setSuccess(''), 3000);
@@ -650,7 +916,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
       console.error('Erro ao fazer upload:', err);
       const errorMessage = err instanceof Error ? err.message : 'Erro ao fazer upload do arquivo';
       setError(errorMessage);
-      setDependentes(prev => prev.map((dep, idx) =>
+      setDependentesState(prev => prev.map((dep, idx) =>
         idx === index ? { ...dep, uploadingFile: false } : dep
       ));
     } finally {
@@ -659,7 +925,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
   };
 
   const adicionarDependente = () => {
-    setDependentes(prev => [
+    setDependentesState(prev => [
       ...prev,
       {
         id: crypto.randomUUID(),
@@ -684,13 +950,82 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
       setError('É necessário ter pelo menos um dependente');
       return;
     }
-    setDependentes(prev => prev.filter((_, idx) => idx !== index));
+    setDependentesState(prev => prev.filter((_, idx) => idx !== index));
   };
 
   const updateDependente = (index: number, field: keyof DependenteForm, value: any) => {
-    setDependentes(prev => prev.map((dep, idx) =>
+    setDependentesState(prev => prev.map((dep, idx) =>
       idx === index ? { ...dep, [field]: value } : dep
     ));
+  };
+
+  const validateStepOne = () => {
+    const dependentesAtuais = dependentesRef.current;
+
+    for (let i = 0; i < dependentesAtuais.length; i++) {
+      const dep = dependentesAtuais[i];
+
+      if (!dep.nome) {
+        setError(`Dependente ${i + 1}: Nome é obrigatório`);
+        return false;
+      }
+      if (!isMenorDeIdade(dep.dataNascimento) && !dep.cpf) {
+        setError(`Dependente ${i + 1}: CPF é obrigatório para maiores de 18 anos`);
+        return false;
+      }
+      if (dep.cpf && dep.cpfValidationError) {
+        setError(`Dependente ${i + 1}: CPF inválido`);
+        return false;
+      }
+      if (!dep.dataNascimento) {
+        setError(`Dependente ${i + 1}: Data de nascimento é obrigatória`);
+        return false;
+      }
+      if (!normalizeToISO(dep.dataNascimento)) {
+        setError(`Dependente ${i + 1}: Data de nascimento inválida`);
+        return false;
+      }
+      if (dep.sexo < 0) {
+        setError(`Dependente ${i + 1}: Sexo é obrigatório`);
+        return false;
+      }
+      if (!dep.parentesco || dep.parentesco === 0) {
+        setError(`Dependente ${i + 1}: Parentesco é obrigatório`);
+        return false;
+      }
+      if (!dep.plano || dep.plano === 0) {
+        setError(`Dependente ${i + 1}: Plano é obrigatório`);
+        return false;
+      }
+      if (!dep.nomeMae) {
+        setError(`Dependente ${i + 1}: Nome da mãe é obrigatório`);
+        return false;
+      }
+    }
+
+    if (!selectedVendedor) {
+      setError('Vendedor é obrigatório');
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleNextStep = async () => {
+    setError('');
+    setSuccess('');
+
+    if (!validateStepOne()) {
+      return;
+    }
+
+    try {
+      await persistContinuarProgress();
+      setCurrentStep(2);
+    } catch (err: any) {
+      console.error('Erro ao preparar etapa de anexos:', err);
+      setError(err?.message || 'Erro ao salvar os dados antes de avançar');
+    }
   };
 
   const handleRequestClose = () => {
@@ -700,6 +1035,10 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
 
   const handleStatusSelected = async (statusId: string) => {
     try {
+      if (pendingClose) {
+        await persistContinuarProgress();
+      }
+
       const { error: updateError } = await supabase
         .from('cadastros')
         .update({ status_adesao_id: statusId })
@@ -726,47 +1065,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
     setSuccess('');
 
     try {
-      const dependentesData = dependentes.map(dep => ({
-        nome: dep.nome,
-        cpf: dep.cpf,
-        data_nascimento: dep.dataNascimento,
-        sexo: dep.sexo === 1 ? 'Masculino' : dep.sexo === 0 ? 'Feminino' : null,
-        parentesco: dep.parentesco,
-        plano_codigo: dep.plano,
-        nome_mae: dep.nomeMae,
-        arquivo_path: dep.arquivo?.path || null
-      }));
-
-      const updateData: any = {
-        dependentes: dependentesData,
-        tipo_cadastro: 'inclusao_dependente',
-        updated_at: new Date().toISOString()
-      };
-
-      if (selectedVendedor) {
-        const vendedor = vendedores.find(v => v.id === selectedVendedor);
-        if (vendedor) {
-          updateData.vendedor_id = vendedor.id;
-          updateData.vendedor_codigo = vendedor.external_id;
-          updateData.vendedor_nome = vendedor.name;
-        }
-      }
-
-      if (selectedAdesionista) {
-        const adesionista = adesionistas.find(a => a.id === selectedAdesionista);
-        if (adesionista) {
-          updateData.adesionista_id = adesionista.id;
-          updateData.adesionista_codigo = adesionista.external_id;
-          updateData.adesionista_nome = adesionista.name;
-        }
-      }
-
-      const { error: updateError } = await supabase
-        .from('cadastros')
-        .update(updateData)
-        .eq('id', cadastro.id);
-
-      if (updateError) throw updateError;
+      await persistContinuarProgress();
 
       setSuccess('Rascunho salvo com sucesso!');
       setTimeout(() => {
@@ -784,8 +1083,10 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
     setError('');
     setSuccess('');
 
-    for (let i = 0; i < dependentes.length; i++) {
-      const dep = dependentes[i];
+    const dependentesAtuais = dependentesRef.current;
+
+    for (let i = 0; i < dependentesAtuais.length; i++) {
+      const dep = dependentesAtuais[i];
 
       if (!dep.nome) {
         setError(`Dependente ${i + 1}: Nome é obrigatório`);
@@ -833,7 +1134,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
         return;
       }
 
-      if (config?.exigir_arquivo && !dep.arquivo) {
+      if (!dep.arquivo) {
         if (i === 0 && cadastro.arquivo_path) {
         } else {
           setError(`Dependente ${i + 1}: Arquivo é obrigatório`);
@@ -856,6 +1157,8 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
     let erpInclusaoConcluida = false;
 
     try {
+      await persistContinuarProgress();
+
       const vendedorSelecionado = vendedores.find(v => v.id === selectedVendedor);
       if (!vendedorSelecionado?.external_id) {
         setError('Vendedor selecionado não possui código externo válido');
@@ -870,7 +1173,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
 
       const mesAnoAtual = new Date().toISOString().slice(0, 7);
 
-      const dependentesPayload = dependentes.map(dep => {
+      const dependentesPayload = dependentesAtuais.map(dep => {
         const cpfLimpo = removeCPFMask(dep.cpf || '').trim();
         const dataNascimentoISO = normalizeToISO(dep.dataNascimento)!;
 
@@ -948,8 +1251,8 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
       erpInclusaoConcluida = true;
 
       if (result?.data?.dados?.dependentes && result.data.dados.dependentes.length > 0) {
-        for (let i = 0; i < dependentes.length; i++) {
-          const dep = dependentes[i];
+        for (let i = 0; i < dependentesAtuais.length; i++) {
+          const dep = dependentesAtuais[i];
           if (dep.arquivo && result.data.dados.dependentes[i]) {
             try {
               const dependenteCodigo = result.data.dados.dependentes[i].codigo;
@@ -1122,7 +1425,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
     setEmpresaObservacao(empresa.observacoes || '');
     setError('');
 
-    setDependentes(prev => prev.map(dep => ({
+    setDependentesState(prev => prev.map(dep => ({
       ...dep,
       plano: 0,
       planoValor: '0.00'
@@ -1250,6 +1553,8 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
             </div>
           </div>
 
+          {currentStep === 1 && (
+          <>
           {empresaObservacao && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
               <h3 className="font-semibold text-amber-900 mb-2">Observação da Empresa</h3>
@@ -1332,7 +1637,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
                   <div>
                     <Input
                       label="CPF"
-                      value={dep.cpf}
+                      value={formatCPF(dep.cpf)}
                       onChange={(e) => handleCpfChange(index, e.target.value)}
                       inputMode="numeric"
                       required={!isMenorDeIdade(dep.dataNascimento)}
@@ -1423,6 +1728,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
                     />
                   </div>
 
+                  {false && (
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-slate-700 mb-2">
                       Arquivo {config?.exigir_arquivo && <span className="text-red-500">*</span>}
@@ -1443,7 +1749,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
                               } catch (err) {
                                 console.error('Erro ao remover arquivo:', err);
                               }
-                              setDependentes(prev => prev.map((d, idx) =>
+                              setDependentesState(prev => prev.map((d, idx) =>
                                 idx === index ? { ...d, arquivo: null } : d
                               ));
                             }}
@@ -1495,13 +1801,120 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
                       </div>
                     )}
                   </div>
+                  )}
                 </div>
               </div>
             ))}
           </div>
-        </div>
+          </>
+          )}
 
-        <div className="sticky bottom-0 bg-slate-50 px-6 py-4 flex justify-between gap-3 border-t border-slate-200 rounded-b-xl">
+          {currentStep === 2 && (
+          <div className="space-y-6 px-6 pt-6">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+              <p className="text-sm font-semibold text-emerald-900">Etapa final: anexos dos dependentes</p>
+              <p className="text-sm text-emerald-800 mt-1">
+                Revise o resumo abaixo, anexe os arquivos e conclua a inclusão.
+              </p>
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-slate-700">
+                <div className="rounded-lg bg-white px-3 py-2 border border-emerald-100">
+                  <span className="font-medium text-slate-900">Empresa:</span> {empresaNome || cadastro.empresa_nome}
+                </div>
+                <div className="rounded-lg bg-white px-3 py-2 border border-emerald-100">
+                  <span className="font-medium text-slate-900">Dependentes:</span> {dependentes.length}
+                </div>
+                <div className="rounded-lg bg-white px-3 py-2 border border-emerald-100">
+                  <span className="font-medium text-slate-900">Vendedor:</span> {vendedores.find(v => v.id === selectedVendedor)?.name || '-'}
+                </div>
+                <div className="rounded-lg bg-white px-3 py-2 border border-emerald-100">
+                  <span className="font-medium text-slate-900">Arquivo obrigatório:</span> Sim
+                </div>
+                <div className="rounded-lg bg-white px-3 py-2 border border-emerald-100 md:col-span-2">
+                  <span className="font-medium text-slate-900">Planos selecionados:</span> {planosSelecionadosResumo}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {dependentes.map((dep, index) => (
+                <div key={`anexo-${dep.id}`} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <div className="mb-3">
+                    <h4 className="font-medium text-slate-800">{dep.nome || `Dependente ${index + 1}`}</h4>
+                    <p className="text-sm text-slate-600">
+                      Plano {dep.plano || '-'}{dep.planoValor ? ` • R$ ${dep.planoValor}` : ''}
+                    </p>
+                  </div>
+
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Arquivo <span className="text-red-500">*</span>
+                  </label>
+                  {(dep.arquivo || (index === 0 && cadastro.arquivo_path)) ? (
+                    <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                      <span className="text-sm text-emerald-700 flex-1">
+                        {dep.arquivo ? dep.arquivo.nome : 'Arquivo já enviado'}
+                      </span>
+                      {dep.arquivo && (
+                        <button
+                          onClick={async () => {
+                            try {
+                              await supabase.storage
+                                .from('cadastros-temp-files')
+                                .remove([dep.arquivo!.path]);
+                            } catch (err) {
+                              console.error('Erro ao remover arquivo:', err);
+                            }
+                            setDependentesState(prev => prev.map((d, idx) =>
+                              idx === index ? { ...d, arquivo: null } : d
+                            ));
+                            persistContinuarDraftSnapshot(
+                              dependentesRef.current.map((d, idx) =>
+                                idx === index ? { ...d, arquivo: null } : d
+                              )
+                            );
+                            if (profile?.id) {
+                              await clearPendingFile(profile.id, 'continuar-inclusao-dependente-modal', getPendingFileSlotKey(index));
+                            }
+                          }}
+                          className="p-1 text-red-600 hover:bg-red-100 rounded transition-colors"
+                          title="Remover arquivo"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/jpg,image/png,application/pdf"
+                        onPointerDown={handleBeforeFilePicker}
+                        onTouchStart={handleBeforeFilePicker}
+                        onClick={handleBeforeFilePicker}
+                        onChange={(e) => handleFileUpload(index, e)}
+                        disabled={dep.uploadingFile}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      />
+                      <p className="text-xs text-slate-500 mt-1">
+                        Formatos aceitos: PDF, JPG, PNG. Tamanho máximo: 10MB.
+                      </p>
+                      {dep.uploadingFile && (
+                        <div className="flex items-center gap-2 mt-2">
+                          <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
+                          <p className="text-xs text-emerald-600 font-medium">
+                            Fazendo upload do arquivo...
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+          )}
+
+          <div className="sticky bottom-0 bg-slate-50 px-6 py-4 flex justify-between gap-3 border-t border-slate-200 rounded-b-xl">
           <Button
             onClick={handleSalvarRascunho}
             variant="secondary"
@@ -1524,19 +1937,37 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
             <Button onClick={handleRequestClose} variant="secondary" disabled={loading || salvando}>
               Cancelar
             </Button>
-            <Button
-              onClick={handleSubmit}
-              disabled={loading || salvando || dependentes.some(d => d.uploadingFile || d.consultingLemmit)}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Enviando...
-                </>
-              ) : (
-                `Incluir ${dependentes.length} ${dependentes.length === 1 ? 'Dependente' : 'Dependentes'}`
-              )}
-            </Button>
+            {currentStep === 1 ? (
+              <Button
+                onClick={handleNextStep}
+                disabled={loading || salvando || dependentes.some(d => d.uploadingFile || d.consultingLemmit)}
+              >
+                Seguinte
+              </Button>
+            ) : (
+              <>
+                <Button
+                  onClick={() => setCurrentStep(1)}
+                  variant="secondary"
+                  disabled={loading || salvando || dependentes.some(d => d.uploadingFile || d.consultingLemmit)}
+                >
+                  Voltar
+                </Button>
+                <Button
+                  onClick={handleSubmit}
+                  disabled={loading || salvando || dependentes.some(d => d.uploadingFile || d.consultingLemmit)}
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Enviando...
+                    </>
+                  ) : (
+                    `Incluir ${dependentes.length} ${dependentes.length === 1 ? 'Dependente' : 'Dependentes'}`
+                  )}
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -1560,6 +1991,7 @@ export function ContinuarInclusaoDependenteModal({ cadastro, onClose, onSuccess 
           }}
         />
       )}
+      </div>
     </div>
   );
 }

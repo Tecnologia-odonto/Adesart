@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, Trash2, Pencil, X, Check, Loader2 } from 'lucide-react';
 import { Input } from '../Input';
 import { Select } from '../Select';
@@ -30,6 +30,7 @@ interface DependentesSectionProps {
   funcionarioCadastro: number | null;
   onChange: (dependentes: Dependente[]) => void;
   enableLemmit?: boolean;
+  onEditingStateChange?: (isEditing: boolean) => void;
 }
 
 export function DependentesSection({
@@ -38,6 +39,7 @@ export function DependentesSection({
   funcionarioCadastro,
   onChange,
   enableLemmit = true,
+  onEditingStateChange,
 }: DependentesSectionProps) {
   const { parentescos, config } = useConfigCadastro();
   const { profile } = useAuth();
@@ -51,6 +53,11 @@ export function DependentesSection({
     isUnlimited?: boolean;
   } | null>(null);
   const [cpfValidationError, setCpfValidationError] = useState('');
+
+  useEffect(() => {
+    onEditingStateChange?.(isAdding);
+    return () => onEditingStateChange?.(false);
+  }, [isAdding, onEditingStateChange]);
 
   const planosOcultos = config?.planos_ocultos || [];
 
