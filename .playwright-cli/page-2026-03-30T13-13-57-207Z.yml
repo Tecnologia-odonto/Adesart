@@ -1,0 +1,16 @@
+- generic [ref=e4]:
+  - generic [ref=e5]:
+    - img [ref=e7]
+    - heading "Venda+" [level=1] [ref=e10]
+    - paragraph [ref=e11]: Sistema de Gestão ERP
+  - generic [ref=e12]:
+    - heading "Entrar" [level=2] [ref=e13]
+    - generic [ref=e14]:
+      - generic [ref=e15]:
+        - generic [ref=e16]: Email*
+        - textbox "seu@email.com" [ref=e17]
+      - generic [ref=e18]:
+        - generic [ref=e19]: Senha*
+        - textbox "••••••••" [ref=e20]
+      - button "Entrar" [ref=e21] [cursor=pointer]
+  - paragraph [ref=e22]: Acesso restrito a usuários autorizados

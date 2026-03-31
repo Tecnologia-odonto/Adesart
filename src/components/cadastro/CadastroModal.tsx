@@ -48,6 +48,7 @@ function isParceiroInvalidoMessage(message: string): boolean {
 
 export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalProps) {
   const draftHydratedRef = useRef(false);
+  const cadastroStateInitializedRef = useRef(false);
   const { updateCadastro, enviarParaERP, deleteCadastro, canDelete, consultarEnderecoCEP, searchEmpresa } = useCadastros();
   const { profile } = useAuth();
   const { planos: planosMap, config } = useConfigCadastro();
@@ -75,6 +76,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   const [novoContato, setNovoContato] = useState({ tipo: 'celular', valor: '' });
   const [currentStep, setCurrentStep] = useState<1 | 2>(1);
   const [draftInitialized, setDraftInitialized] = useState(false);
+  const [dependenteEmEdicao, setDependenteEmEdicao] = useState(false);
 
   const funcionarioCadastroId = profile?.external_id ? parseInt(profile.external_id) : null;
 
@@ -124,10 +126,71 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     currentTab: 0,
   });
 
+  const getPlanoNome = (planoId?: number | null) => {
+    if (!planoId) {
+      return null;
+    }
+
+    const planoEmpresa = planosEmpresa.find((plano: any) => Number(plano.Plano) === Number(planoId));
+    const planoMap = planosMap.find((plano) => Number(plano.plano_id) === Number(planoId));
+
+    return planoEmpresa?.nomeExibicao || planoMap?.nome_exibicao || planoEmpresa?.NomeANS || `Plano ${planoId}`;
+  };
+
+  const planosSelecionadosResumo =
+    Array.from(
+      new Set(
+        dependentes
+          .map((dep) => getPlanoNome(dep.plano))
+          .filter((plano): plano is string => Boolean(plano))
+      )
+    ).join(', ') || 'Nenhum plano selecionado';
+
   const clearCadastroDraft = () => {
     if (profile?.id) {
       clearDraft('cadastro-modal', profile.id, cadastro.id);
     }
+  };
+
+  const buildCadastroProgressData = (logContext?: 'save' | 'close') => {
+    let dataNascimento = null;
+    if (formData.dataNascimento && formData.dataNascimento.trim() !== '') {
+      if (isValidISODate(formData.dataNascimento)) {
+        dataNascimento = formData.dataNascimento;
+      } else {
+        const suffix = logContext === 'close' ? ' ao fechar' : '';
+        console.warn(`[CadastroModal] Data de nascimento incompleta${suffix}, salvando como null:`, formData.dataNascimento);
+      }
+    }
+
+    return {
+      nome: formData.nome || null,
+      data_nascimento: dataNascimento,
+      sexo_codigo: formData.sexo !== '' && formData.sexo !== null && formData.sexo !== undefined ? formData.sexo : null,
+      nome_mae: formData.nomeMae || null,
+      numero_matricula: formData.numeroMatricula || null,
+      contatos: formData.contatos,
+      endereco: formData.endereco,
+      dependentes,
+      arquivo_path: arquivo ? arquivo.path : null,
+      empresa_id: selectedEmpresa?.id || cadastroAtual.empresa_id || null,
+      empresa_codigo: selectedEmpresa?.id || cadastroAtual.empresa_codigo || null,
+      empresa_nome: selectedEmpresa?.nomeFantasia || cadastroAtual.empresa_nome || null,
+      empresa_cnpj: selectedEmpresa?.cnpj || cadastroAtual.empresa_cnpj || null,
+      empresa_exige_matricula:
+        selectedEmpresa?.exigeMatricula ?? cadastroAtual.empresa_exige_matricula ?? null,
+      empresa_raw: selectedEmpresa?.raw || cadastroAtual.empresa_raw || null,
+      planos_raw:
+        Array.isArray(selectedEmpresa?.precoPlano) && selectedEmpresa.precoPlano.length > 0
+          ? selectedEmpresa.precoPlano
+          : cadastroAtual.planos_raw || null,
+    };
+  };
+
+  const persistCadastroProgress = async (logContext?: 'save' | 'close') => {
+    const updated = await updateCadastro(cadastroAtual.id, buildCadastroProgressData(logContext));
+    setCadastroFresh(updated as Cadastro);
+    return updated;
   };
 
   useEffect(() => {
@@ -211,6 +274,10 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   }, [profile?.id, draftInitialized, formData, arquivo, dependentes, selectedEmpresa, novoContato, currentStep, cadastro.id]);
 
   useEffect(() => {
+    if (!initialLoadComplete || cadastroStateInitializedRef.current) {
+      return;
+    }
+
     try {
       if (!cadastroAtual) {
         console.warn('[CadastroModal] cadastroAtual nÃ£o disponÃ­vel');
@@ -262,11 +329,12 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
           size: 0
         });
       }
+      cadastroStateInitializedRef.current = true;
     } catch (err) {
       console.error('[CadastroModal] Erro ao inicializar dependentes:', err);
       setDependentesInicializados(true);
     }
-  }, [cadastroAtual?.dependentes, cadastroAtual?.arquivo_path]);
+  }, [initialLoadComplete, cadastroAtual]);
 
   useEffect(() => {
     try {
@@ -471,33 +539,17 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   };
 
   const handleSave = async () => {
+    if (dependenteEmEdicao) {
+      setError('Salve ou cancele a edição do dependente antes de salvar o cadastro');
+      return;
+    }
+
     setError('');
     setSuccess('');
     setLoading(true);
 
     try {
-      let dataNascimento = null;
-      if (formData.dataNascimento && formData.dataNascimento.trim() !== '') {
-        if (isValidISODate(formData.dataNascimento)) {
-          dataNascimento = formData.dataNascimento;
-        } else {
-          console.warn('[CadastroModal] Data de nascimento incompleta, salvando como null:', formData.dataNascimento);
-        }
-      }
-
-      const updateData: any = {
-        nome: formData.nome || null,
-        data_nascimento: dataNascimento,
-        sexo_codigo: formData.sexo !== '' && formData.sexo !== null && formData.sexo !== undefined ? formData.sexo : null,
-        nome_mae: formData.nomeMae || null,
-        numero_matricula: formData.numeroMatricula || null,
-        contatos: formData.contatos,
-        endereco: formData.endereco,
-        dependentes: dependentes,
-        arquivo_path: arquivo ? arquivo.path : null,
-      };
-
-      await updateCadastro(cadastroAtual.id, updateData);
+      await persistCadastroProgress('save');
 
       setShowSelectStatusModal(true);
     } catch (err: any) {
@@ -531,33 +583,17 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
   };
 
   const handleCloseWithSave = async () => {
+    if (dependenteEmEdicao) {
+      setError('Salve ou cancele a edição do dependente antes de fechar o cadastro');
+      return;
+    }
+
     setError('');
     setSuccess('');
     setLoading(true);
 
     try {
-      let dataNascimento = null;
-      if (formData.dataNascimento && formData.dataNascimento.trim() !== '') {
-        if (isValidISODate(formData.dataNascimento)) {
-          dataNascimento = formData.dataNascimento;
-        } else {
-          console.warn('[CadastroModal] Data de nascimento incompleta ao fechar, salvando como null:', formData.dataNascimento);
-        }
-      }
-
-      const updateData: any = {
-        nome: formData.nome || null,
-        data_nascimento: dataNascimento,
-        sexo_codigo: formData.sexo !== '' && formData.sexo !== null && formData.sexo !== undefined ? formData.sexo : null,
-        nome_mae: formData.nomeMae || null,
-        numero_matricula: formData.numeroMatricula || null,
-        contatos: formData.contatos,
-        endereco: formData.endereco,
-        dependentes: dependentes,
-        arquivo_path: arquivo ? arquivo.path : null,
-      };
-
-      await updateCadastro(cadastroAtual.id, updateData);
+      await persistCadastroProgress('close');
       setShowSelectStatusModal(true);
     } catch (err: any) {
       console.error('Error saving cadastro on close:', err);
@@ -742,6 +778,11 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
       return false;
     }
 
+    if (dependenteEmEdicao) {
+      setError('Salve ou cancele a edição do dependente antes de continuar');
+      return false;
+    }
+
     const titulares = dependentes.filter((d) => d.tipo === 1);
     if (titulares.length === 0) {
       setError('Ã‰ necessÃ¡rio ter pelo menos 1 titular nos dependentes');
@@ -762,12 +803,25 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     return true;
   };
 
-  const handleNextStep = () => {
+  const handleNextStep = async () => {
     if (!validateCadastro(false)) {
       return;
     }
 
-    setCurrentStep(2);
+    setError('');
+
+    try {
+      await persistCadastroProgress('save');
+
+      if (profile?.id && draftHydratedRef.current) {
+        saveDraft('cadastro-modal', { ...getCadastroDraftData(), step: 2 }, profile.id, cadastro.id);
+      }
+
+      setCurrentStep(2);
+    } catch (err: any) {
+      console.error('[CadastroModal] Erro ao persistir progresso antes do anexo:', err);
+      setError(err?.message || 'Erro ao salvar os dados antes de avancar');
+    }
   };
 
   const processarArquivoTitularEmSegundoPlano = async (dependenteCodigo: string | number) => {
@@ -887,6 +941,8 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
     setLoading(true);
 
     try {
+      await persistCadastroProgress('save');
+
       const cadastroCompleto: CadastroFormData = {
         cpf: cadastroAtual.cpf,
         nome: formData.nome,
@@ -1695,6 +1751,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
                   planos={planosEmpresa}
                   funcionarioCadastro={funcionarioCadastroId}
                   onChange={setDependentes}
+                  onEditingStateChange={setDependenteEmEdicao}
                 />
               )}
             </>
@@ -1717,6 +1774,9 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
                   </div>
                   <div className="rounded-lg bg-white px-3 py-2 border border-emerald-100">
                     <span className="font-medium text-slate-900">Arquivo obrigatório:</span> {config?.exigir_arquivo ? 'Sim' : 'Não'}
+                  </div>
+                  <div className="rounded-lg bg-white px-3 py-2 border border-emerald-100 md:col-span-2">
+                    <span className="font-medium text-slate-900">Planos selecionados:</span> {planosSelecionadosResumo}
                   </div>
                 </div>
               </div>
@@ -1815,7 +1875,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
             <Button
               variant="secondary"
               onClick={handleCloseWithSave}
-              disabled={loading || uploadingFile}
+              disabled={loading || uploadingFile || dependenteEmEdicao}
               className="w-full sm:w-auto"
             >
               <X className="w-4 h-4 mr-2" />
@@ -1827,7 +1887,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
             <Button
               variant="secondary"
               onClick={handleSave}
-              disabled={loading || loadingPlanos || uploadingFile}
+              disabled={loading || loadingPlanos || uploadingFile || dependenteEmEdicao}
               className="w-full sm:w-auto"
             >
               {loading ? (
@@ -1839,7 +1899,7 @@ export function CadastroModal({ cadastro, onClose, onSuccess }: CadastroModalPro
             </Button>
 
             {currentStep === 1 ? (
-              <Button onClick={handleNextStep} disabled={loading || loadingPlanos || uploadingFile} className="w-full sm:w-auto">
+              <Button onClick={handleNextStep} disabled={loading || loadingPlanos || uploadingFile || dependenteEmEdicao} className="w-full sm:w-auto">
                 Seguinte
               </Button>
             ) : (
