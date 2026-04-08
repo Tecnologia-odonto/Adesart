@@ -461,14 +461,42 @@ export function useCadastros() {
   const createOrUpdateRascunho = async (data: Partial<Cadastro>) => {
     if (!profile?.id) throw new Error('User not authenticated');
 
-    const existing = cadastros.find(
-      (c) => c.cpf === data.cpf && c.status === 'incompleto' && c.created_by === profile.id
-    );
+    const cpfNormalizado = normalizeCpf(data.cpf);
+    if (cpfNormalizado.length !== 11) {
+      throw new Error('CPF invalido para salvar rascunho');
+    }
+
+    const dependentesNormalizados = Array.isArray(data.dependentes)
+      ? data.dependentes.map((dep: any) => {
+          if (!dep || typeof dep !== 'object') return dep;
+          const cpfDependente = normalizeCpf(dep.cpf);
+          if (!cpfDependente) return dep;
+          return { ...dep, cpf: cpfDependente };
+        })
+      : data.dependentes;
+
+    const payload: Partial<Cadastro> = {
+      ...data,
+      cpf: cpfNormalizado,
+      dependentes: dependentesNormalizados,
+    };
+
+    const { data: existing, error: existingError } = await supabase
+      .from('cadastros')
+      .select('*')
+      .eq('cpf', cpfNormalizado)
+      .eq('status', 'incompleto')
+      .eq('created_by', profile.id)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existingError) throw existingError;
 
     if (existing) {
       const { data: updated, error } = await supabase
         .from('cadastros')
-        .update(data)
+        .update(payload)
         .eq('id', existing.id)
         .select()
         .single();
@@ -481,7 +509,7 @@ export function useCadastros() {
       const { data: created, error} = await supabase
         .from('cadastros')
         .insert({
-          ...data,
+          ...payload,
           created_by: profile.id,
           team_id: profile.team_id,
           status: 'incompleto',
