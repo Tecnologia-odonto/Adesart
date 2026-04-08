@@ -7,6 +7,7 @@ import { Select } from '../components/Select';
 import { Button } from '../components/Button';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
+import { usePersistentState } from '../hooks/usePersistentState';
 
 interface CadastroExcluido {
   id: string;
@@ -29,13 +30,31 @@ export function AdesoesExcluidas() {
   const { profile } = useAuth();
   const [cadastrosExcluidos, setCadastrosExcluidos] = useState<CadastroExcluido[]>([]);
   const [loading, setLoading] = useState(true);
-  const [buscaNome, setBuscaNome] = useState('');
-  const [buscaCPF, setBuscaCPF] = useState('');
-  const [dataInicio, setDataInicio] = useState('');
-  const [dataFim, setDataFim] = useState('');
-  const [exclusorFiltro, setExclusorFiltro] = useState('');
+  const { value: buscaNome, setValue: setBuscaNome } = usePersistentState<string>(
+    profile?.id ? `ui:adesoes-excluidas:${profile.id}:busca-nome` : null,
+    ''
+  );
+  const { value: buscaCPF, setValue: setBuscaCPF } = usePersistentState<string>(
+    profile?.id ? `ui:adesoes-excluidas:${profile.id}:busca-cpf` : null,
+    ''
+  );
+  const { value: dataInicio, setValue: setDataInicio } = usePersistentState<string>(
+    profile?.id ? `ui:adesoes-excluidas:${profile.id}:data-inicio` : null,
+    ''
+  );
+  const { value: dataFim, setValue: setDataFim } = usePersistentState<string>(
+    profile?.id ? `ui:adesoes-excluidas:${profile.id}:data-fim` : null,
+    ''
+  );
+  const { value: exclusorFiltro, setValue: setExclusorFiltro } = usePersistentState<string>(
+    profile?.id ? `ui:adesoes-excluidas:${profile.id}:exclusor-filtro` : null,
+    ''
+  );
   const [users, setUsers] = useState<UserProfile[]>([]);
-  const [currentPage, setCurrentPage] = useState(1);
+  const { value: currentPage, setValue: setCurrentPage } = usePersistentState<number>(
+    profile?.id ? `ui:adesoes-excluidas:${profile.id}:current-page` : null,
+    1
+  );
   const [cadastroDetalhes, setCadastroDetalhes] = useState<CadastroExcluido | null>(null);
 
   const ITEMS_PER_PAGE = 15;
@@ -115,6 +134,17 @@ export function AdesoesExcluidas() {
   const totalPages = Math.ceil(cadastrosFiltrados.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const cadastrosPaginados = cadastrosFiltrados.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+  useEffect(() => {
+    if (totalPages === 0 && currentPage !== 1) {
+      setCurrentPage(1);
+      return;
+    }
+
+    if (totalPages > 0 && currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages, setCurrentPage]);
 
   const limparFiltros = () => {
     setBuscaNome('');

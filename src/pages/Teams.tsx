@@ -8,15 +8,22 @@ import { supabase, Team, Profile } from '../lib/supabase';
 import { Plus, X, Users as UsersIcon, CheckCircle, XCircle, Edit, Loader2 } from 'lucide-react';
 import { EditTeamModal } from '../components/teams/EditTeamModal';
 import { EditTeamMembersModal } from '../components/teams/EditTeamMembersModal';
+import { usePersistentState } from '../hooks/usePersistentState';
 
 export function Teams() {
   const { profile } = useAuth();
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const { value: showCreateModal, setValue: setShowCreateModal } = usePersistentState<boolean>(
+    profile?.id ? `ui:teams:${profile.id}:show-create-modal` : null,
+    false
+  );
   const [createLoading, setCreateLoading] = useState(false);
   const [error, setError] = useState('');
-  const [teamName, setTeamName] = useState('');
+  const { value: teamName, setValue: setTeamName } = usePersistentState<string>(
+    profile?.id ? `ui:teams:${profile.id}:team-name` : null,
+    ''
+  );
   const [teamMemberCounts, setTeamMemberCounts] = useState<Record<string, number>>({});
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
   const [editingTeamMembers, setEditingTeamMembers] = useState<Team | null>(null);

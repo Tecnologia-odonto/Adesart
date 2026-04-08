@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase, Profile, Team } from '../lib/supabase';
 import { Plus, X, Edit, UserCheck, UserX } from 'lucide-react';
 import { EditUserModal } from '../components/users/EditUserModal';
+import { usePersistentState } from '../hooks/usePersistentState';
 
 type UserWithTeam = Profile & { team_name?: string };
 
@@ -16,20 +17,36 @@ export function Users() {
   const [users, setUsers] = useState<UserWithTeam[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const { value: searchTerm, setValue: setSearchTerm } = usePersistentState<string>(
+    profile?.id ? `ui:users:${profile.id}:search-term` : null,
+    ''
+  );
+  const { value: showCreateModal, setValue: setShowCreateModal } = usePersistentState<boolean>(
+    profile?.id ? `ui:users:${profile.id}:show-create-modal` : null,
+    false
+  );
   const [createLoading, setCreateLoading] = useState(false);
   const [error, setError] = useState('');
   const [editingUser, setEditingUser] = useState<Profile | null>(null);
 
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    password: '',
-    role: 'VENDEDOR' as Profile['role'],
-    external_id: '',
-    team_id: '',
-  });
+  const { value: formData, setValue: setFormData } = usePersistentState<{
+    name: string;
+    email: string;
+    password: string;
+    role: Profile['role'];
+    external_id: string;
+    team_id: string;
+  }>(
+    profile?.id ? `ui:users:${profile.id}:create-form` : null,
+    {
+      name: '',
+      email: '',
+      password: '',
+      role: 'VENDEDOR',
+      external_id: '',
+      team_id: '',
+    }
+  );
 
   const canCreate = profile?.role && ['ADMINISTRADOR', 'GERENTE', 'SUPERVISOR'].includes(profile.role);
   const canEditRole = profile?.role === 'ADMINISTRADOR';
