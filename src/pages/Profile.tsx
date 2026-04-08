@@ -7,28 +7,44 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase, Team } from '../lib/supabase';
 import { formatMobilePhone, normalizeMobilePhone } from '../lib/cpf';
 import { User, Mail, Shield, Briefcase, Hash, Calendar, Phone } from 'lucide-react';
+import { usePersistentState } from '../hooks/usePersistentState';
 
 export function Profile() {
   const { profile, refreshProfile } = useAuth();
   const [team, setTeam] = useState<Team | null>(null);
-  const [editing, setEditing] = useState(false);
+  const { value: editing, setValue: setEditing } = usePersistentState<boolean>(
+    profile?.id ? `ui:profile:${profile.id}:editing` : null,
+    false
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [name, setName] = useState('');
-  const [externalId, setExternalId] = useState('');
-  const [telefone, setTelefone] = useState('');
+  const { value: name, setValue: setName } = usePersistentState<string>(
+    profile?.id ? `ui:profile:${profile.id}:name-draft` : null,
+    ''
+  );
+  const { value: externalId, setValue: setExternalId } = usePersistentState<string>(
+    profile?.id ? `ui:profile:${profile.id}:external-id-draft` : null,
+    ''
+  );
+  const { value: telefone, setValue: setTelefone } = usePersistentState<string>(
+    profile?.id ? `ui:profile:${profile.id}:telefone-draft` : null,
+    ''
+  );
 
   useEffect(() => {
     if (profile) {
-      setName(profile.name);
-      setExternalId(profile.external_id || '');
-      setTelefone(formatMobilePhone(profile.telefone || ''));
+      if (!editing) {
+        setName(profile.name);
+        setExternalId(profile.external_id || '');
+        setTelefone(formatMobilePhone(profile.telefone || ''));
+      }
+
       if (profile.team_id) {
         fetchTeam();
       }
     }
-  }, [profile]);
+  }, [profile, editing]);
 
   const fetchTeam = async () => {
     if (!profile?.team_id) return;

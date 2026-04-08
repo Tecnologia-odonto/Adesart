@@ -6,6 +6,7 @@ import { Download, RefreshCw, Clock, CheckCircle, XCircle, AlertTriangle, Chevro
 import { formatCPF, formatDate } from '../lib/cpf';
 import { Button } from '../components/Button';
 import { Select } from '../components/Select';
+import { usePersistentState } from '../hooks/usePersistentState';
 
 interface QueueItem {
   id: string;
@@ -37,19 +38,39 @@ export function FilaUploadERP() {
   const { profile } = useAuth();
   const [items, setItems] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [currentPage, setCurrentPage] = useState(1);
+  const { value: statusFilter, setValue: setStatusFilter } = usePersistentState<string>(
+    profile?.id ? `ui:fila-upload-erp:${profile.id}:status-filter` : null,
+    'all'
+  );
+  const { value: currentPage, setValue: setCurrentPage } = usePersistentState<number>(
+    profile?.id ? `ui:fila-upload-erp:${profile.id}:current-page` : null,
+    1
+  );
   const [totalCount, setTotalCount] = useState(0);
   const [processingQueue, setProcessingQueue] = useState(false);
   const [resettingStuck, setResettingStuck] = useState(false);
   const [processingCount, setProcessingCount] = useState(0);
+  const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
 
   useEffect(() => {
     if (profile?.role === 'ADMINISTRADOR') {
       fetchQueueItems();
-      subscribeToQueueChanges();
+      const unsubscribe = subscribeToQueueChanges();
+      return unsubscribe;
     }
+    return undefined;
   }, [profile, statusFilter, currentPage]);
+
+  useEffect(() => {
+    if (totalPages === 0 && currentPage !== 1) {
+      setCurrentPage(1);
+      return;
+    }
+
+    if (totalPages > 0 && currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages, setCurrentPage]);
 
   const fetchQueueItems = async () => {
     setLoading(true);
@@ -261,8 +282,6 @@ export function FilaUploadERP() {
       </Layout>
     );
   }
-
-  const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
 
   const getStatusIcon = (status: string) => {
     switch (status) {

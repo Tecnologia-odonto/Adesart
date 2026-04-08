@@ -15,6 +15,8 @@ import { Layout } from '../components/Layout';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
+import { usePersistentState } from '../hooks/usePersistentState';
 
 interface AuditCards {
   total_limite_ajustado: number;
@@ -50,10 +52,14 @@ interface AuditData {
 }
 
 export function AuditoriaLemmit() {
+  const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<AuditData | null>(null);
   const [error, setError] = useState<string>('');
-  const [currentPage, setCurrentPage] = useState(1);
+  const { value: currentPage, setValue: setCurrentPage } = usePersistentState<number>(
+    profile?.id ? `ui:auditoria-lemmit:${profile.id}:current-page` : null,
+    1
+  );
   const itemsPerPage = 20;
 
   const getDefaultDates = () => {
@@ -67,7 +73,10 @@ export function AuditoriaLemmit() {
     };
   };
 
-  const [dateRange, setDateRange] = useState(getDefaultDates());
+  const { value: dateRange, setValue: setDateRange } = usePersistentState<{ start: string; end: string }>(
+    profile?.id ? `ui:auditoria-lemmit:${profile.id}:date-range` : null,
+    getDefaultDates()
+  );
 
   const fetchAuditData = async () => {
     setLoading(true);

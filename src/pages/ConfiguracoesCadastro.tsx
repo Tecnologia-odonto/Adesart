@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Settings } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { GeralConfigCard } from '../components/config/GeralConfigCard';
@@ -6,9 +5,15 @@ import { PlanosMapTable } from '../components/config/PlanosMapTable';
 import { ParentescoMapTable } from '../components/config/ParentescoMapTable';
 import { ApiLogsTable } from '../components/config/ApiLogsTable';
 import { StatusAdesoesTable } from '../components/config/StatusAdesoesTable';
+import { useAuth } from '../contexts/AuthContext';
+import { usePersistentState } from '../hooks/usePersistentState';
 
 export function ConfiguracoesCadastro() {
-  const [activeTab, setActiveTab] = useState<'geral' | 'planos' | 'parentesco' | 'status' | 'logs'>('geral');
+  const { profile } = useAuth();
+  const { value: activeTab, setValue: setActiveTab } = usePersistentState<'geral' | 'planos' | 'parentesco' | 'status' | 'logs'>(
+    profile?.id ? `ui:configuracoes-cadastro:${profile.id}:active-tab` : null,
+    'geral'
+  );
 
   return (
     <Layout>

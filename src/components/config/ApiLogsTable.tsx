@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { AlertCircle, CheckCircle, Clock, User, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Input } from '../Input';
+import { useAuth } from '../../contexts/AuthContext';
+import { usePersistentState } from '../../hooks/usePersistentState';
 
 interface ApiLog {
   id: string;
@@ -22,21 +24,45 @@ interface ApiLogDetail {
 }
 
 export function ApiLogsTable() {
+  const { profile } = useAuth();
   const [logs, setLogs] = useState<ApiLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedLog, setSelectedLog] = useState<ApiLog | null>(null);
   const [selectedLogDetail, setSelectedLogDetail] = useState<ApiLogDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
-  const [filter, setFilter] = useState<'all' | 'success' | 'error'>('all');
-  const [page, setPage] = useState(1);
+  const { value: filter, setValue: setFilter } = usePersistentState<'all' | 'success' | 'error'>(
+    profile?.id ? `ui:config-api-logs:${profile.id}:filter` : null,
+    'all'
+  );
+  const { value: page, setValue: setPage } = usePersistentState<number>(
+    profile?.id ? `ui:config-api-logs:${profile.id}:page` : null,
+    1
+  );
   const [totalPages, setTotalPages] = useState(1);
-  const [dataInicio, setDataInicio] = useState('');
-  const [dataFim, setDataFim] = useState('');
+  const { value: dataInicio, setValue: setDataInicio } = usePersistentState<string>(
+    profile?.id ? `ui:config-api-logs:${profile.id}:data-inicio` : null,
+    ''
+  );
+  const { value: dataFim, setValue: setDataFim } = usePersistentState<string>(
+    profile?.id ? `ui:config-api-logs:${profile.id}:data-fim` : null,
+    ''
+  );
   const pageSize = 100;
 
   useEffect(() => {
     fetchLogs();
   }, [filter, page, dataInicio, dataFim]);
+
+  useEffect(() => {
+    if (totalPages === 0 && page !== 1) {
+      setPage(1);
+      return;
+    }
+
+    if (totalPages > 0 && page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages, setPage]);
 
   const fetchLogs = async () => {
     try {
