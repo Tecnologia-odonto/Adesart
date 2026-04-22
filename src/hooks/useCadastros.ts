@@ -517,7 +517,36 @@ export function useCadastros() {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        if (error.code === '23505') {
+          const { data: conflicted, error: conflictError } = await supabase
+            .from('cadastros')
+            .select('*')
+            .eq('cpf', cpfNormalizado)
+            .eq('status', 'incompleto')
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (conflictError) throw conflictError;
+
+          if (conflicted) {
+            const { data: recovered, error: recoverError } = await supabase
+              .from('cadastros')
+              .update(payload)
+              .eq('id', conflicted.id)
+              .select()
+              .single();
+
+            if (recoverError) throw recoverError;
+
+            upsertCadastroState(recovered);
+            return recovered;
+          }
+        }
+
+        throw error;
+      }
 
       upsertCadastroState(created);
       return created;
