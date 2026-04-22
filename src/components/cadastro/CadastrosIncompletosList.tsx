@@ -1,4 +1,4 @@
-import { FileText, Clock, AlertCircle, CheckCircle2, Eye, Ban, User, Search, X, Filter, Tag, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { FileText, Clock, AlertCircle, CheckCircle2, Eye, Ban, User, Search, X, Filter, Tag, ChevronLeft, ChevronRight, Trash2, Download } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
 import { Cadastro } from '../../hooks/useCadastros';
 import { formatCPF, formatDate } from '../../lib/cpf';
@@ -275,6 +275,41 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
     });
   }, [incompletos, tipoBuscaAplicada, buscaNomeAplicada, buscaCPFAplicada, buscaCNPJAplicada, buscaCodigoAplicada, dataInicioAplicada, dataFimAplicada, tipoFiltroAplicado, statusAdesaoFiltroAplicado, vendedorFiltroAplicado]);
 
+  const handleExportarXlsx = async () => {
+    if (cadastrosFiltrados.length === 0) {
+      return;
+    }
+
+    const XLSX = await import('xlsx');
+
+    const linhas = cadastrosFiltrados.map((cadastro) => {
+      const statusAdesao = statusList.find((status) => status.id === cadastro.status_adesao_id);
+      const exibirCpf = cadastro.cpf && !cadastro.cpf.includes('-');
+      const tipoCadastroLabel = cadastro.tipo_cadastro === 'inclusao_dependente' ? 'Inclusao de Dependente' : 'Cadastro';
+
+      return {
+        tipo: tipoCadastroLabel,
+        nome: cadastro.nome || 'Nome nao informado',
+        cpf: exibirCpf ? formatCPF(cadastro.cpf as string) : '',
+        nascimento: cadastro.data_nascimento ? formatDate(cadastro.data_nascimento) : '',
+        empresa: cadastro.empresa_nome || '',
+        cnpj: cadastro.empresa_cnpj || '',
+        vendedor: cadastro.vendedor_nome || '',
+        bloqueado: cadastro.motivo_bloqueio ? 'Sim' : 'Nao',
+        motivo_bloqueio: cadastro.motivo_bloqueio || '',
+        status_adesao: statusAdesao?.nome || '',
+        atualizado_em: new Date(cadastro.updated_at).toLocaleString('pt-BR'),
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(linhas);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'AdesoesPendentes');
+
+    const dataAtual = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(workbook, `adesoes-pendentes-${dataAtual}.xlsx`);
+  };
+
 
   const clientesGrouped: ClienteGroup[] = useMemo(() => {
     const clientesMap = new Map<string, Cadastro[]>();
@@ -543,6 +578,17 @@ export function CadastrosIncompletosList({ cadastros, onSelect, onRefresh }: Cad
             value={dataFim}
             onChange={(e) => setDataFim(e.target.value)}
           />
+
+          <div className="flex items-end">
+            <Button
+              onClick={() => void handleExportarXlsx()}
+              disabled={cadastrosFiltrados.length === 0}
+              className="w-full flex items-center justify-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              Exportar
+            </Button>
+          </div>
         </div>
 
         <div className="mt-4 flex items-center gap-3">
